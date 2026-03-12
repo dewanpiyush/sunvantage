@@ -12,7 +12,7 @@ import supabase from '../supabase';
 import { BADGE_REGISTRY, BADGE_ICONS, computeBadgeStats } from './ritual-markers';
 import SunVantageHeader from '../components/SunVantageHeader';
 import { hasLoggedToday } from '../lib/hasLoggedToday';
-import { Dawn, emojiFontFix } from '../constants/theme';
+import { Dawn } from '../constants/theme';
 
 // ----- Streak computation (client-side) -----
 const YMD_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -365,7 +365,10 @@ export default function MyProfileScreen() {
             <View style={styles.card}>
               <View style={styles.cardInner}>
                 <View style={styles.markersCardHeader}>
-                  <Text style={styles.markersCardTitle}><Text style={emojiFontFix}>✨</Text> Ritual Markers</Text>
+                  <View style={styles.titleRow}>
+                    <Text style={styles.titleEmoji}>✨</Text>
+                    <Text style={styles.markersCardTitle}>Ritual Markers</Text>
+                  </View>
                   <Pressable
                     style={({ pressed }) => [styles.viewAllLink, pressed && { opacity: 0.72 }]}
                     onPress={() => router.push('/ritual-markers')}
@@ -392,6 +395,15 @@ export default function MyProfileScreen() {
 }
 
 const styles = StyleSheet.create({
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  titleEmoji: {
+    fontSize: 17,
+    lineHeight: 20,
+  },
   container: {
     flex: 1,
     backgroundColor: Dawn.background.primary,

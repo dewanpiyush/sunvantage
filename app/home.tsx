@@ -16,7 +16,7 @@ import RitualRevealCard from '../components/RitualRevealCard';
 import { useMorningContext } from '../hooks/useMorningContext';
 import { computeBadgeStats, getEarnedBadges, computeEarnedAtByBadge, BADGE_ICONS, type BadgeDef } from './ritual-markers';
 import { getDismissedBadgeIds, dismissBadgeReveal } from '../lib/ritualReveal';
-import { Dawn, emojiFontFix } from '../constants/theme';
+import { Dawn } from '../constants/theme';
 
 // ----- Streak (same logic as elsewhere) -----
 const YMD_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -378,7 +378,10 @@ export default function HomeScreen() {
         {/* Ritual Introduction Card — first-time users only */}
         {totalSunrises === 0 && (
           <View style={styles.ritualIntroCard}>
-            <Text style={styles.ritualIntroCardTitle}><Text style={emojiFontFix}>🌅</Text> A simple morning ritual</Text>
+            <View style={styles.titleRowCentered}>
+              <Text style={styles.titleEmoji}>🌅</Text>
+              <Text style={styles.ritualIntroCardTitle}>A simple morning ritual</Text>
+            </View>
             <Text style={styles.ritualIntroCardBody}>Step outside.</Text>
             <Text style={styles.ritualIntroCardBody}>Notice the sunrise.</Text>
             <Text style={styles.ritualIntroCardBody}>Mark the moment here.</Text>
@@ -435,7 +438,10 @@ export default function HomeScreen() {
 
         {/* Sunrise card — always shown; copy adapts by timing and logged state */}
         <View style={styles.sunriseContextCard}>
-          <Text style={styles.sunriseContextCardTitle}><Text style={emojiFontFix}>☀</Text> Sunrise today</Text>
+          <View style={styles.sunTitleRow}>
+            <Text style={styles.sunEmoji}>☀️</Text>
+            <Text style={styles.sunTitle}>Sunrise today</Text>
+          </View>
           {minutesToSunrise != null && minutesToSunrise > 10 ? (
             <>
               <Text style={styles.sunriseContextCardBody}>
@@ -553,7 +559,10 @@ export default function HomeScreen() {
                 style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
                 onPress={() => router.push('/tomorrow-plan')}
               >
-                <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}><Text style={emojiFontFix}>🌅</Text> Welcome the first light tomorrow</Text>
+                <View style={styles.titleRowCentered}>
+                  <Text style={styles.titleEmoji}>🌅</Text>
+                  <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>Welcome the first light tomorrow</Text>
+                </View>
                 <Text style={styles.modeCardDesc}>Tomorrow brings another sunrise.</Text>
                 <Text style={styles.modeCardDesc}>Choose a moment to step outside and notice it.</Text>
                 <View style={styles.modeCardButton}>
@@ -585,7 +594,10 @@ export default function HomeScreen() {
                 style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
                 onPress={() => router.push('/tomorrow-plan')}
               >
-                <Text style={styles.modeCardTitle}><Text style={emojiFontFix}>🌅</Text> Welcome the first light tomorrow</Text>
+                <View style={styles.titleRowCentered}>
+                  <Text style={styles.titleEmoji}>🌅</Text>
+                  <Text style={styles.modeCardTitle}>Welcome the first light tomorrow</Text>
+                </View>
                 <Text style={styles.modeCardDesc}>Tomorrow brings another sunrise.</Text>
                 <Text style={styles.modeCardDesc}>Choose a moment to step outside and notice it.</Text>
                 <View style={styles.modeCardButton}>
@@ -619,7 +631,10 @@ export default function HomeScreen() {
                 style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
                 onPress={() => router.push('/tomorrow-plan')}
               >
-                <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}><Text style={emojiFontFix}>🌅</Text> Welcome the first light tomorrow</Text>
+                <View style={styles.titleRowCentered}>
+                  <Text style={styles.titleEmoji}>🌅</Text>
+                  <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>Welcome the first light tomorrow</Text>
+                </View>
                 <Text style={styles.modeCardDesc}>Tomorrow brings another sunrise.</Text>
                 <Text style={styles.modeCardDesc}>Choose a moment to step outside and notice it.</Text>
                 <View style={styles.modeCardButton}>
@@ -653,7 +668,10 @@ export default function HomeScreen() {
                 style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
                 onPress={() => router.push('/tomorrow-plan')}
               >
-                <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}><Text style={emojiFontFix}>🌅</Text> Welcome the first light tomorrow</Text>
+                <View style={styles.titleRowCentered}>
+                  <Text style={styles.titleEmoji}>🌅</Text>
+                  <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>Welcome the first light tomorrow</Text>
+                </View>
                 <Text style={styles.modeCardDesc}>Tomorrow brings another sunrise.</Text>
                 <Text style={styles.modeCardDesc}>Choose a moment to step outside and notice it.</Text>
                 <View style={styles.modeCardButton}>
@@ -732,6 +750,30 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  titleRowCentered: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  sunTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  sunEmoji: {
+    fontSize: 18,
+  },
+  sunTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Dawn.text.primary,
+  },
+  titleEmoji: {
+    fontSize: 17,
+    lineHeight: 22,
+  },
   container: {
     flex: 1,
     backgroundColor: Dawn.background.primary,
@@ -781,6 +823,7 @@ const styles = StyleSheet.create({
   },
   ritualIntroCardTitle: {
     fontSize: 17,
+    lineHeight: 22,
     fontWeight: '600',
     color: Dawn.text.primary,
     marginBottom: 12,
@@ -829,6 +872,7 @@ const styles = StyleSheet.create({
   },
   sunriseContextCardTitle: {
     fontSize: 17,
+    lineHeight: 22,
     fontWeight: '600',
     color: Dawn.text.primary,
     marginBottom: 8,
@@ -912,6 +956,7 @@ const styles = StyleSheet.create({
   },
   modeCardTitle: {
     fontSize: 18,
+    lineHeight: 22,
     fontWeight: '600',
     color: Dawn.text.primary,
     marginBottom: 8,
@@ -919,6 +964,7 @@ const styles = StyleSheet.create({
   },
   modeCardTitleSecondary: {
     fontSize: 17,
+    lineHeight: 22,
     fontWeight: '500',
     color: Dawn.text.primary,
   },

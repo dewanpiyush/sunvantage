@@ -8,7 +8,7 @@ import supabase from '../supabase';
 import { clearTomorrowPlan } from '../lib/clearTomorrowPlan';
 import { getWitnessSubheading } from '../lib/ritualState';
 import { useMorningContext } from '../hooks/useMorningContext';
-import { Dawn, emojiFontFix } from '../constants/theme';
+import { Dawn } from '../constants/theme';
 import SunVantageHeader from '../components/SunVantageHeader';
 import SunriseLogCard from '../components/SunriseLogCard';
 import StreakBlock from '../components/StreakBlock';
@@ -1103,7 +1103,10 @@ export function SunriseLog({
                   },
                 ]}
               >
-                <Text style={styles.sunriseContextCardTitle}><Text style={emojiFontFix}>☀</Text> Sunrise today</Text>
+                <View style={styles.sunTitleRow}>
+                  <Text style={styles.sunEmoji}>☀️</Text>
+                  <Text style={styles.sunTitle}>Sunrise today</Text>
+                </View>
                 <Text style={styles.sunriseContextCardCityTime}>
                   {profileCity || 'your city'} · {formatSunriseTime(sunriseToday)}
                 </Text>
@@ -1154,7 +1157,10 @@ export function SunriseLog({
                   ]}
                 >
                   <View style={styles.yourMorningHeader}>
-                    <Text style={styles.yourMorningCardHeader}><Text style={emojiFontFix}>🌅</Text> Your morning</Text>
+                    <View style={styles.titleRow}>
+                      <Text style={styles.titleEmoji}>🌅</Text>
+                      <Text style={styles.yourMorningCardHeader}>Your morning</Text>
+                    </View>
                     {(!vantageName || editingVantage) ? (
                       <TextInput
                         ref={vantageInputRef}
@@ -1345,6 +1351,35 @@ export function SunriseLog({
 }
 
 const styles = StyleSheet.create({
+  titleRowCentered: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  sunTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  sunEmoji: {
+    fontSize: 18,
+  },
+  sunTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Dawn.text.primary,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  titleEmoji: {
+    fontSize: 17,
+    lineHeight: 22,
+  },
   container: {
     flex: 1,
     backgroundColor: Dawn.background.primary,
@@ -1525,6 +1560,7 @@ const styles = StyleSheet.create({
   },
   sunriseContextCardTitle: {
     fontSize: 17,
+    lineHeight: 22,
     fontWeight: '600',
     color: Dawn.text.primary,
     marginBottom: 8,
@@ -1698,6 +1734,7 @@ const styles = StyleSheet.create({
   },
   yourMorningCardHeader: {
     fontSize: 18,
+    lineHeight: 22,
     fontWeight: '600',
     color: Dawn.text.primary,
     flexShrink: 0,

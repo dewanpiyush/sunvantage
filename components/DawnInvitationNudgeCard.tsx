@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { Dawn, emojiFontFix } from '@/constants/theme';
+import { Dawn } from '@/constants/theme';
 
 type Props = {
   onPress: () => void;
@@ -14,7 +14,8 @@ export default function DawnInvitationNudgeCard({ onPress }: Props) {
         <View style={styles.inner}>
           <View style={styles.titleBlock}>
             <Text style={styles.iconEmoji}>🌅</Text>
-            <Text style={styles.title}><Text style={emojiFontFix}>✨</Text> Dawn Invitation</Text>
+            <Text style={styles.titleEmoji}>✨</Text>
+            <Text style={styles.title}>Dawn Invitation</Text>
           </View>
 
           <Text style={styles.description}>
@@ -66,7 +67,9 @@ const styles = StyleSheet.create({
   },
   iconEmoji: {
     fontSize: 18,
-    ...emojiFontFix,
+  },
+  titleEmoji: {
+    fontSize: 16,
   },
   title: {
     fontSize: 16,

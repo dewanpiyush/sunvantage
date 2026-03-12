@@ -20,7 +20,7 @@ import { hasLoggedToday, isTodayLocal } from '../lib/hasLoggedToday';
 import { computeBadgeStats, getEarnedBadges, computeEarnedAtByBadge, type BadgeDef } from './ritual-markers';
 import { dismissBadgeReveal } from '../lib/ritualReveal';
 import { BADGE_ICONS } from './ritual-markers';
-import { Dawn, emojiFontFix } from '../constants/theme';
+import { Dawn } from '../constants/theme';
 
 type TodayLogDetails = {
   vantage_name: string | null;
@@ -258,7 +258,10 @@ export default function VantageWalkScreen() {
         {/* Sunrise card — compressed 3-row layout (Witness/Vantage) */}
         {sunriseToday != null && (
           <View style={styles.sunriseCard}>
-            <Text style={styles.sunriseCardTitle}><Text style={emojiFontFix}>☀</Text> Sunrise today</Text>
+            <View style={styles.sunTitleRow}>
+              <Text style={styles.sunEmoji}>☀️</Text>
+              <Text style={styles.sunTitle}>Sunrise today</Text>
+            </View>
             <Text style={styles.sunriseCardCityTime}>
               {profileCity || 'your city'} · {formatSunriseTime(sunriseToday)}
             </Text>
@@ -271,7 +274,10 @@ export default function VantageWalkScreen() {
         {loggedToday ? (
           <View style={styles.memoryCard}>
             <View style={styles.memoryCardTop}>
-              <Text style={styles.memoryCardHeader}><Text style={emojiFontFix}>🌅</Text> Your morning</Text>
+              <View style={styles.titleRow}>
+                <Text style={styles.titleEmoji}>🌅</Text>
+                <Text style={styles.memoryCardHeader}>Your morning</Text>
+              </View>
               {todayLog?.vantage_name?.trim() ? (
                 <Text style={styles.memoryCardVantage}>📍 {todayLog.vantage_name.trim()}</Text>
               ) : null}
@@ -443,8 +449,38 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
+  titleRowCentered: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  sunTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  sunEmoji: {
+    fontSize: 18,
+  },
+  sunTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Dawn.text.primary,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  titleEmoji: {
+    fontSize: 17,
+    lineHeight: 22,
+  },
   sunriseCardTitle: {
     fontSize: 17,
+    lineHeight: 22,
     fontWeight: '600',
     color: Dawn.text.primary,
     marginBottom: 8,
@@ -524,6 +560,7 @@ const styles = StyleSheet.create({
   },
   memoryCardHeader: {
     fontSize: 20,
+    lineHeight: 24,
     fontWeight: '600',
     color: Dawn.text.primary,
     marginBottom: 8,

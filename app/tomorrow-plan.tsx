@@ -18,7 +18,7 @@ import SunVantageHeader from '../components/SunVantageHeader';
 import StreakBlock from '../components/StreakBlock';
 import DawnInvitationSection from '../components/DawnInvitationSection';
 import { useMorningContext } from '../hooks/useMorningContext';
-import { Dawn, emojiFontFix } from '../constants/theme';
+import { Dawn } from '../constants/theme';
 
 const TOMORROW_INTENTION_KEY = 'sunvantage_tomorrow_intention';
 export const TOMORROW_ALARM_SET_KEY = 'sunvantage_tomorrow_alarm_set';
@@ -353,9 +353,12 @@ export default function TomorrowPlanScreen() {
 
           {/* Sunrise card — Today or Tomorrow mode */}
           <View style={styles.sunriseContextCard}>
-            <Text style={styles.sunriseContextCardTitle}>
-              <Text style={emojiFontFix}>☀</Text> {isTodayMode ? "Today's sunrise" : "Tomorrow's sunrise"}
-            </Text>
+            <View style={styles.sunTitleRow}>
+              <Text style={styles.sunEmoji}>☀️</Text>
+              <Text style={styles.sunTitle}>
+                {isTodayMode ? "Today's sunrise" : "Tomorrow's sunrise"}
+              </Text>
+            </View>
             <Text style={styles.sunriseContextCardBody}>
               Sunrise in {cityName || 'your city'} will be at {formatSunriseTime(sunriseDisplay)}.
             </Text>
@@ -464,6 +467,30 @@ export default function TomorrowPlanScreen() {
 }
 
 const styles = StyleSheet.create({
+  titleRowCentered: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  sunTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  sunEmoji: {
+    fontSize: 18,
+  },
+  sunTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Dawn.text.primary,
+  },
+  titleEmoji: {
+    fontSize: 17,
+    lineHeight: 22,
+  },
   container: {
     flex: 1,
     backgroundColor: Dawn.background.primary,
@@ -526,6 +553,7 @@ const styles = StyleSheet.create({
   },
   sunriseContextCardTitle: {
     fontSize: 17,
+    lineHeight: 22,
     fontWeight: '600',
     color: Dawn.text.primary,
     marginBottom: 8,

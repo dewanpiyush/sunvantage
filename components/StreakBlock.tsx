@@ -7,7 +7,7 @@ function getStreakLines(
   longestStreak: number
 ): { primary: string; secondary: string } {
   const dayWord = (n: number) => (n === 1 ? 'day' : 'days');
-  const primary = `🔥 ${currentStreak} ${dayWord(currentStreak)} streak`;
+  const primary = `${currentStreak} ${dayWord(currentStreak)} streak`;
   let secondary: string;
   if (currentStreak >= 5 && currentStreak === longestStreak) {
     secondary = 'Your longest so far';
@@ -41,7 +41,10 @@ export default function StreakBlock({ currentStreak, longestStreak, loading = fa
     <View style={blockStyle}>
       {currentStreak > 0 ? (
         <>
-          <Text style={styles.streakPrimary}>{primary}</Text>
+          <View style={styles.streakRow}>
+            <Text style={styles.emoji}>🔥</Text>
+            <Text style={styles.streakPrimary}>{primary}</Text>
+          </View>
           <Text style={styles.streakSecondary}>{secondary}</Text>
         </>
       ) : longestStreak > 0 ? (
@@ -61,6 +64,14 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingVertical: 2,
     marginBottom: 16,
+  },
+  streakRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  emoji: {
+    fontSize: 16,
+    marginRight: 6,
   },
   streakPrimary: {
     fontSize: 16,

@@ -27,7 +27,7 @@ import { clearTomorrowPlan } from '../lib/clearTomorrowPlan';
 import { formatSunriseTime } from '../lib/formatSunriseTime';
 import { getCurrentPosition, reverseGeocodeToPlaceName } from '../lib/location';
 import { REFLECTION_PROMPT, getNextReflectionPrompt, setLastUsedReflectionPrompt } from '../lib/reflectionPrompts';
-import { Dawn, emojiFontFix } from '../constants/theme';
+import { Dawn } from '../constants/theme';
 import { useMorningContext } from '../hooks/useMorningContext';
 import { getMinutesToSunrise } from '../services/weatherService';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -495,16 +495,16 @@ export default function SunriseLogCard({
                   <View style={styles.headerContent}>
                     {!showMissedScreen && step === 0 ? (
                       <View style={styles.headerTitleRowStep0}>
-                        <Text style={[styles.headerTitleStep0, emojiFontFix]}>🌅</Text>
+                        <Text style={styles.headerTitleEmojiLarge}>🌅</Text>
                         <Text style={[styles.headerTitleStep0, styles.headerTitleStep0Text]}>This morning</Text>
                       </View>
                     ) : (
-                      <Text style={[styles.headerTitle, showMissedScreen && styles.headerTitleMissed]}>
-                        <Text style={emojiFontFix}>🌅</Text>
-                        {showMissedScreen
-                          ? ` Tomorrow's sunrise in ${cityLabel}`
-                          : 'This morning'}
-                      </Text>
+                      <View style={styles.headerTitleRow}>
+                        <Text style={styles.headerTitleEmoji}>🌅</Text>
+                        <Text style={[styles.headerTitle, showMissedScreen && styles.headerTitleMissed]}>
+                          {showMissedScreen ? `Tomorrow's sunrise in ${cityLabel}` : 'This morning'}
+                        </Text>
+                      </View>
                     )}
                     {showMissedScreen ? (
                       <Text style={styles.headerSubMissed}>{tomorrowSunriseLabel}</Text>
@@ -848,6 +848,20 @@ const styles = StyleSheet.create({
   headerTitleRowStep0: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerTitleEmoji: {
+    fontSize: 22,
+    lineHeight: 26,
+  },
+  headerTitleEmojiLarge: {
+    fontSize: 24,
+    lineHeight: 28,
+    color: Dawn.text.primary,
   },
   headerTitleStep0: {
     fontSize: 24,
