@@ -18,7 +18,7 @@ import SunVantageHeader from '../components/SunVantageHeader';
 import StreakBlock from '../components/StreakBlock';
 import DawnInvitationSection from '../components/DawnInvitationSection';
 import { useMorningContext } from '../hooks/useMorningContext';
-import { Dawn } from '../constants/theme';
+import { Dawn, emojiFontFix } from '../constants/theme';
 
 const TOMORROW_INTENTION_KEY = 'sunvantage_tomorrow_intention';
 export const TOMORROW_ALARM_SET_KEY = 'sunvantage_tomorrow_alarm_set';
@@ -354,7 +354,7 @@ export default function TomorrowPlanScreen() {
           {/* Sunrise card — Today or Tomorrow mode */}
           <View style={styles.sunriseContextCard}>
             <Text style={styles.sunriseContextCardTitle}>
-              ☀ {isTodayMode ? "Today's sunrise" : "Tomorrow's sunrise"}
+              <Text style={emojiFontFix}>☀</Text> {isTodayMode ? "Today's sunrise" : "Tomorrow's sunrise"}
             </Text>
             <Text style={styles.sunriseContextCardBody}>
               Sunrise in {cityName || 'your city'} will be at {formatSunriseTime(sunriseDisplay)}.

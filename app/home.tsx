@@ -16,7 +16,7 @@ import RitualRevealCard from '../components/RitualRevealCard';
 import { useMorningContext } from '../hooks/useMorningContext';
 import { computeBadgeStats, getEarnedBadges, computeEarnedAtByBadge, BADGE_ICONS, type BadgeDef } from './ritual-markers';
 import { getDismissedBadgeIds, dismissBadgeReveal } from '../lib/ritualReveal';
-import { Dawn } from '../constants/theme';
+import { Dawn, emojiFontFix } from '../constants/theme';
 
 // ----- Streak (same logic as elsewhere) -----
 const YMD_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -378,7 +378,7 @@ export default function HomeScreen() {
         {/* Ritual Introduction Card — first-time users only */}
         {totalSunrises === 0 && (
           <View style={styles.ritualIntroCard}>
-            <Text style={styles.ritualIntroCardTitle}>🌅 A simple morning ritual</Text>
+            <Text style={styles.ritualIntroCardTitle}><Text style={emojiFontFix}>🌅</Text> A simple morning ritual</Text>
             <Text style={styles.ritualIntroCardBody}>Step outside.</Text>
             <Text style={styles.ritualIntroCardBody}>Notice the sunrise.</Text>
             <Text style={styles.ritualIntroCardBody}>Mark the moment here.</Text>
@@ -435,7 +435,7 @@ export default function HomeScreen() {
 
         {/* Sunrise card — always shown; copy adapts by timing and logged state */}
         <View style={styles.sunriseContextCard}>
-          <Text style={styles.sunriseContextCardTitle}>☀ Sunrise today</Text>
+          <Text style={styles.sunriseContextCardTitle}><Text style={emojiFontFix}>☀</Text> Sunrise today</Text>
           {minutesToSunrise != null && minutesToSunrise > 10 ? (
             <>
               <Text style={styles.sunriseContextCardBody}>
@@ -553,7 +553,7 @@ export default function HomeScreen() {
                 style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
                 onPress={() => router.push('/tomorrow-plan')}
               >
-                <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>🌅 Welcome the first light tomorrow</Text>
+                <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}><Text style={emojiFontFix}>🌅</Text> Welcome the first light tomorrow</Text>
                 <Text style={styles.modeCardDesc}>Tomorrow brings another sunrise.</Text>
                 <Text style={styles.modeCardDesc}>Choose a moment to step outside and notice it.</Text>
                 <View style={styles.modeCardButton}>
@@ -585,7 +585,7 @@ export default function HomeScreen() {
                 style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
                 onPress={() => router.push('/tomorrow-plan')}
               >
-                <Text style={styles.modeCardTitle}>🌅 Welcome the first light tomorrow</Text>
+                <Text style={styles.modeCardTitle}><Text style={emojiFontFix}>🌅</Text> Welcome the first light tomorrow</Text>
                 <Text style={styles.modeCardDesc}>Tomorrow brings another sunrise.</Text>
                 <Text style={styles.modeCardDesc}>Choose a moment to step outside and notice it.</Text>
                 <View style={styles.modeCardButton}>
@@ -619,7 +619,7 @@ export default function HomeScreen() {
                 style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
                 onPress={() => router.push('/tomorrow-plan')}
               >
-                <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>🌅 Welcome the first light tomorrow</Text>
+                <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}><Text style={emojiFontFix}>🌅</Text> Welcome the first light tomorrow</Text>
                 <Text style={styles.modeCardDesc}>Tomorrow brings another sunrise.</Text>
                 <Text style={styles.modeCardDesc}>Choose a moment to step outside and notice it.</Text>
                 <View style={styles.modeCardButton}>
@@ -653,7 +653,7 @@ export default function HomeScreen() {
                 style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
                 onPress={() => router.push('/tomorrow-plan')}
               >
-                <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>🌅 Welcome the first light tomorrow</Text>
+                <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}><Text style={emojiFontFix}>🌅</Text> Welcome the first light tomorrow</Text>
                 <Text style={styles.modeCardDesc}>Tomorrow brings another sunrise.</Text>
                 <Text style={styles.modeCardDesc}>Choose a moment to step outside and notice it.</Text>
                 <View style={styles.modeCardButton}>

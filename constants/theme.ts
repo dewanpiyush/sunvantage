@@ -49,6 +49,16 @@ export const Colors = {
   },
 };
 
+/**
+ * Apply this style to a <Text> that contains only an emoji (or emoji + space).
+ * On iOS, fontWeight + semibold system font can prevent Apple Color Emoji from rendering;
+ * using System font with normal weight fixes the [?] fallback in simulator and device.
+ */
+export const emojiFontFix = Platform.select<{ fontWeight: '400'; fontFamily?: string }>({
+  ios: { fontWeight: '400', fontFamily: 'System' },
+  default: { fontWeight: '400' },
+});
+
 export const Fonts = Platform.select({
   ios: {
     /** iOS `UIFontDescriptorSystemDesignDefault` */

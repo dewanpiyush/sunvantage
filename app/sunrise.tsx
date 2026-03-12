@@ -8,7 +8,7 @@ import supabase from '../supabase';
 import { clearTomorrowPlan } from '../lib/clearTomorrowPlan';
 import { getWitnessSubheading } from '../lib/ritualState';
 import { useMorningContext } from '../hooks/useMorningContext';
-import { Dawn } from '../constants/theme';
+import { Dawn, emojiFontFix } from '../constants/theme';
 import SunVantageHeader from '../components/SunVantageHeader';
 import SunriseLogCard from '../components/SunriseLogCard';
 import StreakBlock from '../components/StreakBlock';
@@ -1103,7 +1103,7 @@ export function SunriseLog({
                   },
                 ]}
               >
-                <Text style={styles.sunriseContextCardTitle}>☀ Sunrise today</Text>
+                <Text style={styles.sunriseContextCardTitle}><Text style={emojiFontFix}>☀</Text> Sunrise today</Text>
                 <Text style={styles.sunriseContextCardCityTime}>
                   {profileCity || 'your city'} · {formatSunriseTime(sunriseToday)}
                 </Text>
@@ -1154,7 +1154,7 @@ export function SunriseLog({
                   ]}
                 >
                   <View style={styles.yourMorningHeader}>
-                    <Text style={styles.yourMorningCardHeader}>🌅 Your morning</Text>
+                    <Text style={styles.yourMorningCardHeader}><Text style={emojiFontFix}>🌅</Text> Your morning</Text>
                     {(!vantageName || editingVantage) ? (
                       <TextInput
                         ref={vantageInputRef}

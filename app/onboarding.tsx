@@ -180,25 +180,21 @@ export default function OnboardingScreen() {
             </>
           ) : (
             <>
-              <Text style={styles.prompt}>Where will you usually watch the sunrise?</Text>
+              <Text style={styles.prompt}>Where will you usually watch the sunrise from?</Text>
               <TouchableOpacity
-                style={[styles.button, styles.detectButton, detectingLocation && styles.buttonDisabled]}
+                style={[styles.useLocationLink, detectingLocation && styles.useLocationLinkDisabled]}
                 onPress={handleDetectLocation}
                 disabled={detectingLocation}
               >
                 {detectingLocation ? (
-                  <ActivityIndicator color={Dawn.accent.sunriseOn} size="small" />
+                  <ActivityIndicator color={Dawn.text.secondary} size="small" />
                 ) : (
-                  <Text style={styles.buttonText}>Detect my location</Text>
+                  <Text style={styles.useLocationLinkText}>📍 Use my current location</Text>
                 )}
               </TouchableOpacity>
               <Text style={styles.helperLocation}>Used only to show sunrise times. You can change it anytime.</Text>
-              <View style={styles.orRow}>
-                <View style={styles.orLine} />
-                <Text style={styles.orText}>or enter city</Text>
-                <View style={styles.orLine} />
-              </View>
-              <View style={styles.fieldGroup}>
+              <Text style={styles.orEnterCity}>or enter city</Text>
+              <View style={styles.fieldGroupCity}>
                 <TextInput
                   value={city}
                   onChangeText={(t) => {
@@ -226,7 +222,7 @@ export default function OnboardingScreen() {
               )}
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
               <TouchableOpacity
-                style={[styles.button, loading && styles.buttonDisabled]}
+                style={[styles.button, styles.buttonBegin, loading && styles.buttonDisabled]}
                 onPress={handleSubmit}
                 disabled={loading}
               >
@@ -339,6 +335,9 @@ const styles = StyleSheet.create({
   fieldGroup: {
     marginTop: 20,
   },
+  fieldGroupCity: {
+    marginTop: 18,
+  },
   input: {
     height: 46,
     borderRadius: 999,
@@ -387,6 +386,9 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     opacity: 0.6,
   },
+  buttonBegin: {
+    backgroundColor: 'rgba(255, 179, 71, 0.88)',
+  },
   buttonText: {
     fontSize: 16,
     fontWeight: '500',
@@ -400,26 +402,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Dawn.text.secondary,
   },
-  detectButton: {
-    marginTop: 20,
+  useLocationLink: {
+    marginTop: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: Dawn.border.subtle,
+    borderRadius: 999,
   },
-  orRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 20,
-    gap: 12,
+  useLocationLinkDisabled: {
+    opacity: 0.6,
   },
-  orLine: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: Dawn.border.subtle,
-  },
-  orText: {
-    fontSize: 13,
+  useLocationLinkText: {
+    fontSize: 14,
+    fontWeight: '500',
     color: Dawn.text.secondary,
   },
+  orEnterCity: {
+    marginTop: 22,
+    fontSize: 12,
+    color: Dawn.text.secondary,
+    opacity: 0.85,
+  },
   helperLocation: {
-    marginTop: 10,
+    marginTop: 8,
     fontSize: 12,
     color: Dawn.text.secondary,
     lineHeight: 18,

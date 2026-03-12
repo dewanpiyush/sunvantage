@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { Dawn } from '@/constants/theme';
+import { Dawn, emojiFontFix } from '@/constants/theme';
 
 export const CARD_HEIGHT = 330;
 
@@ -134,6 +134,7 @@ const styles = StyleSheet.create({
   sunIcon: {
     fontSize: 22,
     marginBottom: 4,
+    ...emojiFontFix,
   },
   time: {
     fontSize: 32,

@@ -27,7 +27,7 @@ import { clearTomorrowPlan } from '../lib/clearTomorrowPlan';
 import { formatSunriseTime } from '../lib/formatSunriseTime';
 import { getCurrentPosition, reverseGeocodeToPlaceName } from '../lib/location';
 import { REFLECTION_PROMPT, getNextReflectionPrompt, setLastUsedReflectionPrompt } from '../lib/reflectionPrompts';
-import { Dawn } from '../constants/theme';
+import { Dawn, emojiFontFix } from '../constants/theme';
 import { useMorningContext } from '../hooks/useMorningContext';
 import { getMinutesToSunrise } from '../services/weatherService';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -495,14 +495,15 @@ export default function SunriseLogCard({
                   <View style={styles.headerContent}>
                     {!showMissedScreen && step === 0 ? (
                       <View style={styles.headerTitleRowStep0}>
-                        <Text style={styles.headerTitleStep0}>🌅</Text>
+                        <Text style={[styles.headerTitleStep0, emojiFontFix]}>🌅</Text>
                         <Text style={[styles.headerTitleStep0, styles.headerTitleStep0Text]}>This morning</Text>
                       </View>
                     ) : (
                       <Text style={[styles.headerTitle, showMissedScreen && styles.headerTitleMissed]}>
+                        <Text style={emojiFontFix}>🌅</Text>
                         {showMissedScreen
-                          ? `🌅 Tomorrow's sunrise in ${cityLabel}`
-                          : '🌅This morning'}
+                          ? ` Tomorrow's sunrise in ${cityLabel}`
+                          : 'This morning'}
                       </Text>
                     )}
                     {showMissedScreen ? (

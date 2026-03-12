@@ -20,7 +20,7 @@ import { hasLoggedToday, isTodayLocal } from '../lib/hasLoggedToday';
 import { computeBadgeStats, getEarnedBadges, computeEarnedAtByBadge, type BadgeDef } from './ritual-markers';
 import { dismissBadgeReveal } from '../lib/ritualReveal';
 import { BADGE_ICONS } from './ritual-markers';
-import { Dawn } from '../constants/theme';
+import { Dawn, emojiFontFix } from '../constants/theme';
 
 type TodayLogDetails = {
   vantage_name: string | null;
@@ -258,7 +258,7 @@ export default function VantageWalkScreen() {
         {/* Sunrise card — compressed 3-row layout (Witness/Vantage) */}
         {sunriseToday != null && (
           <View style={styles.sunriseCard}>
-            <Text style={styles.sunriseCardTitle}>☀ Sunrise today</Text>
+            <Text style={styles.sunriseCardTitle}><Text style={emojiFontFix}>☀</Text> Sunrise today</Text>
             <Text style={styles.sunriseCardCityTime}>
               {profileCity || 'your city'} · {formatSunriseTime(sunriseToday)}
             </Text>
@@ -271,7 +271,7 @@ export default function VantageWalkScreen() {
         {loggedToday ? (
           <View style={styles.memoryCard}>
             <View style={styles.memoryCardTop}>
-              <Text style={styles.memoryCardHeader}>🌅 Your morning</Text>
+              <Text style={styles.memoryCardHeader}><Text style={emojiFontFix}>🌅</Text> Your morning</Text>
               {todayLog?.vantage_name?.trim() ? (
                 <Text style={styles.memoryCardVantage}>📍 {todayLog.vantage_name.trim()}</Text>
               ) : null}
