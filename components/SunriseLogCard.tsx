@@ -27,6 +27,7 @@ import { clearTomorrowPlan } from '../lib/clearTomorrowPlan';
 import { formatSunriseTime } from '../lib/formatSunriseTime';
 import { getCurrentPosition, reverseGeocodeToPlaceName } from '../lib/location';
 import { REFLECTION_PROMPT, getNextReflectionPrompt, setLastUsedReflectionPrompt } from '../lib/reflectionPrompts';
+import { normalizeVantageForStorage } from '../lib/vantageUtils';
 import { Dawn } from '../constants/theme';
 import { useMorningContext } from '../hooks/useMorningContext';
 import { getMinutesToSunrise } from '../services/weatherService';
@@ -34,12 +35,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 
 const photoBucket = 'sunrise_photos';
 const TOTAL_STEPS = 4; /* Step 0 = pause, 1 = vantage, 2 = photo, 3 = reflection */
-
-function normalizeVantageName(value: string | null | undefined): string | null {
-  if (value == null || typeof value !== 'string') return null;
-  const t = value.trim().toLowerCase();
-  return t === '' ? null : t;
-}
 
 function getTodayLocalDateString(): string {
   const d = new Date();
@@ -349,20 +344,28 @@ export default function SunriseLogCard({
       }
 
       const displayVantage = vantageName.trim() || null;
-      const normalizedVantage = displayVantage ? normalizeVantageName(displayVantage) : null;
+      const vantageNorm = displayVantage ? normalizeVantageForStorage(displayVantage) : null;
       const insertPayload: {
         user_id: string;
         created_at: string;
         vantage_name?: string;
         vantage_name_normalized?: string;
+        user_input_vantage?: string;
+        normalized_vantage?: string;
+        vantage_category?: string;
         reflection_text?: string | null;
       } = {
         user_id: userId,
         created_at: new Date().toISOString(),
       };
-      if (displayVantage) {
-        insertPayload.vantage_name = displayVantage;
-        if (normalizedVantage) insertPayload.vantage_name_normalized = normalizedVantage;
+      if (vantageNorm != null && vantageNorm.userInputVantage !== '') {
+        insertPayload.vantage_name = vantageNorm.userInputVantage;
+        insertPayload.user_input_vantage = vantageNorm.userInputVantage;
+        if (vantageNorm.normalizedVantage != null) {
+          insertPayload.vantage_name_normalized = vantageNorm.normalizedVantage;
+          insertPayload.normalized_vantage = vantageNorm.normalizedVantage;
+        }
+        insertPayload.vantage_category = vantageNorm.vantageCategory;
       }
       const reflectionTrim = reflectionText.trim();
       if (reflectionTrim) insertPayload.reflection_text = reflectionTrim;

@@ -19,6 +19,7 @@ import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import supabase from '../supabase';
 import { Dawn } from '../constants/theme';
+import { getFullScreenOverlayLines, toTitleCaseVantage, shouldShowVantageName } from '../lib/vantageUtils';
 
 const BUCKET = 'sunrise_photos';
 
@@ -26,6 +27,9 @@ export type CitySunriseGalleryRow = {
   photo_url: string;
   vantage_name: string | null;
   created_at: string;
+  city?: string | null;
+  vantage_category?: 'private' | 'public' | null;
+  user_id?: string | null;
 };
 
 function getPublicUrl(ref: string): string {
@@ -40,26 +44,23 @@ function formatShortMonthDay(iso: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function toTitleCase(text: string): string {
-  if (!text) return text;
-  return text
-    .split(' ')
-    .map((w) => (w.length === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()))
-    .join(' ');
-}
-
 type Props = {
   rows: CitySunriseGalleryRow[];
   limit: number;
+  /** Used when rows don't include city (e.g. My City's Sunrises). */
+  cityFallback?: string | null;
+  /** Current viewer's user id; used to show vantage name for private vantages when viewer = owner. */
+  currentUserId?: string | null;
 };
 
-export default function CitySunriseGallery({ rows, limit }: Props) {
+export default function CitySunriseGallery({ rows, limit, cityFallback, currentUserId }: Props) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [urls, setUrls] = useState<(string | null)[]>([]);
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
   const [galleryVisibleIndex, setGalleryVisibleIndex] = useState(0);
   const galleryListRef = useRef<FlatList<CitySunriseGalleryRow> | null>(null);
   const modalScale = useRef(new Animated.Value(1)).current;
+  const overlayOpacity = useRef(new Animated.Value(0)).current;
 
   const data = rows.slice(0, limit);
 
@@ -82,6 +83,23 @@ export default function CitySunriseGallery({ rows, limit }: Props) {
       useNativeDriver: true,
     }).start();
   }, [galleryIndex, modalScale]);
+
+  useEffect(() => {
+    if (galleryIndex == null) {
+      overlayOpacity.setValue(0);
+      return;
+    }
+    overlayOpacity.setValue(0);
+    const t = setTimeout(() => {
+      Animated.timing(overlayOpacity, {
+        toValue: 0.88,
+        duration: 280,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }).start();
+    }, 300);
+    return () => clearTimeout(t);
+  }, [galleryIndex, overlayOpacity]);
 
   if (data.length === 0) return null;
 
@@ -114,10 +132,11 @@ export default function CitySunriseGallery({ rows, limit }: Props) {
                   <Text style={styles.galleryTileDateText}>{formatShortMonthDay(row.created_at)}</Text>
                 </View>
               ) : null}
-              {row.vantage_name?.trim() ? (
+              {row.vantage_name?.trim() &&
+              shouldShowVantageName(row.vantage_category ?? null, currentUserId != null && row.user_id === currentUserId) ? (
                 <View style={styles.galleryTileOverlay}>
                   <Text style={styles.galleryTileVantage} numberOfLines={1}>
-                    {toTitleCase(row.vantage_name.trim())}
+                    {toTitleCaseVantage(row.vantage_name.trim())}
                   </Text>
                 </View>
               ) : null}
@@ -158,6 +177,15 @@ export default function CitySunriseGallery({ rows, limit }: Props) {
                   galleryListRef.current?.scrollToIndex({ index: next, animated: true });
                   setGalleryVisibleIndex(next);
                 };
+                const city = (item.city ?? cityFallback ?? '').trim() || '';
+                const viewerIsOwner = currentUserId != null && item.user_id === currentUserId;
+                const { line1, line2 } = getFullScreenOverlayLines(
+                  item.vantage_name,
+                  city,
+                  item.created_at,
+                  item.vantage_category,
+                  viewerIsOwner
+                );
                 return (
                   <View style={{ width: windowWidth, alignItems: 'center', justifyContent: 'center' }}>
                     <View style={styles.modalCenteredContainer}>
@@ -195,6 +223,12 @@ export default function CitySunriseGallery({ rows, limit }: Props) {
                         </Pressable>
                         {url ? (
                           <Image source={{ uri: url }} style={styles.fullScreenImage} contentFit="contain" />
+                        ) : null}
+                        {isActive && (line1 || line2) ? (
+                          <Animated.View style={[styles.fullScreenOverlay, { opacity: overlayOpacity }]} pointerEvents="none">
+                            {line1 ? <Text style={styles.fullScreenOverlayVantage}>{line1}</Text> : null}
+                            <Text style={styles.fullScreenOverlayMeta}>{line2}</Text>
+                          </Animated.View>
                         ) : null}
                       </Animated.View>
                       <Text style={styles.modalIndexIndicator}>
@@ -308,5 +342,25 @@ const styles = StyleSheet.create({
   fullScreenImage: {
     width: '100%',
     height: '100%',
+  },
+  fullScreenOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingBottom: 14,
+  },
+  fullScreenOverlayVantage: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.95)',
+    marginBottom: 2,
+    letterSpacing: 0.3,
+  },
+  fullScreenOverlayMeta: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.82)',
+    letterSpacing: 0.2,
   },
 });

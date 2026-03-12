@@ -20,6 +20,7 @@ import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import supabase from '../supabase';
 import { Dawn } from '../constants/theme';
+import { getFullScreenOverlayLines } from '../lib/vantageUtils';
 
 const BUCKET = 'sunrise_photos';
 const TILE_SIZE = 76;
@@ -30,6 +31,7 @@ type Row = {
   photo_url: string;
   vantage_name: string | null;
   created_at: string;
+  vantage_category?: 'private' | 'public' | null;
 };
 
 function getPublicUrl(ref: string): string {
@@ -52,6 +54,7 @@ export default function SharedDawnPreview({ city, currentUserId }: Props) {
   const [visibleIndex, setVisibleIndex] = useState(0);
   const listRef = useRef<FlatList<Row> | null>(null);
   const modalScale = useRef(new Animated.Value(1)).current;
+  const overlayOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!city?.trim() || !currentUserId) {
@@ -67,7 +70,7 @@ export default function SharedDawnPreview({ city, currentUserId }: Props) {
       end.setDate(end.getDate() + 1);
       const { data, error } = await supabase
         .from('sunrise_logs')
-        .select('photo_url, vantage_name, created_at')
+        .select('photo_url, vantage_name, created_at, vantage_category')
         .eq('city', city.trim())
         .neq('user_id', currentUserId)
         .not('photo_url', 'is', null)
@@ -102,6 +105,23 @@ export default function SharedDawnPreview({ city, currentUserId }: Props) {
       useNativeDriver: true,
     }).start();
   }, [modalIndex, modalScale]);
+
+  useEffect(() => {
+    if (modalIndex == null) {
+      overlayOpacity.setValue(0);
+      return;
+    }
+    overlayOpacity.setValue(0);
+    const t = setTimeout(() => {
+      Animated.timing(overlayOpacity, {
+        toValue: 0.88,
+        duration: 280,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }).start();
+    }, 300);
+    return () => clearTimeout(t);
+  }, [modalIndex, overlayOpacity]);
 
   if (rows.length === 0) return null;
 
@@ -163,7 +183,7 @@ export default function SharedDawnPreview({ city, currentUserId }: Props) {
                 const next = Math.round(e.nativeEvent.contentOffset.x / windowWidth);
                 setVisibleIndex(next);
               }}
-              renderItem={({ index }) => {
+              renderItem={({ item, index }) => {
                 const url = urls[index] ?? null;
                 const isActive = index === visibleIndex;
                 const isFirst = index === 0;
@@ -172,6 +192,14 @@ export default function SharedDawnPreview({ city, currentUserId }: Props) {
                   listRef.current?.scrollToIndex({ index: next, animated: true });
                   setVisibleIndex(next);
                 };
+                const cityStr = (city ?? '').trim();
+                const { line1, line2 } = getFullScreenOverlayLines(
+                  item.vantage_name,
+                  cityStr,
+                  item.created_at,
+                  item.vantage_category,
+                  false
+                );
                 return (
                   <View style={{ width: windowWidth, alignItems: 'center', justifyContent: 'center' }}>
                     <View style={styles.modalCenteredContainer}>
@@ -206,6 +234,12 @@ export default function SharedDawnPreview({ city, currentUserId }: Props) {
                         </Pressable>
                         {url ? (
                           <Image source={{ uri: url }} style={styles.fullScreenImage} contentFit="contain" />
+                        ) : null}
+                        {isActive && (line1 || line2) ? (
+                          <Animated.View style={[styles.fullScreenOverlay, { opacity: overlayOpacity }]} pointerEvents="none">
+                            {line1 ? <Text style={styles.fullScreenOverlayVantage}>{line1}</Text> : null}
+                            <Text style={styles.fullScreenOverlayMeta}>{line2}</Text>
+                          </Animated.View>
                         ) : null}
                       </Animated.View>
                       <Text style={styles.modalIndexIndicator}>
@@ -314,5 +348,25 @@ const styles = StyleSheet.create({
   fullScreenImage: {
     width: '100%',
     height: '100%',
+  },
+  fullScreenOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingBottom: 14,
+  },
+  fullScreenOverlayVantage: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.95)',
+    marginBottom: 2,
+    letterSpacing: 0.3,
+  },
+  fullScreenOverlayMeta: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.82)',
+    letterSpacing: 0.2,
   },
 });

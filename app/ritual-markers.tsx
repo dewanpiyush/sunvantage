@@ -13,6 +13,7 @@ import { Dawn } from '../constants/theme';
 import SunVantageHeader from '../components/SunVantageHeader';
 import MarkerCard from '../components/MarkerCard';
 import { hasLoggedToday } from '../lib/hasLoggedToday';
+import { getNormalizedVantageFromRow } from '../lib/vantageUtils';
 
 // ----- Badge registry (v1) -----
 export type BadgeId =
@@ -175,12 +176,6 @@ function computeStreakFromLogDates(
   return { current, longest, lastDate };
 }
 
-function normalizeVantage(v: string | null | undefined): string | null {
-  if (v == null || typeof v !== 'string') return null;
-  const t = v.trim().toLowerCase();
-  return t === '' ? null : t;
-}
-
 function normalizeCity(v: string | null | undefined): string | null {
   if (v == null || typeof v !== 'string') return null;
   const t = v.trim().toLowerCase();
@@ -197,6 +192,8 @@ function formatEarnedMonthYear(iso: string): string {
 type LogRow = {
   created_at: string;
   vantage_name: string | null;
+  normalized_vantage?: string | null;
+  user_input_vantage?: string | null;
   reflection_text: string | null;
   city?: string | null;
 };
@@ -209,7 +206,7 @@ export function computeBadgeStats(logs: LogRow[]): BadgeStats {
   ).length;
   const vantageSet = new Set<string>();
   for (const r of logs) {
-    const n = normalizeVantage(r.vantage_name);
+    const n = getNormalizedVantageFromRow(r);
     if (n !== null) vantageSet.add(n);
   }
   const citySet = new Set<string>();
@@ -300,7 +297,7 @@ export function computeEarnedAtByBadge(
   if (stats.uniqueVantages >= 2) {
     const seen = new Set<string>();
     for (const r of logs.sort((a, b) => (a.created_at < b.created_at ? -1 : 1))) {
-      const n = normalizeVantage(r.vantage_name);
+      const n = getNormalizedVantageFromRow(r);
       if (n !== null) {
         seen.add(n);
         if (seen.size >= 2) {
@@ -355,12 +352,12 @@ export default function RitualMarkersScreen() {
 
       const { data, error: logsError } = await supabase
         .from('sunrise_logs')
-        .select('created_at, vantage_name, reflection_text, city')
+        .select('created_at, vantage_name, normalized_vantage, user_input_vantage, reflection_text, city')
         .eq('user_id', userId)
         .order('created_at', { ascending: true });
 
       if (logsError) {
-        if (/column.*does not exist|city/i.test(logsError.message ?? '')) {
+        if (/column.*does not exist|city|normalized_vantage/i.test(logsError.message ?? '')) {
           const { data: fallbackData, error: fallbackError } = await supabase
             .from('sunrise_logs')
             .select('created_at, vantage_name, reflection_text')

@@ -18,6 +18,7 @@ import DawnInvitationSection from '../components/DawnInvitationSection';
 import { computeBadgeStats, getEarnedBadges, computeEarnedAtByBadge, type BadgeDef } from './ritual-markers';
 import { dismissBadgeReveal } from '../lib/ritualReveal';
 import { BADGE_ICONS } from './ritual-markers';
+import { normalizeVantageForStorage, getNormalizedVantageFromRow } from '../lib/vantageUtils';
 
 const REFLECTION_PROMPTS = [
   'What are you grateful for this morning?',
@@ -203,10 +204,10 @@ function getDeviceTimezone(): string {
   }
 }
 
-function normalizeVantageName(value: string | null | undefined): string | null {
+function normalizedVantageFromInput(value: string | null | undefined): string | null {
   if (value == null || typeof value !== 'string') return null;
-  const t = value.trim().toLowerCase();
-  return t === '' ? null : t;
+  const { normalizedVantage } = normalizeVantageForStorage(value);
+  return normalizedVantage;
 }
 
 async function fetchStreakFromRpc(): Promise<{ current: number; longest: number; lastDate: string | null } | null> {
@@ -227,20 +228,24 @@ async function fetchVantageMorningsCount(userId: string, normalizedName: string)
     .from('sunrise_logs')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId)
-    .eq('vantage_name_normalized', normalizedName);
+    .eq('normalized_vantage', normalizedName);
   if (!error && typeof count === 'number' && !Number.isNaN(count)) return count;
   if (error) {
-    const isMissingColumn = /column.*does not exist|vantage_name_normalized/i.test(error.message ?? '');
-    if (!isMissingColumn) console.warn('[SunVantage] fetchVantageMorningsCount error', error.message);
+    const isMissingCol = /column.*does not exist|normalized_vantage/i.test(error.message ?? '');
+    if (!isMissingCol) console.warn('[SunVantage] fetchVantageMorningsCount error', error.message);
   }
+  const { count: countLegacy, error: errLegacy } = await supabase
+    .from('sunrise_logs')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('vantage_name_normalized', normalizedName);
+  if (!errLegacy && typeof countLegacy === 'number') return countLegacy;
   const { data } = await supabase
     .from('sunrise_logs')
-    .select('vantage_name')
-    .eq('user_id', userId)
-    .not('vantage_name', 'is', null);
-  const rows = data ?? [];
-  const n = rows.filter((r) => normalizeVantageName(r?.vantage_name) === normalizedName).length;
-  return n;
+    .select('normalized_vantage, vantage_name, user_input_vantage')
+    .eq('user_id', userId);
+  const rows = (data ?? []) as { normalized_vantage?: string | null; vantage_name?: string | null; user_input_vantage?: string | null }[];
+  return rows.filter((r) => getNormalizedVantageFromRow(r) === normalizedName).length;
 }
 
 function getVantageNameFromParams(params: { vantageName?: string | string[] }): string | null {
@@ -608,7 +613,7 @@ export function SunriseLog({
             setPhotoUrl(null);
           }
 
-          const norm = normalizeVantageName(todayLog.vantage_name);
+          const norm = getNormalizedVantageFromRow(todayLog as { vantage_name?: string | null; normalized_vantage?: string | null; user_input_vantage?: string | null });
           if (norm && userId) {
             const count = await fetchVantageMorningsCount(userId, norm);
             setVantageMorningsCount(count);
@@ -694,14 +699,27 @@ export function SunriseLog({
       }
 
       const displayVantage = initialVantageName ?? null;
-      const normalizedVantage = displayVantage != null ? normalizeVantageName(displayVantage) : null;
-      const insertPayload: { user_id: string; created_at: string; vantage_name?: string; vantage_name_normalized?: string } = {
+      const vantageNorm = displayVantage != null && displayVantage !== '' ? normalizeVantageForStorage(displayVantage) : null;
+      const insertPayload: {
+        user_id: string;
+        created_at: string;
+        vantage_name?: string;
+        vantage_name_normalized?: string;
+        user_input_vantage?: string;
+        normalized_vantage?: string;
+        vantage_category?: string;
+      } = {
         user_id: userId,
         created_at: new Date().toISOString(),
       };
-      if (displayVantage != null && displayVantage !== '') {
-        insertPayload.vantage_name = displayVantage;
-        if (normalizedVantage != null) insertPayload.vantage_name_normalized = normalizedVantage;
+      if (vantageNorm != null && vantageNorm.userInputVantage !== '') {
+        insertPayload.vantage_name = vantageNorm.userInputVantage;
+        insertPayload.user_input_vantage = vantageNorm.userInputVantage;
+        if (vantageNorm.normalizedVantage != null) {
+          insertPayload.vantage_name_normalized = vantageNorm.normalizedVantage;
+          insertPayload.normalized_vantage = vantageNorm.normalizedVantage;
+        }
+        insertPayload.vantage_category = vantageNorm.vantageCategory;
       }
 
       const { data, error: insertError } = await supabase
@@ -724,12 +742,12 @@ export function SunriseLog({
         setPhotoUrl(newLog.photo_url ?? null);
       }
       setReflectionText('');
-      if (displayVantage != null && displayVantage !== '') {
-        setVantageName(displayVantage);
-        setVantageInputValue(displayVantage);
+      if (vantageNorm != null && vantageNorm.userInputVantage !== '') {
+        setVantageName(vantageNorm.userInputVantage);
+        setVantageInputValue(vantageNorm.userInputVantage);
         setEditingVantage(false);
-        if (normalizedVantage != null && userId) {
-          const count = await fetchVantageMorningsCount(userId, normalizedVantage);
+        if (vantageNorm.normalizedVantage != null && userId) {
+          const count = await fetchVantageMorningsCount(userId, vantageNorm.normalizedVantage);
           setVantageMorningsCount(count);
         } else {
           setVantageMorningsCount(null);
@@ -847,17 +865,23 @@ export function SunriseLog({
   const handleVantageBlur = useCallback(async () => {
     if (logId == null) return;
     const raw = (vantageInputValueRef.current ?? '').trim();
-    const normalized = normalizeVantageName(raw);
+    const vantageNorm = raw !== '' ? normalizeVantageForStorage(raw) : null;
     const {
       data: { session },
     } = await supabase.auth.getSession();
     const userId = session?.user?.id;
     if (!userId) return;
 
-    if (normalized === null) {
+    if (vantageNorm === null || vantageNorm.userInputVantage === '') {
       let updateError = (await supabase
         .from('sunrise_logs')
-        .update({ vantage_name: null, vantage_name_normalized: null })
+        .update({
+          vantage_name: null,
+          vantage_name_normalized: null,
+          user_input_vantage: null,
+          normalized_vantage: null,
+          vantage_category: null,
+        })
         .eq('id', logId)).error;
       if (updateError) {
         updateError = (await supabase.from('sunrise_logs').update({ vantage_name: null }).eq('id', logId)).error;
@@ -870,11 +894,17 @@ export function SunriseLog({
       return;
     }
 
-    const display = raw;
-    let updateError = (await supabase
-      .from('sunrise_logs')
-      .update({ vantage_name: display, vantage_name_normalized: normalized })
-      .eq('id', logId)).error;
+    const display = vantageNorm.userInputVantage;
+    const updatePayload: Record<string, unknown> = {
+      vantage_name: display,
+      user_input_vantage: display,
+      vantage_category: vantageNorm.vantageCategory,
+    };
+    if (vantageNorm.normalizedVantage != null) {
+      updatePayload.vantage_name_normalized = vantageNorm.normalizedVantage;
+      updatePayload.normalized_vantage = vantageNorm.normalizedVantage;
+    }
+    let updateError = (await supabase.from('sunrise_logs').update(updatePayload).eq('id', logId)).error;
     if (updateError) {
       updateError = (await supabase.from('sunrise_logs').update({ vantage_name: display }).eq('id', logId)).error;
     }
@@ -885,7 +915,10 @@ export function SunriseLog({
     setVantageName(display);
     setEditingVantage(false);
     setVantageInputValue(display);
-    const count = await fetchVantageMorningsCount(userId, normalized);
+    const count =
+      vantageNorm.normalizedVantage != null
+        ? await fetchVantageMorningsCount(userId, vantageNorm.normalizedVantage)
+        : 0;
     setVantageMorningsCount(count);
   }, [logId]);
 

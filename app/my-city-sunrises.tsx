@@ -24,6 +24,7 @@ export default function MyCitySunrisesScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [cityName, setCityName] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [rows, setRows] = useState<CitySunriseGalleryRow[]>([]);
 
   const load = useCallback(async () => {
@@ -39,8 +40,10 @@ export default function MyCitySunrisesScreen() {
         setError('Please sign in to see your city’s sunrises.');
         setRows([]);
         setCityName(null);
+        setCurrentUserId(null);
         return;
       }
+      setCurrentUserId(userId);
 
       const profileRes = await supabase
         .from('profiles')
@@ -57,7 +60,7 @@ export default function MyCitySunrisesScreen() {
 
       const { data, error: fetchError } = await supabase
         .from('sunrise_logs')
-        .select('photo_url, vantage_name, created_at')
+        .select('photo_url, vantage_name, created_at, vantage_category, user_id')
         .eq('city', city)
         .neq('user_id', userId)
         .not('photo_url', 'is', null)
@@ -130,7 +133,7 @@ export default function MyCitySunrisesScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <CitySunriseGallery rows={rows} limit={GALLERY_LIMIT} />
+          <CitySunriseGallery rows={rows} limit={GALLERY_LIMIT} cityFallback={cityName} currentUserId={currentUserId} />
           <Text style={styles.footerLine}>
             Each dawn looks different from somewhere new.
           </Text>

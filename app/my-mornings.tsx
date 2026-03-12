@@ -89,6 +89,8 @@ type CityGalleryRow = {
   vantage_name: string | null;
   created_at: string;
   city?: string | null;
+  vantage_category?: 'private' | 'public' | null;
+  user_id?: string | null;
 };
 
 const photoBucket = 'sunrise_photos';
@@ -119,6 +121,7 @@ export default function MyMorningsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [userCity, setUserCity] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [galleryRows, setGalleryRows] = useState<CityGalleryRow[]>([]);
 
   const loadLogs = useCallback(async () => {
@@ -134,8 +137,10 @@ export default function MyMorningsScreen() {
         setError('Please sign in to see your mornings.');
         setLogs([]);
         setUserCity(null);
+        setCurrentUserId(null);
         return;
       }
+      setCurrentUserId(userId);
 
       const [logsRes, profileRes] = await Promise.all([
         supabase
@@ -186,7 +191,7 @@ export default function MyMorningsScreen() {
     try {
       const { data, error: galleryError } = await supabase
         .from('sunrise_logs')
-        .select('photo_url, vantage_name, created_at, city')
+        .select('photo_url, vantage_name, created_at, city, vantage_category, user_id')
         .eq('city', trimmed)
         .not('photo_url', 'is', null)
         .order('created_at', { ascending: false })
@@ -266,7 +271,7 @@ export default function MyMorningsScreen() {
                   <Text style={styles.gallerySectionSubtext}>
                     Some recent sunrises welcomed in your city.
                   </Text>
-                  <CitySunriseGallery rows={galleryRows} limit={GALLERY_LIMIT} />
+                  <CitySunriseGallery rows={galleryRows} limit={GALLERY_LIMIT} currentUserId={currentUserId} />
                 </View>
               ) : null}
             </>

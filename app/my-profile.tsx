@@ -104,16 +104,11 @@ function toTitleCase(text: string): string {
     .join(' ');
 }
 
-// Normalize vantage for grouping (lowercase, trim; empty -> null)
-function normalizeVantage(v: string | null | undefined): string | null {
-  if (v == null || typeof v !== 'string') return null;
-  const t = v.trim().toLowerCase();
-  return t === '' ? null : t;
-}
+import { getNormalizedVantageFromRow, toTitleCaseVantage } from '../lib/vantageUtils';
 
 function isHomeLikePlace(place: string): boolean {
   const n = place.trim().toLowerCase();
-  const homeLike = ['home', 'room', 'balcony', 'terrace', 'window'];
+  const homeLike = ['home', 'room', 'balcony', 'terrace', 'window', 'yard'];
   return homeLike.some((w) => n === w || n.split(/\s+/).includes(w));
 }
 
@@ -134,6 +129,8 @@ type ProfileRow = { first_name: string | null; city: string | null };
 type LogRow = {
   created_at: string;
   vantage_name: string | null;
+  normalized_vantage?: string | null;
+  user_input_vantage?: string | null;
   reflection_text: string | null;
   city?: string | null;
 };
@@ -165,7 +162,7 @@ export default function MyProfileScreen() {
         supabase.from('profiles').select('first_name, city').eq('user_id', userId).maybeSingle(),
         supabase
           .from('sunrise_logs')
-          .select('created_at, vantage_name, reflection_text, city')
+          .select('created_at, vantage_name, normalized_vantage, user_input_vantage, reflection_text, city')
           .eq('user_id', userId)
           .order('created_at', { ascending: true }),
       ]);
@@ -175,7 +172,7 @@ export default function MyProfileScreen() {
         return;
       }
       if (logsRes.error) {
-        if (/column.*does not exist|city/i.test(logsRes.error.message ?? '')) {
+        if (/column.*does not exist|city|normalized_vantage|user_input_vantage/i.test(logsRes.error.message ?? '')) {
           const { data: fallbackData, error: fallbackError } = await supabase
             .from('sunrise_logs')
             .select('created_at, vantage_name, reflection_text')
@@ -216,14 +213,13 @@ export default function MyProfileScreen() {
 
   const vantageCounts = new Map<string, { name: string; count: number }>();
   for (const row of logs) {
-    const norm = normalizeVantage(row.vantage_name);
+    const norm = getNormalizedVantageFromRow(row);
     if (norm === null) continue;
-    const displayName = (row.vantage_name ?? '').trim() || norm;
     const cur = vantageCounts.get(norm);
     if (cur) {
       cur.count += 1;
     } else {
-      vantageCounts.set(norm, { name: displayName, count: 1 });
+      vantageCounts.set(norm, { name: toTitleCaseVantage(norm), count: 1 });
     }
   }
   const uniqueVantageCount = vantageCounts.size;
