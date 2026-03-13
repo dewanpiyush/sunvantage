@@ -22,9 +22,11 @@ type Props = {
   longestStreak: number;
   loading?: boolean;
   style?: ViewStyle;
+  /** When true and currentStreak === 1, hide the "Longest streak" line (first ever sunrise). */
+  hideLongestWhenFirst?: boolean;
 };
 
-export default function StreakBlock({ currentStreak, longestStreak, loading = false, style }: Props) {
+export default function StreakBlock({ currentStreak, longestStreak, loading = false, style, hideLongestWhenFirst = false }: Props) {
   const blockStyle = [styles.streakBlock, style];
 
   if (loading) {
@@ -36,6 +38,7 @@ export default function StreakBlock({ currentStreak, longestStreak, loading = fa
   }
 
   const { primary, secondary } = getStreakLines(currentStreak, longestStreak);
+  const showLongest = !(hideLongestWhenFirst && currentStreak === 1);
 
   return (
     <View style={blockStyle}>
@@ -45,7 +48,7 @@ export default function StreakBlock({ currentStreak, longestStreak, loading = fa
             <Text style={styles.emoji}>🔥</Text>
             <Text style={styles.streakPrimary}>{primary}</Text>
           </View>
-          <Text style={styles.streakSecondary}>{secondary}</Text>
+          {showLongest ? <Text style={styles.streakSecondary}>{secondary}</Text> : null}
         </>
       ) : longestStreak > 0 ? (
         <>

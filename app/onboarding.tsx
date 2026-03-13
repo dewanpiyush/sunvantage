@@ -280,10 +280,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 72,
     paddingBottom: 40,
-    justifyContent: 'space-between',
+    justifyContent: 'center',
   },
   header: {
-    marginBottom: 32,
+    marginBottom: 24,
   },
   appName: {
     fontSize: 30,

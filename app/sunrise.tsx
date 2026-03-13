@@ -330,6 +330,7 @@ export function SunriseLog({
   }, []);
   const [currentStreak, setCurrentStreak] = useState(0);
   const [longestStreak, setLongestStreak] = useState(0);
+  const [totalSunrises, setTotalSunrises] = useState(0);
   const [lastWitnessDate, setLastWitnessDate] = useState<string | null>(null);
   const [globalCount, setGlobalCount] = useState<number | null>(null);
   const [vantageName, setVantageName] = useState('');
@@ -540,6 +541,7 @@ export function SunriseLog({
         }
         setCurrentStreak(streakCurrent);
         setLongestStreak(streakLongest);
+        setTotalSunrises(allLogs.length);
         setLastWitnessDate(streakLastDate ?? (profile?.last_witness_date != null ? String(profile.last_witness_date).slice(0, 10) : null));
         if (userId) {
           supabase
@@ -1054,7 +1056,7 @@ export function SunriseLog({
           showBack
           hideMenu
           showBranding
-          subtitle={getWitnessSubheading(currentStreak)}
+          subtitle={getWitnessSubheading(currentStreak, totalSunrises)}
           wrapperMarginBottom={0}
         >
           {!initialLoading && (
@@ -1063,6 +1065,7 @@ export function SunriseLog({
                 <StreakBlock
                   currentStreak={currentStreak}
                   longestStreak={longestStreak}
+                  hideLongestWhenFirst={totalSunrises === 1}
                 />
               </View>
             ) : (
@@ -1350,7 +1353,7 @@ export function SunriseLog({
 
               {!hasLogged && (
                 <View style={styles.sharedDawnSectionWrap}>
-                  <SharedDawnPreview city={profileCity} currentUserId={currentUserId} />
+                  <SharedDawnPreview city={profileCity} currentUserId={currentUserId} fromScreen="witness" />
                 </View>
               )}
 
@@ -1530,7 +1533,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   globalCountMuted: {
-    marginTop: 6,
+    marginTop: 12,
+    marginBottom: 12,
     fontSize: 10,
     color: Dawn.text.secondary,
     textAlign: 'center',
@@ -1538,7 +1542,7 @@ const styles = StyleSheet.create({
   sunriseCardWrap: {
     position: 'relative',
     alignSelf: 'stretch',
-    marginTop: 18,
+    marginTop: 8,
     marginBottom: 0,
   },
   /* Wide elliptical horizon-style glow behind the Sunrise card */

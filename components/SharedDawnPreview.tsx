@@ -43,10 +43,13 @@ function getPublicUrl(ref: string): string {
 type Props = {
   city: string | null;
   currentUserId: string | null;
+  /** When set (e.g. "witness"), navigates with ?from=... so the gallery can show "Back" and use router.back(). */
+  fromScreen?: string;
 };
 
-export default function SharedDawnPreview({ city, currentUserId }: Props) {
+export default function SharedDawnPreview({ city, currentUserId, fromScreen }: Props) {
   const router = useRouter();
+  const galleryHref = fromScreen ? `/my-city-sunrises?from=${fromScreen}` : '/my-city-sunrises';
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [rows, setRows] = useState<Row[]>([]);
   const [urls, setUrls] = useState<(string | null)[]>([]);
@@ -162,7 +165,7 @@ export default function SharedDawnPreview({ city, currentUserId }: Props) {
             </View>
             <Pressable
               style={({ pressed }) => [styles.seeMore, pressed && { opacity: 0.72 }]}
-              onPress={() => router.push('/my-city-sunrises')}
+              onPress={() => router.push(galleryHref)}
             >
               <Text style={styles.seeMoreText}>See more →</Text>
             </Pressable>

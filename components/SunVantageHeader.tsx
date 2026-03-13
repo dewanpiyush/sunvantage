@@ -20,9 +20,13 @@ type Props = {
   showMyCitySunrises?: boolean;
   /** Override bottom margin of the header wrapper (e.g. 0 for tighter layout when scroll content has its own padding). */
   wrapperMarginBottom?: number;
+  /** Override back button label (e.g. "Back" when returning to previous screen instead of Home). */
+  backLabel?: string;
+  /** Override back button action (e.g. router.back() when returning to previous screen). */
+  onBackPress?: () => void;
 };
 
-export default function SunVantageHeader({ showBack, title, subtitle, children, hasLoggedToday = false, hideMenu = false, showBranding = false, showMyCitySunrises = false, wrapperMarginBottom }: Props) {
+export default function SunVantageHeader({ showBack, title, subtitle, children, hasLoggedToday = false, hideMenu = false, showBranding = false, showMyCitySunrises = false, wrapperMarginBottom, backLabel, onBackPress }: Props) {
   const router = useRouter();
   const [menuVisible, setMenuVisible] = useState(false);
 
@@ -35,6 +39,9 @@ export default function SunVantageHeader({ showBack, title, subtitle, children, 
     router.replace('/auth' as never);
   };
 
+  const handleBackPress = onBackPress ?? (() => { router.push('/home'); });
+  const displayBackLabel = backLabel ?? (hideMenu ? '← Home' : '‹ SunVantage Home');
+
   const wrapperStyle = wrapperMarginBottom !== undefined ? [styles.wrapper, { marginBottom: wrapperMarginBottom }] : styles.wrapper;
 
   return (
@@ -43,9 +50,9 @@ export default function SunVantageHeader({ showBack, title, subtitle, children, 
         {showBack && (
           <Pressable
             style={({ pressed }) => [styles.backControl, pressed && { opacity: 0.72 }]}
-            onPress={() => router.push('/home')}
+            onPress={handleBackPress}
           >
-            <Text style={styles.backControlText}>{hideMenu ? '← Home' : '‹ SunVantage Home'}</Text>
+            <Text style={styles.backControlText}>{displayBackLabel}</Text>
           </Pressable>
         )}
         {!hideMenu && (

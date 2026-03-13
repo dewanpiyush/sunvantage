@@ -130,6 +130,13 @@ export default function SunriseLogCard({
     sunriseTime.trim() !== '' &&
     Math.abs(getMinutesToSunrise(sunriseTime)) <= 60;
 
+  /** Post-sunrise (after the ±60 min window): use retrospective copy in step 2. */
+  const isPostSunrise =
+    sunriseTime != null &&
+    typeof sunriseTime === 'string' &&
+    sunriseTime.trim() !== '' &&
+    getMinutesToSunrise(sunriseTime) < -60;
+
   // When modal opens: subtle fade + slight upward motion (150–200ms).
   useEffect(() => {
     if (visible) {
@@ -501,17 +508,23 @@ export default function SunriseLogCard({
                         <Text style={styles.headerTitleEmojiLarge}>🌅</Text>
                         <Text style={[styles.headerTitleStep0, styles.headerTitleStep0Text]}>This morning</Text>
                       </View>
+                    ) : showMissedScreen ? (
+                      <View style={styles.headerTitleRow}>
+                        <Text style={styles.headerTitleEmoji}>🌅</Text>
+                        <View style={styles.headerTitleAndTime}>
+                          <Text style={[styles.headerTitle, styles.headerTitleMissed]}>
+                            Tomorrow's sunrise in {cityLabel}
+                          </Text>
+                          <Text style={styles.headerSubMissed}>{tomorrowSunriseLabel}</Text>
+                        </View>
+                      </View>
                     ) : (
                       <View style={styles.headerTitleRow}>
                         <Text style={styles.headerTitleEmoji}>🌅</Text>
-                        <Text style={[styles.headerTitle, showMissedScreen && styles.headerTitleMissed]}>
-                          {showMissedScreen ? `Tomorrow's sunrise in ${cityLabel}` : 'This morning'}
-                        </Text>
+                        <Text style={styles.headerTitle}>This morning</Text>
                       </View>
                     )}
-                    {showMissedScreen ? (
-                      <Text style={styles.headerSubMissed}>{tomorrowSunriseLabel}</Text>
-                    ) : step >= 1 ? (
+                    {!showMissedScreen && step >= 1 ? (
                       <Text style={styles.headerSub}>
                         {cityLabel} — Sunrise {sunriseLabel}
                       </Text>
@@ -559,7 +572,7 @@ export default function SunriseLogCard({
                     {showMissedScreen && (
                       <View style={[styles.stepInner, styles.missedScreenContent]}>
                         <Text style={styles.missedScreenMessage}>
-                          The sun will rise again tomorrow.{'\n'}Want a gentle reminder?
+                          Set a gentle reminder before the light arrives.
                         </Text>
                       </View>
                     )}
@@ -567,7 +580,7 @@ export default function SunriseLogCard({
                     {!showMissedScreen && step === 0 && (
                       <Animated.View style={[styles.stepInner, styles.step0Content, { opacity: stepOpacity }]}>
                         <Text style={styles.step0Question} maxFontSizeMultiplier={1.3}>
-                          Did you witness the sunrise today?
+                          Did you welcome the sunrise today?
                         </Text>
                       </Animated.View>
                     )}
@@ -611,7 +624,9 @@ export default function SunriseLogCard({
                     {/* Step 2 — photo */}
                     {!showMissedScreen && step === 2 && (
                       <Animated.View style={[styles.stepInner, { opacity: stepOpacity }]}>
-                        <Text style={styles.sectionLabel}>Capture the light</Text>
+                        <Text style={styles.sectionLabel}>
+                          {isPostSunrise ? 'Did you capture the sunrise today?' : 'Capture the light'}
+                        </Text>
                         {!photoUri ? (
                           <Pressable
                             style={({ pressed }) => [styles.addPhotoBtn, pressed && styles.addPhotoBtnPressed]}
@@ -625,16 +640,24 @@ export default function SunriseLogCard({
                             )}
                           </Pressable>
                         ) : (
-                          <View style={styles.photoPreviewWrap}>
-                            <Image source={{ uri: photoUri }} style={styles.photoPreview} resizeMode="cover" />
+                          <>
+                            <View style={styles.photoPreviewClip}>
+                              <Image source={{ uri: photoUri }} style={styles.photoPreviewImage} resizeMode="contain" />
+                            </View>
                             <Pressable
                               style={({ pressed }) => [styles.retakeBtn, pressed && styles.retakeBtnPressed]}
                               onPress={handleAddPhoto}
                               disabled={uploadingPhoto}
                             >
-                              <Text style={styles.retakeText}>{uploadingPhoto ? 'Replacing…' : 'Retake'}</Text>
+                              <Text style={styles.retakeText}>
+                                {uploadingPhoto
+                                  ? 'Replacing…'
+                                  : isPostSunrise
+                                    ? 'Pick another'
+                                    : 'Retake'}
+                              </Text>
                             </Pressable>
-                          </View>
+                          </>
                         )}
                         <Text style={styles.helper}>Some mornings deserve a frame.</Text>
                         {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -675,9 +698,9 @@ export default function SunriseLogCard({
                         style={({ pressed }) => [styles.step0SecondaryBtn, pressed && styles.btnPressed]}
                         onPress={handleClose}
                         accessibilityRole="button"
-                        accessibilityLabel="Maybe later"
+                        accessibilityLabel="Not now"
                       >
-                        <Text style={[styles.step0SecondaryBtnText, styles.missedSecondaryBtnText]}>Maybe later</Text>
+                        <Text style={[styles.step0SecondaryBtnText, styles.missedSecondaryBtnText]}>Not now</Text>
                       </Pressable>
                       <Pressable
                         style={({ pressed }) => [styles.primaryBtn, styles.primaryBtnMissed, pressed && styles.btnPressed]}
@@ -697,9 +720,9 @@ export default function SunriseLogCard({
                         style={({ pressed }) => [styles.step0SecondaryBtn, pressed && styles.btnPressed]}
                         onPress={() => setShowMissedScreen(true)}
                         accessibilityRole="button"
-                        accessibilityLabel="Missed it today"
+                        accessibilityLabel="Not today"
                       >
-                        <Text style={[styles.step0SecondaryBtnText, styles.step0SecondaryBtnTextMuted]}>Missed it today</Text>
+                        <Text style={[styles.step0SecondaryBtnText, styles.step0SecondaryBtnTextMuted]}>Not today</Text>
                       </Pressable>
                       <Pressable
                         style={({ pressed }) => [styles.primaryBtn, styles.primaryBtnStep0, pressed && styles.btnPressed]}
@@ -857,6 +880,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  headerTitleAndTime: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
   headerTitleEmoji: {
     fontSize: 22,
     lineHeight: 26,
@@ -902,7 +930,7 @@ const styles = StyleSheet.create({
   headerTitleMissed: {
     fontSize: 24,
     fontWeight: '600',
-    marginBottom: 5,
+    marginBottom: 0,
   },
   headerSub: {
     fontSize: 15,
@@ -1132,17 +1160,17 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Dawn.text.secondary,
   },
-  photoPreviewWrap: {
+  /** Photo selected: minimal clip only (no background/border); image fills width. */
+  photoPreviewClip: {
+    width: '100%',
+    height: 200,
     borderRadius: 16,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: Dawn.border.subtle,
     marginBottom: 8,
   },
-  photoPreview: {
+  photoPreviewImage: {
     width: '100%',
-    height: 160,
-    backgroundColor: Dawn.border.subtle,
+    height: '100%',
   },
   retakeBtn: {
     paddingVertical: 10,

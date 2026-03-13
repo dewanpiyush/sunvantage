@@ -404,6 +404,7 @@ export default function HomeScreen() {
               currentStreak={streak.current}
               longestStreak={streak.longest}
               loading={loading}
+              hideLongestWhenFirst={totalSunrises === 1}
             />
             {revealBadge ? (
               <RitualRevealCard
@@ -497,9 +498,13 @@ export default function HomeScreen() {
         {loggedToday ? (
           /* State B — After sunrise logged */
           <>
-            <View style={styles.cardsBlock}>
+            <View style={[styles.cardsBlock, totalSunrises === 1 && styles.cardsBlockFirstSunriseLogged]}>
               <Pressable
-                style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
+                style={({ pressed }) => [
+                  styles.modeCard,
+                  totalSunrises === 1 && styles.modeCardFirstSunriseLoggedGap,
+                  pressed && styles.modeCardPressed,
+                ]}
                 onPress={() => router.push('/tomorrow-plan')}
               >
                 <Text style={styles.modeCardTitle}>
@@ -528,16 +533,31 @@ export default function HomeScreen() {
                   </Text>
                 </View>
               </Pressable>
-              <Pressable
-                style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
-                onPress={() => router.push('/my-mornings')}
-              >
-                <Text style={styles.modeCardTitle}>View your mornings</Text>
-                <Text style={styles.modeCardDesc}>Revisit the sunrises you've welcomed.</Text>
-                <View style={styles.modeCardButton}>
-                  <Text style={styles.modeCardButtonText}>Open My Mornings</Text>
-                </View>
-              </Pressable>
+              {totalSunrises === 1 ? (
+                <Pressable
+                  style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
+                  onPress={() => router.push('/my-city-sunrises')}
+                >
+                  <Text style={styles.modeCardTitle}>Shared dawn in {cityName || 'your city'}</Text>
+                  <Text style={styles.modeCardDesc}>
+                    See how others in {cityName || 'your city'} are welcoming mornings on SunVantage
+                  </Text>
+                  <View style={styles.modeCardButton}>
+                    <Text style={styles.modeCardButtonText}>Explore city mornings</Text>
+                  </View>
+                </Pressable>
+              ) : (
+                <Pressable
+                  style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
+                  onPress={() => router.push('/my-mornings')}
+                >
+                  <Text style={styles.modeCardTitle}>View your mornings</Text>
+                  <Text style={styles.modeCardDesc}>Revisit the sunrises you've welcomed.</Text>
+                  <View style={styles.modeCardButton}>
+                    <Text style={styles.modeCardButtonText}>Open My Mornings</Text>
+                  </View>
+                </Pressable>
+              )}
             </View>
           </>
         ) : newUserReturningPreSunrise ? (
@@ -897,6 +917,12 @@ const styles = StyleSheet.create({
   },
   cardsBlockBeforeAction: {
     marginTop: 20,
+  },
+  cardsBlockFirstSunriseLogged: {
+    marginTop: 20,
+  },
+  modeCardFirstSunriseLoggedGap: {
+    marginBottom: 28,
   },
   modeCardLinkWrap: {
     marginTop: 24,

@@ -39,7 +39,10 @@ export function getRitualState(
 /**
  * Subheading for the witness (sunrise) screen only.
  * Never returns "See the day differently." — that is load-only.
+ * When totalSunrises === 1 (first ever log), use past tense.
  */
-export function getWitnessSubheading(streak: number): string {
-  return streak >= 1 ? 'Make space for the first light.' : 'A quiet place to begin.';
+export function getWitnessSubheading(streak: number, totalSunrises?: number): string {
+  if (streak < 1) return 'A quiet place to begin.';
+  if (totalSunrises === 1) return 'You made space for the first light.';
+  return 'Make space for the first light.';
 }

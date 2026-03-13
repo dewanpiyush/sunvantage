@@ -11,7 +11,7 @@ import {
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import supabase from '../supabase';
 import SunVantageHeader from '../components/SunVantageHeader';
 import CitySunriseGallery, { type CitySunriseGalleryRow } from '../components/CitySunriseGallery';
@@ -21,6 +21,8 @@ const GALLERY_LIMIT = 21;
 
 export default function MyCitySunrisesScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ from?: string }>();
+  const fromWitness = params.from === 'witness';
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [cityName, setCityName] = useState<string | null>(null);
@@ -111,6 +113,8 @@ export default function MyCitySunrisesScreen() {
           hideMenu
           showBranding
           title="My City's Sunrises"
+          backLabel={fromWitness ? '← Back' : undefined}
+          onBackPress={fromWitness ? () => router.back() : undefined}
         />
         {cityName ? (
           <Text style={styles.headerLine}>
