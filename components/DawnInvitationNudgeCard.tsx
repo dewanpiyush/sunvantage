@@ -89,15 +89,17 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 999,
-    backgroundColor: Dawn.accent.sunrise,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: Dawn.accent.sunrise,
   },
   ctaPressed: {
-    opacity: 0.9,
+    opacity: 0.85,
   },
   ctaText: {
     fontSize: 14,
     fontWeight: '600',
-    color: Dawn.accent.sunriseOn,
+    color: Dawn.accent.sunrise,
   },
 });
 

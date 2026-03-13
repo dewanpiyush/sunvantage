@@ -371,73 +371,78 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <SunVantageHeader hasLoggedToday={loggedToday} showMyCitySunrises={showMyCitySunrises} />
-        <Text style={styles.tagline}>
-          Your quiet place to notice the morning.
-        </Text>
 
-        {/* Ritual Introduction Card — first-time users only */}
+        {/* New user (no sunrise logged): Subheading, greeting, then ritual card */}
         {totalSunrises === 0 && (
-          <View style={styles.ritualIntroCard}>
-            <View style={styles.titleRowCentered}>
-              <Text style={styles.titleEmoji}>🌅</Text>
-              <Text style={styles.ritualIntroCardTitle}>A simple morning ritual</Text>
-            </View>
-            <Text style={styles.ritualIntroCardBody}>Step outside.</Text>
-            <Text style={styles.ritualIntroCardBody}>Notice the sunrise.</Text>
-            <Text style={styles.ritualIntroCardBody}>Mark the moment here.</Text>
-            <Text style={styles.ritualIntroCardSupport}>Photos are optional.{'\n'}Showing up counts.</Text>
-          </View>
-        )}
-
-        {totalSunrises > 0 && (
-          <StreakBlock
-            currentStreak={streak.current}
-            longestStreak={streak.longest}
-            loading={loading}
-          />
-        )}
-
-        {totalSunrises > 0 && revealBadge ? (
-          <RitualRevealCard
-            visible={true}
-            onDismiss={async () => {
-              if (revealBadge) {
-                await dismissBadgeReveal(revealBadge.id);
-                setRevealBadge(null);
-              }
-            }}
-            onViewMarkers={() => router.push('/ritual-markers')}
-            icon={BADGE_ICONS[revealBadge.id]}
-            title={revealBadge.title}
-            description={revealBadge.earnedExplanation}
-            ctaText="View markers"
-          />
-        ) : null}
-
-        {/* Time-aware greeting */}
-        <View style={styles.anchorBlock}>
-          <Text style={styles.anchorLine1}>
-            {!loggedToday && isDawnMode
-              ? (firstName ? `${firstName}, you are up at dawn.` : 'You are up at dawn.')
-              : loggedToday
-                ? `${greeting}${firstName ? ` ${firstName}.` : '.'}`
-                : newUserPreSunrise
+          <>
+            <Text style={styles.subheading}>Your quiet place to notice the morning.</Text>
+            <View style={styles.anchorBlock}>
+              <Text style={styles.anchorLine1}>
+                {newUserPreSunrise
                   ? (firstName ? `Good morning ${firstName}.` : 'Good morning.')
-                  : newUserPostSunrise
-                    ? (firstName ? `${greeting} ${firstName}.` : `${greeting}.`)
-                    : `${greeting}${firstName ? ` ${firstName}.` : '.'}`}
-          </Text>
-          {newUserPreSunrise || newUserPostSunrise ? null : loggedToday ? null : minutesToSunrise != null && minutesToSunrise >= 0 ? (
-            <Text style={styles.anchorLine2}>
-              The sun will rise in {minutesToSunrise} minutes.
-            </Text>
-          ) : showSunriseContextCard ? null : (
-            <Text style={styles.anchorLine2}>The light is waiting.</Text>
-          )}
-        </View>
+                  : (firstName ? `${greeting} ${firstName}.` : `${greeting}.`)}
+              </Text>
+            </View>
+            <View style={styles.ritualIntroCard}>
+              <View style={styles.ritualIntroCardTitleRow}>
+                <Text style={styles.ritualIntroCardEmoji}>🌅</Text>
+                <Text style={styles.ritualIntroCardTitle}>A simple morning ritual</Text>
+              </View>
+              <Text style={styles.ritualIntroCardBody}>Step outside.</Text>
+              <Text style={styles.ritualIntroCardBody}>Notice the sunrise.</Text>
+              <Text style={styles.ritualIntroCardBody}>Mark the moment.</Text>
+              <Text style={styles.ritualIntroCardSupport}>Showing up counts.</Text>
+            </View>
+          </>
+        )}
 
-        {/* Sunrise card — always shown; copy adapts by timing and logged state */}
-        <View style={styles.sunriseContextCard}>
+        {/* Returning user: tagline, streak, reveal, then greeting */}
+        {totalSunrises > 0 && (
+          <>
+            <Text style={styles.tagline}>Your quiet place to notice the morning.</Text>
+            <StreakBlock
+              currentStreak={streak.current}
+              longestStreak={streak.longest}
+              loading={loading}
+            />
+            {revealBadge ? (
+              <RitualRevealCard
+                visible={true}
+                onDismiss={async () => {
+                  if (revealBadge) {
+                    await dismissBadgeReveal(revealBadge.id);
+                    setRevealBadge(null);
+                  }
+                }}
+                onViewMarkers={() => router.push('/ritual-markers')}
+                icon={BADGE_ICONS[revealBadge.id]}
+                title={revealBadge.title}
+                description={revealBadge.earnedExplanation}
+                ctaText="View markers"
+              />
+            ) : null}
+            <View style={styles.anchorBlock}>
+              <Text style={styles.anchorLine1}>
+                {!loggedToday && isDawnMode
+                  ? (firstName ? `${firstName}, you are up at dawn.` : 'You are up at dawn.')
+                  : loggedToday
+                    ? `${greeting}${firstName ? ` ${firstName}.` : '.'}`
+                    : `${greeting}${firstName ? ` ${firstName}.` : '.'}`}
+              </Text>
+              {loggedToday ? null : minutesToSunrise != null && minutesToSunrise >= 0 ? (
+                <Text style={styles.anchorLine2}>The sun will rise in {minutesToSunrise} minutes.</Text>
+              ) : showSunriseContextCard ? null : (
+                <Text style={styles.anchorLine2}>The light is waiting.</Text>
+              )}
+            </View>
+          </>
+        )}
+
+        {/* Sunrise card — always shown; border only pre-sunrise / within ±45 min window */}
+        <View style={[
+          styles.sunriseContextCard,
+          minutesToSunrise != null && minutesToSunrise < -45 && styles.sunriseContextCardPostSunrise,
+        ]}>
           <View style={styles.sunTitleRow}>
             <Text style={styles.sunEmoji}>☀️</Text>
             <Text style={styles.sunTitle}>Sunrise today</Text>
@@ -606,77 +611,26 @@ export default function HomeScreen() {
               </Pressable>
             </View>
           </>
-        ) : newUserReturningPostSunrise ? (
-          /* STATE 2b — First-time user, post-sunrise: Log for today + Plan for tomorrow */
+        ) : newUserReturningPostSunrise || newUserPostSunrise ? (
+          /* First-time user, post-sunrise: single merged card — Log for today + plan for tomorrow link */
           <>
             <Text style={[styles.centerQuestion, styles.centerQuestionHeadline]}>Your first sunrise moment is waiting.</Text>
-            <View style={styles.cardsBlock}>
+            <View style={styles.cardsBlockBeforeAction}>
               <Pressable
-                style={({ pressed }) => [styles.modeCard, styles.modeCardTightBottom, pressed && styles.modeCardPressed]}
+                style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
                 onPress={handleOpenWitness}
               >
                 <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>Ready to log it?</Text>
-                <Text style={styles.modeCardDesc}>If you showed up, stood still,</Text>
-                <Text style={styles.modeCardDesc}>and welcomed the day today.</Text>
+                <Text style={styles.modeCardDesc}>If you welcomed the day today.</Text>
                 <View style={styles.modeCardButton}>
                   <Text style={styles.modeCardButtonText}>Log for today</Text>
                 </View>
-              </Pressable>
-              <View style={styles.orDivider}>
-                <View style={styles.orDividerLine} />
-                <Text style={styles.orDividerText}>OR</Text>
-                <View style={styles.orDividerLine} />
-              </View>
-              <Pressable
-                style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
-                onPress={() => router.push('/tomorrow-plan')}
-              >
-                <View style={styles.titleRowCentered}>
-                  <Text style={styles.titleEmoji}>🌅</Text>
-                  <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>Welcome the first light tomorrow</Text>
-                </View>
-                <Text style={styles.modeCardDesc}>Tomorrow brings another sunrise.</Text>
-                <Text style={styles.modeCardDesc}>Choose a moment to step outside and notice it.</Text>
-                <View style={styles.modeCardButton}>
-                  <Text style={styles.modeCardButtonText}>Plan for tomorrow</Text>
-                </View>
-              </Pressable>
-            </View>
-          </>
-        ) : newUserPostSunrise ? (
-          /* STATE 2 — First-time user, post-sunrise: Log for today + Plan for tomorrow */
-          <>
-            <Text style={[styles.centerQuestion, styles.centerQuestionHeadline]}>Your first sunrise moment is waiting.</Text>
-            <View style={styles.cardsBlock}>
-              <Pressable
-                style={({ pressed }) => [styles.modeCard, styles.modeCardTightBottom, pressed && styles.modeCardPressed]}
-                onPress={handleOpenWitness}
-              >
-                <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>Ready to log it?</Text>
-                <Text style={styles.modeCardDesc}>If you showed up, stood still,</Text>
-                <Text style={styles.modeCardDesc}>and welcomed the day today.</Text>
-                <View style={styles.modeCardButton}>
-                  <Text style={styles.modeCardButtonText}>Log for today</Text>
-                </View>
-              </Pressable>
-              <View style={styles.orDivider}>
-                <View style={styles.orDividerLine} />
-                <Text style={styles.orDividerText}>OR</Text>
-                <View style={styles.orDividerLine} />
-              </View>
-              <Pressable
-                style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
-                onPress={() => router.push('/tomorrow-plan')}
-              >
-                <View style={styles.titleRowCentered}>
-                  <Text style={styles.titleEmoji}>🌅</Text>
-                  <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>Welcome the first light tomorrow</Text>
-                </View>
-                <Text style={styles.modeCardDesc}>Tomorrow brings another sunrise.</Text>
-                <Text style={styles.modeCardDesc}>Choose a moment to step outside and notice it.</Text>
-                <View style={styles.modeCardButton}>
-                  <Text style={styles.modeCardButtonText}>Plan for tomorrow</Text>
-                </View>
+                <Pressable
+                  style={({ pressed }) => [styles.modeCardLinkWrap, pressed && styles.modeCardPressed]}
+                  onPress={() => router.push('/tomorrow-plan')}
+                >
+                  <Text style={styles.modeCardLink}>or plan for tomorrow</Text>
+                </Pressable>
               </Pressable>
             </View>
           </>
@@ -814,32 +768,52 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Dawn.text.secondary,
   },
+  subheading: {
+    fontSize: 15,
+    opacity: 0.7,
+    color: Dawn.text.secondary,
+    marginBottom: 14,
+  },
   ritualIntroCard: {
     backgroundColor: Dawn.surface.card,
     borderRadius: 16,
-    padding: 16,
-    marginBottom: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 22,
+    marginBottom: 20,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Dawn.border.soft,
+  },
+  ritualIntroCardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  ritualIntroCardEmoji: {
+    fontSize: 20,
   },
   ritualIntroCardTitle: {
     fontSize: 17,
-    lineHeight: 22,
+    lineHeight: 21,
     fontWeight: '600',
     color: Dawn.text.primary,
-    marginBottom: 12,
     textAlign: 'center',
   },
   ritualIntroCardBody: {
     fontSize: 14,
+    lineHeight: 20,
     color: Dawn.text.secondary,
     textAlign: 'center',
-    marginBottom: 4,
+    marginTop: 4,
+    marginBottom: 0,
   },
   ritualIntroCardSupport: {
     fontSize: 12,
     color: Dawn.text.secondary,
     textAlign: 'center',
-    marginTop: 12,
+    marginTop: 8,
     lineHeight: 18,
   },
   anchorBlock: {
@@ -860,15 +834,21 @@ const styles = StyleSheet.create({
     backgroundColor: Dawn.surface.card,
     borderRadius: 22,
     padding: 16,
+    marginTop: 20,
     marginBottom: 8,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Dawn.border.sunriseCard,
+    borderColor: Dawn.border.subtle,
     shadowColor: Dawn.accent.sunrise,
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    elevation: 1,
+  },
+  sunriseContextCardPostSunrise: {
+    borderColor: Dawn.border.subtle,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   sunriseContextCardTitle: {
     fontSize: 17,
@@ -912,7 +892,24 @@ const styles = StyleSheet.create({
     fontSize: 21,
     fontWeight: '600',
     color: Dawn.text.primary,
-    marginVertical: 12,
+    marginTop: 20,
+    marginBottom: 12,
+  },
+  cardsBlockBeforeAction: {
+    marginTop: 20,
+  },
+  modeCardLinkWrap: {
+    marginTop: 24,
+    paddingVertical: 10,
+    minHeight: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modeCardLink: {
+    fontSize: 14,
+    color: Dawn.text.secondary,
+    textAlign: 'center',
+    textDecorationLine: 'underline',
   },
   centerMessage: {
     fontSize: 17,

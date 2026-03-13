@@ -575,7 +575,7 @@ export default function SunriseLogCard({
                     {/* Step 1 — vantage name */}
                     {!showMissedScreen && step === 1 && (
                       <Animated.View style={[styles.stepInner, { opacity: stepOpacity }]}>
-                        <Text style={styles.sectionLabel}>Where were you when the light arrived today?</Text>
+                        <Text style={styles.sectionLabel}>Where were you when the light arrived?</Text>
                         <TextInput
                           ref={vantageInputRef}
                           style={styles.vantageInput}

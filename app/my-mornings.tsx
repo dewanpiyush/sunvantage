@@ -35,18 +35,6 @@ export const REFLECTION_QUESTION_MAP: Record<number, string> = {
   14: 'What feels quietly hopeful?',
 };
 
-const REFLECTION_INVITATIONS = [
-  'What stayed with you?',
-  'What small thing deserves appreciation?',
-];
-
-function getReflectionInvitationForDate(createdAtIso: string): string {
-  const d = new Date(createdAtIso);
-  if (Number.isNaN(d.getTime())) return REFLECTION_INVITATIONS[0];
-  const daySeed = d.getFullYear() + d.getMonth() + d.getDate();
-  return REFLECTION_INVITATIONS[daySeed % REFLECTION_INVITATIONS.length];
-}
-
 function formatLogDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
@@ -55,6 +43,57 @@ function formatLogDate(iso: string): string {
     day: 'numeric',
     year: 'numeric',
   });
+}
+
+/** Local YYYY-MM-DD for comparison. */
+function getLocalDateString(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Time anchor for grouping: Today, Yesterday, Earlier this week, Earlier this month, or month name. */
+function getTimeAnchor(iso: string): string {
+  const logDate = getLocalDateString(iso);
+  if (!logDate) return '';
+  const now = new Date();
+  const todayStr =
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr =
+    `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+
+  if (logDate === todayStr) return 'Today';
+  if (logDate === yesterdayStr) return 'Yesterday';
+
+  const log = new Date(iso);
+  const startOfThisWeek = new Date(now);
+  const dayOfWeek = now.getDay();
+  const toMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  startOfThisWeek.setDate(now.getDate() - toMonday);
+  startOfThisWeek.setHours(0, 0, 0, 0);
+  const endOfThisWeek = new Date(startOfThisWeek);
+  endOfThisWeek.setDate(startOfThisWeek.getDate() + 6);
+  const startStr = getLocalDateString(startOfThisWeek.toISOString());
+  const endStr = getLocalDateString(endOfThisWeek.toISOString());
+
+  if (logDate >= startStr && logDate <= endStr) return 'Earlier this week';
+
+  const startOfThisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  if (logDate >= startOfThisMonth && logDate < startStr) return 'Earlier this month';
+
+  return log.toLocaleDateString('en-US', { month: 'long' });
+}
+
+function isLogFromToday(createdAtIso: string): boolean {
+  const now = new Date();
+  const todayStr =
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return getLocalDateString(createdAtIso) === todayStr;
 }
 
 function capitalizeFirstForDisplay(text: string): string {
@@ -276,41 +315,118 @@ export default function MyMorningsScreen() {
               ) : null}
             </>
           ) : (
-            logs.map((log, index) => (
-              <React.Fragment key={log.id}>
-                {index > 0 && (
-                  <View style={styles.entryDividerWrapper}>
-                    <View style={styles.entryDivider} />
-                  </View>
-                )}
-                <View style={[styles.entry, index > 0 && styles.entrySpacer]}>
-                  <Text style={styles.date}>{formatLogDate(log.created_at)}</Text>
-                  {log.vantage_name ? (
-                    <Text style={styles.vantageName}>{toTitleCase(log.vantage_name)}</Text>
-                  ) : null}
-                  {imageUrls[log.id] ? (
-                    <View style={styles.imageWrapper}>
-                      <Image
-                        source={{ uri: imageUrls[log.id]! }}
-                        style={styles.image}
-                        contentFit="cover"
-                      />
-                    </View>
-                  ) : null}
-                  {log.reflection_text ? (
-                    <View style={styles.reflectionSection}>
-                    <Text style={styles.reflectionQuestion}>
-                      {log.reflection_question_id != null &&
-                      REFLECTION_QUESTION_MAP[log.reflection_question_id] != null
-                        ? REFLECTION_QUESTION_MAP[log.reflection_question_id]
-                        : getReflectionInvitationForDate(log.created_at)}
-                    </Text>
-                      <Text style={styles.reflectionText}>{capitalizeFirstForDisplay(log.reflection_text)}</Text>
-                    </View>
-                  ) : null}
-                </View>
-              </React.Fragment>
-            ))
+            (() => {
+              const groups = new Map<string, SunriseLogRow[]>();
+              for (const log of logs) {
+                const anchor = getTimeAnchor(log.created_at);
+                if (!anchor) continue;
+                const list = groups.get(anchor) ?? [];
+                list.push(log);
+                groups.set(anchor, list);
+              }
+              const fixedOrder = ['Today', 'Yesterday', 'Earlier this week', 'Earlier this month'];
+              const monthAnchors = Array.from(groups.keys()).filter((a) => !fixedOrder.includes(a));
+              const sortedMonthAnchors = monthAnchors.sort((a, b) => {
+                const logsA = groups.get(a) ?? [];
+                const logsB = groups.get(b) ?? [];
+                const maxA = Math.max(...logsA.map((l) => new Date(l.created_at).getTime()));
+                const maxB = Math.max(...logsB.map((l) => new Date(l.created_at).getTime()));
+                return maxB - maxA;
+              });
+              const orderedAnchors = [...fixedOrder.filter((a) => groups.has(a)), ...sortedMonthAnchors];
+
+              return (
+                <>
+                  <Text style={styles.welcomedLine}>
+                    🌅 {logs.length} morning{logs.length === 1 ? '' : 's'} welcomed on SunVantage
+                  </Text>
+                  {orderedAnchors.map((anchor, anchorIndex) => {
+                    const isTodaySection = anchor === 'Today';
+                    return (
+                      <View key={anchor} style={styles.anchorSection}>
+                        <Text
+                          style={[
+                            styles.timeAnchorLabel,
+                            anchorIndex === 0 && styles.timeAnchorLabelFirst,
+                            isTodaySection && styles.timeAnchorLabelToday,
+                          ]}
+                        >
+                          {anchor.toUpperCase()}
+                        </Text>
+                        {(groups.get(anchor) ?? []).map((log) => {
+                          const isEditable = isLogFromToday(log.created_at);
+                          return (
+                            <View key={log.id} style={styles.memoryCard}>
+                              <View style={styles.memoryCardTop}>
+                                <Text>
+                                  <Text style={styles.memoryCardDate}>
+                                    {formatLogDate(log.created_at)}
+                                    {log.vantage_name?.trim() ? ' • ' : ''}
+                                  </Text>
+                                  {log.vantage_name?.trim() ? (
+                                    <Text style={styles.memoryCardVantage}>
+                                      📍 {toTitleCase(log.vantage_name.trim())}
+                                    </Text>
+                                  ) : null}
+                                </Text>
+                              </View>
+                              {imageUrls[log.id] ? (
+                                <View style={styles.memoryCardPhotoWrap}>
+                                  <Image
+                                    source={{ uri: imageUrls[log.id]! }}
+                                    style={styles.memoryCardPhoto}
+                                    contentFit="cover"
+                                  />
+                                </View>
+                              ) : null}
+                              {log.reflection_text?.trim() ? (
+                                <View style={styles.memoryCardBottom}>
+                                  <Text style={styles.memoryCardReflection}>
+                                    {capitalizeFirstForDisplay(log.reflection_text.trim())}
+                                  </Text>
+                                </View>
+                              ) : isEditable ? (
+                                <View style={styles.memoryCardBottom}>
+                                  <Text style={styles.memoryCardReflectionNudge}>
+                                    What stayed with you today?
+                                  </Text>
+                                </View>
+                              ) : null}
+                              {isEditable ? (
+                                <View style={styles.memoryCardActionsRow}>
+                                  <Pressable
+                                    style={({ pressed }) => [
+                                      styles.memoryCardActionLink,
+                                      pressed && styles.memoryCardActionLinkPressed,
+                                    ]}
+                                    onPress={() => router.push('/witness')}
+                                  >
+                                    <Text style={styles.memoryCardActionLinkText}>
+                                      {imageUrls[log.id] ? 'Change photo' : '+ Add photo'}
+                                    </Text>
+                                  </Pressable>
+                                  <Pressable
+                                    style={({ pressed }) => [
+                                      styles.memoryCardActionLink,
+                                      pressed && styles.memoryCardActionLinkPressed,
+                                    ]}
+                                    onPress={() => router.push('/witness')}
+                                  >
+                                    <Text style={styles.memoryCardActionLinkText}>
+                                      Edit reflection
+                                    </Text>
+                                  </Pressable>
+                                </View>
+                              ) : null}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    );
+                  })}
+                </>
+              );
+            })()
           )}
         </ScrollView>
       )}
@@ -385,56 +501,97 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 48,
   },
-  entry: {
-    marginBottom: 20,
-  },
-  entrySpacer: {
-    marginTop: 18,
-  },
-  entryDividerWrapper: {
-    width: '100%',
-    alignItems: 'center',
-    marginVertical: 0,
-  },
-  entryDivider: {
-    width: '70%',
-    height: 1,
-    backgroundColor: Dawn.border.subtle,
-  },
-  date: {
-    fontSize: 12,
+  welcomedLine: {
+    fontSize: 14,
     color: Dawn.text.secondary,
+    marginBottom: 24,
+  },
+  anchorSection: {
+    marginBottom: 8,
+  },
+  timeAnchorLabel: {
+    fontSize: 12,
+    opacity: 0.7,
+    letterSpacing: 1,
+    color: Dawn.text.secondary,
+    marginTop: 20,
     marginBottom: 10,
   },
-  vantageName: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: Dawn.text.primary,
+  timeAnchorLabelFirst: {
+    marginTop: 0,
+  },
+  timeAnchorLabelToday: {
+    opacity: 0.9,
+    color: 'rgba(231,238,247,0.85)',
+  },
+  memoryCard: {
+    backgroundColor: Dawn.surface.card,
+    borderRadius: 22,
+    padding: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,179,71,0.32)',
+    alignItems: 'center',
+  },
+  memoryCardTop: {
+    alignSelf: 'stretch',
     marginBottom: 12,
   },
-  imageWrapper: {
+  memoryCardDate: {
+    fontSize: 14,
+    color: Dawn.text.secondary,
+  },
+  memoryCardVantage: {
+    fontSize: 14,
+    color: 'rgba(231,238,247,0.92)',
+  },
+  memoryCardPhotoWrap: {
     width: '100%',
     borderRadius: 16,
     overflow: 'hidden',
     marginBottom: 12,
+    backgroundColor: Dawn.border.subtle,
   },
-  image: {
+  memoryCardPhoto: {
     width: '100%',
-    aspectRatio: 16 / 10,
-    maxHeight: 220,
+    aspectRatio: 4 / 3,
   },
-  reflectionSection: {
-    marginTop: 4,
+  memoryCardBottom: {
+    width: '100%',
+    alignItems: 'flex-start',
   },
-  reflectionQuestion: {
-    fontSize: 12,
-    color: Dawn.text.secondary,
-    marginBottom: 8,
-  },
-  reflectionText: {
-    fontSize: 15,
-    lineHeight: 22,
+  memoryCardReflection: {
+    fontSize: 16,
+    lineHeight: 24,
     color: Dawn.text.primary,
+    textAlign: 'left',
+    fontStyle: 'italic',
+  },
+  memoryCardReflectionNudge: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: Dawn.text.secondary,
+    textAlign: 'left',
+    fontStyle: 'italic',
+    opacity: 0.85,
+  },
+  memoryCardActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+    marginTop: 12,
+    alignSelf: 'stretch',
+  },
+  memoryCardActionLink: {
+    paddingVertical: 4,
+    paddingHorizontal: 0,
+  },
+  memoryCardActionLinkPressed: {
+    opacity: 0.8,
+  },
+  memoryCardActionLinkText: {
+    fontSize: 13,
+    color: Dawn.text.secondary,
   },
   centered: {
     flex: 1,

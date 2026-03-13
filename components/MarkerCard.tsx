@@ -5,6 +5,7 @@
  */
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+
 import { Dawn } from '../constants/theme';
 
 export type MarkerCardEarnedProps = {
@@ -43,7 +44,11 @@ export default function MarkerCard(props: MarkerCardProps) {
           <>
             <Text style={styles.line1}>{props.description}</Text>
             <Text style={styles.line2}>{props.earnedExplanation}</Text>
-            <Text style={styles.earnedDate}>Earned {props.earnedMonthYear}</Text>
+            {props.earnedMonthYear ? (
+              <View style={styles.dateStampWrap}>
+                <Text style={styles.dateStamp}>{props.earnedMonthYear}</Text>
+              </View>
+            ) : null}
           </>
         )}
       </View>
@@ -57,7 +62,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Dawn.border.sunriseCard,
     overflow: 'hidden',
-    marginBottom: 16,
+    marginBottom: 11,
   },
   cardLocked: {
     opacity: 0.6,
@@ -68,9 +73,8 @@ const styles = StyleSheet.create({
     backgroundColor: Dawn.surface.card,
     borderRadius: 15,
     margin: 1,
-    paddingTop: 14,
+    paddingVertical: 11,
     paddingHorizontal: 16,
-    paddingBottom: 14,
   },
   innerLocked: {
     margin: 1,
@@ -79,7 +83,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   icon: {
     fontSize: 20,
@@ -92,23 +96,31 @@ const styles = StyleSheet.create({
   },
   line1: {
     fontSize: 15,
-    color: Dawn.text.secondary,
-    lineHeight: 22,
-    marginBottom: 4,
+    fontWeight: '500',
+    color: Dawn.text.primary,
+    lineHeight: 20,
+    marginBottom: 3,
   },
   line2: {
     fontSize: 14,
     color: Dawn.text.secondary,
-    lineHeight: 20,
-    marginBottom: 10,
+    lineHeight: 18,
+    marginBottom: 5,
+    opacity: 0.88,
   },
-  earnedDate: {
-    fontSize: 13,
+  dateStampWrap: {
+    alignSelf: 'flex-end',
+    marginTop: 2,
+  },
+  dateStamp: {
+    fontSize: 12,
     color: Dawn.text.secondary,
+    opacity: 0.6,
+    textAlign: 'right',
   },
   lockedCopy: {
     fontSize: 14,
     color: Dawn.text.secondary,
-    lineHeight: 20,
+    lineHeight: 18,
   },
 });

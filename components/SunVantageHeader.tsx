@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   subtitle: {
-    marginTop: 6,
+    marginTop: 8,
     fontSize: 14,
     color: Dawn.text.secondary,
   },

@@ -123,41 +123,51 @@ export default function SharedDawnPreview({ city, currentUserId }: Props) {
     return () => clearTimeout(t);
   }, [modalIndex, overlayOpacity]);
 
-  if (rows.length === 0) return null;
+  const cityLabel = city?.trim() || 'your city';
+  const isEmpty = rows.length === 0;
 
   return (
     <>
-      <View style={styles.section}>
-        <Text style={styles.title}>Shared dawn in {city!.trim()}</Text>
-        <View style={styles.row}>
-          {rows.map((row, index) => {
-            const url = urls[index];
-            return (
-              <Pressable
-                key={`${row.created_at}-${index}`}
-                style={[
-                  styles.tile,
-                  {
-                    width: TILE_SIZE,
-                    height: TILE_SIZE,
-                    marginRight: index < rows.length - 1 ? TILE_GAP : 0,
-                  },
-                ]}
-                onPress={() => url && setModalIndex(index)}
-              >
-                {url ? (
-                  <Image source={{ uri: url }} style={styles.tileImage} contentFit="cover" />
-                ) : null}
-              </Pressable>
-            );
-          })}
-        </View>
-        <Pressable
-          style={({ pressed }) => [styles.seeMore, pressed && { opacity: 0.72 }]}
-          onPress={() => router.push('/my-city-sunrises')}
-        >
-          <Text style={styles.seeMoreText}>See more →</Text>
-        </Pressable>
+      <View style={[styles.section, isEmpty && styles.sectionEmpty]}>
+        <View style={styles.divider} />
+        <Text style={styles.title}>Shared dawn in {cityLabel}</Text>
+        {isEmpty ? (
+          <View style={styles.placeholder}>
+            <Text style={styles.placeholderText}>Be the first to share the morning today.</Text>
+          </View>
+        ) : (
+          <>
+            <View style={styles.row}>
+              {rows.map((row, index) => {
+                const url = urls[index];
+                return (
+                  <Pressable
+                    key={`${row.created_at}-${index}`}
+                    style={[
+                      styles.tile,
+                      {
+                        width: TILE_SIZE,
+                        height: TILE_SIZE,
+                        marginRight: index < rows.length - 1 ? TILE_GAP : 0,
+                      },
+                    ]}
+                    onPress={() => url && setModalIndex(index)}
+                  >
+                    {url ? (
+                      <Image source={{ uri: url }} style={styles.tileImage} contentFit="cover" />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Pressable
+              style={({ pressed }) => [styles.seeMore, pressed && { opacity: 0.72 }]}
+              onPress={() => router.push('/my-city-sunrises')}
+            >
+              <Text style={styles.seeMoreText}>See more →</Text>
+            </Pressable>
+          </>
+        )}
       </View>
 
       <Modal
@@ -259,8 +269,18 @@ export default function SharedDawnPreview({ city, currentUserId }: Props) {
 
 const styles = StyleSheet.create({
   section: {
-    marginTop: 36,
     alignItems: 'center',
+    minHeight: 180,
+  },
+  sectionEmpty: {
+    minHeight: 180,
+  },
+  divider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: Dawn.border.subtle,
+    marginBottom: 20,
+    opacity: 0.8,
   },
   title: {
     fontSize: 14,
@@ -268,6 +288,20 @@ const styles = StyleSheet.create({
     color: Dawn.text.secondary,
     marginBottom: 10,
     textAlign: 'center',
+  },
+  placeholder: {
+    flex: 1,
+    minHeight: 120,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  placeholderText: {
+    fontSize: 14,
+    color: Dawn.text.secondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    opacity: 0.9,
   },
   row: {
     flexDirection: 'row',

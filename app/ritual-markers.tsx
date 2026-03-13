@@ -185,7 +185,7 @@ function normalizeCity(v: string | null | undefined): string | null {
 function formatEarnedMonthYear(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 }
 
 // ----- Log row (include reflection_text and optional city for stats) -----
@@ -517,13 +517,13 @@ const styles = StyleSheet.create({
     paddingBottom: 48,
   },
   section: {
-    marginBottom: 40,
+    marginBottom: 28,
   },
   sectionTitle: {
     fontSize: 14,
     fontWeight: '600',
     color: Dawn.text.secondary,
-    marginBottom: 16,
+    marginBottom: 11,
     letterSpacing: 0.5,
   },
   centered: {

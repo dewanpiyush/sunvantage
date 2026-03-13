@@ -1156,7 +1156,7 @@ export function SunriseLog({
               {!hasLogged && sunrisePassed && (
                 <View style={styles.reflectiveBlock}>
                   <Text style={styles.reflectiveLead}>Take a moment.</Text>
-                  <Text style={styles.reflectivePrompt}>Where were you when the light arrived today?</Text>
+                  <Text style={styles.reflectivePrompt}>Where were you when the light arrived?</Text>
                 </View>
               )}
               {!hasLogged && (
@@ -1170,7 +1170,7 @@ export function SunriseLog({
                 </Pressable>
               )}
               {!hasLogged && sunrisePassed && (
-                <Text style={styles.witnessFooter}>You don&apos;t have to capture it.{'\n'}Just notice it.</Text>
+                <Text style={styles.witnessFooter}>You don&apos;t have to capture it.{'\n'}Just mark the moment.</Text>
               )}
 
               {hasLogged && globalCount !== null && globalCount >= 2 && (
@@ -1349,7 +1349,9 @@ export function SunriseLog({
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
               {!hasLogged && (
-                <SharedDawnPreview city={profileCity} currentUserId={currentUserId} />
+                <View style={styles.sharedDawnSectionWrap}>
+                  <SharedDawnPreview city={profileCity} currentUserId={currentUserId} />
+                </View>
               )}
 
               {hasLogged && (
@@ -1393,6 +1395,7 @@ const styles = StyleSheet.create({
   sunTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
     marginBottom: 8,
   },
@@ -1403,6 +1406,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: Dawn.text.primary,
+    textAlign: 'center',
   },
   titleRow: {
     flexDirection: 'row',
@@ -1534,6 +1538,7 @@ const styles = StyleSheet.create({
   sunriseCardWrap: {
     position: 'relative',
     alignSelf: 'stretch',
+    marginTop: 18,
     marginBottom: 0,
   },
   /* Wide elliptical horizon-style glow behind the Sunrise card */
@@ -1553,7 +1558,7 @@ const styles = StyleSheet.create({
     backgroundColor: Dawn.surface.card,
     borderRadius: 22,
     padding: 14,
-    alignItems: 'stretch',
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: Dawn.border.sunriseCard,
     elevation: 2,
@@ -1563,14 +1568,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Dawn.text.secondary,
     marginBottom: 6,
+    textAlign: 'center',
   },
   sunriseContextCardTagline: {
     fontSize: 13,
     color: Dawn.text.secondary,
     opacity: 0.9,
+    textAlign: 'center',
   },
   reflectiveBlock: {
-    marginTop: 18,
+    marginTop: 24,
     marginBottom: 18,
     alignItems: 'center',
     maxWidth: 280,
@@ -1708,7 +1715,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   logThisMorningBtn: {
-    marginTop: 0,
+    marginTop: 20,
     alignSelf: 'center',
     paddingVertical: 12,
     paddingHorizontal: 28,
@@ -1722,6 +1729,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: Dawn.accent.sunriseOn,
+  },
+  sharedDawnSectionWrap: {
+    marginTop: 28,
+    width: '100%',
   },
   witnessFooter: {
     marginTop: 18,

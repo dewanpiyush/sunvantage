@@ -22,6 +22,7 @@ export const Dawn = {
   },
   border: {
     subtle: '#2A466B',
+    soft: '#2A466B',
     sunriseCard: 'rgba(255,179,71,0.55)',
   },
   text: {

@@ -6,13 +6,21 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { File } from 'expo-file-system';
 import supabase from '../supabase';
 import { BADGE_REGISTRY, BADGE_ICONS, computeBadgeStats } from './ritual-markers';
 import SunVantageHeader from '../components/SunVantageHeader';
 import { hasLoggedToday } from '../lib/hasLoggedToday';
 import { Dawn } from '../constants/theme';
+
+const AVATAR_BUCKET = 'avatars';
+const AVATAR_SIZE = 512;
 
 // ----- Streak computation (client-side) -----
 const YMD_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -125,7 +133,7 @@ function morningsGreetedText(n: number): string {
     : `${word} ${mornings} greeted. A ritual taking shape.`;
 }
 
-type ProfileRow = { first_name: string | null; city: string | null };
+type ProfileRow = { first_name: string | null; city: string | null; avatar_url: string | null };
 type LogRow = {
   created_at: string;
   vantage_name: string | null;
@@ -141,6 +149,7 @@ export default function MyProfileScreen() {
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -159,7 +168,7 @@ export default function MyProfileScreen() {
       }
 
       const [profileRes, logsRes] = await Promise.all([
-        supabase.from('profiles').select('first_name, city').eq('user_id', userId).maybeSingle(),
+        supabase.from('profiles').select('first_name, city, avatar_url').eq('user_id', userId).maybeSingle(),
         supabase
           .from('sunrise_logs')
           .select('created_at, vantage_name, normalized_vantage, user_input_vantage, reflection_text, city')
@@ -168,8 +177,19 @@ export default function MyProfileScreen() {
       ]);
 
       if (profileRes.error) {
-        setError(profileRes.error.message || 'Could not load profile.');
-        return;
+        if (/avatar_url|column.*does not exist/i.test(profileRes.error.message ?? '')) {
+          const { data: profileFallback } = await supabase
+            .from('profiles')
+            .select('first_name, city')
+            .eq('user_id', userId)
+            .maybeSingle();
+          setProfile(profileFallback ? { ...profileFallback, avatar_url: null } : null);
+        } else {
+          setError(profileRes.error.message || 'Could not load profile.');
+          return;
+        }
+      } else {
+        setProfile(profileRes.data ?? null);
       }
       if (logsRes.error) {
         if (/column.*does not exist|city|normalized_vantage|user_input_vantage/i.test(logsRes.error.message ?? '')) {
@@ -182,14 +202,12 @@ export default function MyProfileScreen() {
             setError(fallbackError.message || 'Could not load your mornings.');
             return;
           }
-          setProfile(profileRes.data ?? null);
           setLogs((fallbackData ?? []) as LogRow[]);
         } else {
           setError(logsRes.error.message || 'Could not load your mornings.');
           return;
         }
       } else {
-        setProfile(profileRes.data ?? null);
         setLogs((logsRes.data ?? []) as LogRow[]);
       }
     } catch {
@@ -200,6 +218,136 @@ export default function MyProfileScreen() {
       setLoading(false);
     }
   }, []);
+
+  const uploadAvatarFromUri = useCallback(async (uri: string, userId: string) => {
+    setUploadingAvatar(true);
+    setError('');
+    try {
+      const manipulated = await manipulateAsync(
+        uri,
+        [{ resize: { width: AVATAR_SIZE, height: AVATAR_SIZE } }],
+        { compress: 0.9, format: SaveFormat.JPEG }
+      );
+      if (!manipulated.uri) {
+        setError('Could not prepare image.');
+        return;
+      }
+      const file = new File(manipulated.uri);
+      const buffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      const path = `${userId}.jpg`;
+      const { error: uploadError } = await supabase.storage
+        .from(AVATAR_BUCKET)
+        .upload(path, bytes, { contentType: 'image/jpeg', upsert: true });
+      if (uploadError) {
+        setError(uploadError.message || 'Upload failed.');
+        return;
+      }
+      const { data: urlData } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(path);
+      const avatarUrl = urlData?.publicUrl ?? null;
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: avatarUrl })
+        .eq('user_id', userId);
+      if (updateError) {
+        setError(updateError.message || 'Could not update profile.');
+        return;
+      }
+      // Cache-bust so the image component refetches (same path is overwritten in storage)
+      const displayUrl = avatarUrl ? `${avatarUrl}?t=${Date.now()}` : null;
+      setProfile((prev) => (prev ? { ...prev, avatar_url: displayUrl } : null));
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      __DEV__ && console.error('[Profile] avatar upload error', e);
+      setError(message || 'Something went wrong.');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }, []);
+
+  const removeAvatar = useCallback(async (userId: string) => {
+    setUploadingAvatar(true);
+    setError('');
+    try {
+      await supabase.storage.from(AVATAR_BUCKET).remove([`${userId}.jpg`]);
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: null })
+        .eq('user_id', userId);
+      if (updateError) {
+        setError(updateError.message || 'Could not update profile.');
+        return;
+      }
+      setProfile((prev) => (prev ? { ...prev, avatar_url: null } : null));
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      __DEV__ && console.error('[Profile] avatar remove error', e);
+      setError(message || 'Something went wrong.');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }, []);
+
+  const handleAvatarPress = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) return;
+    const hasAvatar = Boolean(profile?.avatar_url?.trim());
+    const options: { text: string; onPress?: () => void }[] = [
+      {
+        text: 'Take photo',
+        onPress: async () => {
+          const { status } = await ImagePicker.requestCameraPermissionsAsync();
+          if (status !== 'granted') {
+            setError('Camera access is needed to take a photo.');
+            return;
+          }
+          const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.9,
+          });
+          if (result.canceled || !result.assets?.[0]?.uri) return;
+          await uploadAvatarFromUri(result.assets[0].uri, userId);
+        },
+      },
+      {
+        text: 'Choose from library',
+        onPress: async () => {
+          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (status !== 'granted') {
+            setError('Photo library access is needed.');
+            return;
+          }
+          const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.9,
+          });
+          if (result.canceled || !result.assets?.[0]?.uri) return;
+          await uploadAvatarFromUri(result.assets[0].uri, userId);
+        },
+      },
+    ];
+    if (hasAvatar) {
+      options.push({
+        text: 'Remove photo',
+        onPress: () => removeAvatar(userId),
+      });
+    }
+    options.push({ text: 'Cancel', onPress: () => {} });
+    Alert.alert(
+      'Profile photo',
+      undefined,
+      options.map((o) => ({
+        text: o.text,
+        onPress: o.onPress,
+        style: o.text === 'Cancel' ? 'cancel' : undefined,
+      }))
+    );
+  }, [profile?.avatar_url, uploadAvatarFromUri, removeAvatar]);
 
   useEffect(() => {
     load();
@@ -285,9 +433,31 @@ export default function MyProfileScreen() {
                     </Text>
                   ) : null}
                 </View>
-                <View style={styles.avatarCircle}>
-                  <Text style={styles.avatarInitial}>
-                    {(profile?.first_name?.trim() || 'W').charAt(0).toUpperCase()}
+                <View style={styles.avatarColumn}>
+                  <Pressable
+                    style={({ pressed }) => [styles.avatarCircle, pressed && styles.avatarCirclePressed]}
+                    onPress={handleAvatarPress}
+                    disabled={uploadingAvatar}
+                  >
+                    {profile?.avatar_url ? (
+                      <Image
+                        source={{ uri: profile.avatar_url }}
+                        style={styles.avatarImage}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <Text style={styles.avatarInitial}>
+                        {(profile?.first_name?.trim() || 'W').charAt(0).toUpperCase()}
+                      </Text>
+                    )}
+                    {uploadingAvatar ? (
+                      <View style={styles.avatarOverlay}>
+                        <ActivityIndicator size="small" color="#fff" />
+                      </View>
+                    ) : null}
+                  </Pressable>
+                  <Text style={styles.avatarCaption}>
+                    {profile?.avatar_url ? 'Change photo' : 'Add photo'}
                   </Text>
                 </View>
               </View>
@@ -478,6 +648,16 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 4,
   },
+  avatarColumn: {
+    alignItems: 'center',
+  },
+  avatarCaption: {
+    fontSize: 12,
+    opacity: 0.65,
+    color: Dawn.text.secondary,
+    textAlign: 'center',
+    marginTop: 4,
+  },
   avatarCircle: {
     width: 52,
     height: 52,
@@ -485,6 +665,22 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(175, 194, 218, 0.25)',
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
+  },
+  avatarCirclePressed: {
+    opacity: 0.9,
+  },
+  avatarImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+  },
+  avatarOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 26,
   },
   avatarInitial: {
     fontSize: 22,

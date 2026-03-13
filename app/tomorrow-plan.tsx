@@ -72,42 +72,19 @@ function formatReminderTime(date: Date): string {
   return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-/** Returns weather line and optional second line for sunrise card. todayMorning: "this morning" vs "tomorrow morning". */
-function getSunriseWeatherCopy(
-  tomorrowWeather: string | null,
-  todayMorning: boolean
-): { weatherLine: string; optionalLine?: string } {
-  if (todayMorning) {
-    switch (tomorrowWeather) {
-      case 'clear':
-        return { weatherLine: 'Clear skies expected this morning.' };
-      case 'cloudy':
-        return {
-          weatherLine: 'Clouds expected this morning.',
-          optionalLine: 'But dawn walks are still worth it.',
-        };
-      case 'rain':
-        return { weatherLine: 'Rain may arrive this morning.' };
-      case 'storm':
-        return { weatherLine: 'Stormy weather may arrive this morning.' };
-      default:
-        return { weatherLine: 'This morning awaits.' };
-    }
-  }
-  switch (tomorrowWeather) {
+/** Short weather line for sunrise card (two-line card: city • time, then weather). */
+function getSunriseWeatherLine(weather: string | null): string {
+  switch (weather) {
     case 'clear':
-      return { weatherLine: 'Clear skies expected tomorrow morning.' };
+      return 'Clear at dawn.';
     case 'cloudy':
-      return {
-        weatherLine: 'Clouds expected tomorrow morning.',
-        optionalLine: 'But dawn walks are still worth it.',
-      };
+      return 'Clouds at dawn.';
     case 'rain':
-      return { weatherLine: 'Rain may arrive tomorrow morning.' };
+      return 'Rain at dawn.';
     case 'storm':
-      return { weatherLine: 'Stormy weather may arrive tomorrow morning.' };
+      return 'Stormy weather possible.';
     default:
-      return { weatherLine: 'Tomorrow morning awaits.' };
+      return 'Dawn awaits.';
   }
 }
 
@@ -129,7 +106,7 @@ export default function TomorrowPlanScreen() {
   const [alarmTime, setAlarmTime] = useState<string | null>(null);
   const [showReminderUpdated, setShowReminderUpdated] = useState(false);
 
-  const { sunriseToday, sunriseTomorrow, minutesToSunrise, sunriseCardTimeMessage, isDawnMode, tomorrowWeather } = useMorningContext(profile?.city ?? null);
+  const { sunriseToday, sunriseTomorrow, minutesToSunrise, isDawnMode, tomorrowWeather } = useMorningContext(profile?.city ?? null);
   const cityName = profile?.city ?? null;
 
   const isTodayMode = minutesToSunrise != null && minutesToSunrise > 0;
@@ -314,7 +291,7 @@ export default function TomorrowPlanScreen() {
     })();
   }, [reminderDate]);
 
-  const { weatherLine, optionalLine } = getSunriseWeatherCopy(tomorrowWeather, isTodayMode);
+  const weatherLineShort = getSunriseWeatherLine(tomorrowWeather);
 
   return (
     <View style={styles.container}>
@@ -328,6 +305,7 @@ export default function TomorrowPlanScreen() {
         showBranding
         title={isTodayMode ? 'Today morning' : 'Tomorrow morning'}
         subtitle={isTodayMode ? 'Dawn is approaching.' : 'The sun will rise again.'}
+        wrapperMarginBottom={0}
       />
 
       <KeyboardAvoidingView
@@ -351,32 +329,22 @@ export default function TomorrowPlanScreen() {
             />
           </View>
 
-          {/* Sunrise card — Today or Tomorrow mode */}
+          {/* Sunrise card — two-line: city • time, then weather */}
           <View style={styles.sunriseContextCard}>
             <View style={styles.sunTitleRow}>
-              <Text style={styles.sunEmoji}>☀️</Text>
+              <Text style={styles.sunEmoji}>🌅</Text>
               <Text style={styles.sunTitle}>
                 {isTodayMode ? "Today's sunrise" : "Tomorrow's sunrise"}
               </Text>
             </View>
-            <Text style={styles.sunriseContextCardBody}>
-              Sunrise in {cityName || 'your city'} will be at {formatSunriseTime(sunriseDisplay)}.
+            <Text style={styles.sunriseContextCardTime}>
+              {cityName || 'Your city'} • {formatSunriseTime(sunriseDisplay)}
             </Text>
-            {isTodayMode && sunriseCardTimeMessage != null ? (
-              <Text style={styles.sunriseContextCardBody}>{sunriseCardTimeMessage}</Text>
-            ) : null}
-            <Text style={[styles.sunriseContextCardBody, !optionalLine && styles.sunriseContextCardBodyLast]}>
-              {weatherLine}
-            </Text>
-            {optionalLine ? (
-              <Text style={styles.sunriseContextCardSub}>{optionalLine}</Text>
-            ) : null}
+            <Text style={styles.sunriseContextCardWeather}>{weatherLineShort}</Text>
           </View>
 
           {/* Intention input */}
-          <Text style={styles.prompt}>
-            Where might you welcome the first light {isTodayMode ? 'today' : 'tomorrow'}?
-          </Text>
+          <Text style={styles.prompt}>Where will you greet the sunrise?</Text>
           <TextInput
             style={styles.input}
             value={intention}
@@ -477,15 +445,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   sunEmoji: {
     fontSize: 18,
   },
   sunTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
     color: Dawn.text.primary,
+  },
+  sunriseContextCardTime: {
+    fontSize: 15,
+    color: Dawn.text.primary,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  sunriseContextCardWeather: {
+    fontSize: 13,
+    color: Dawn.text.secondary,
+    textAlign: 'center',
   },
   titleEmoji: {
     fontSize: 17,
@@ -526,11 +505,11 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 24,
     paddingBottom: 48,
-    paddingTop: 12,
+    paddingTop: 8,
   },
   streakWrap: {
-    marginTop: 12,
-    marginBottom: 16,
+    marginTop: 8,
+    marginBottom: 12,
   },
   streakBlockSpacing: {
     marginTop: 0,
@@ -551,29 +530,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  sunriseContextCardTitle: {
-    fontSize: 17,
-    lineHeight: 22,
-    fontWeight: '600',
-    color: Dawn.text.primary,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  sunriseContextCardBody: {
-    fontSize: 14,
-    color: Dawn.text.secondary,
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  sunriseContextCardBodyLast: {
-    marginBottom: 12,
-  },
-  sunriseContextCardSub: {
-    fontSize: 14,
-    color: Dawn.text.secondary,
-    textAlign: 'center',
-    marginBottom: 12,
-  },
   card: {
     backgroundColor: Dawn.surface.card,
     borderRadius: 16,
@@ -585,12 +541,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
     color: Dawn.text.primary,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   input: {
     backgroundColor: Dawn.surface.card,
     borderRadius: 12,
-    paddingVertical: 14,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     fontSize: 15,
     color: Dawn.text.primary,
