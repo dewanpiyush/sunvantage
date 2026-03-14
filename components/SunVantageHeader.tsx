@@ -1,22 +1,29 @@
-import React, { useState } from 'react';
-import { View, Text, Pressable, Modal, StyleSheet } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, Pressable, StyleSheet, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import supabase from '../supabase';
 import { Dawn } from '../constants/theme';
+import NavigationOverlay from './NavigationOverlay';
+
+const ARROW_ROTATION_DURATION = 180;
+const TITLE_TO_TAGLINE = 6;
+const TAGLINE_TO_ARROW = 6;
+const ARROW_TO_CONTENT = 18;
 
 type Props = {
   showBack?: boolean;
   title?: string;
   subtitle?: string;
+  /** Optional tagline shown below the SunVantage title (e.g. on home). Tappable with title to open nav. */
+  tagline?: string;
   children?: React.ReactNode;
   /** When true, first menu item is "Today's sunrise"; when false, "Log today's sunrise". Both route to /witness. */
   hasLoggedToday?: boolean;
   /** When true, only show back (← Home), title, subtitle; no SunVantage dropdown. */
   hideMenu?: boolean;
-  /** When true with hideMenu, show the large "SunVantage" branding text (no chevron). */
+  /** When true with hideMenu, show the large "SunVantage" branding text (no menu trigger). */
   showBranding?: boolean;
-  /** When true, show "My City's Sunrises" in the chevron menu (only if there are other users' photos in the same city). */
+  /** When true, show "My City's Sunrises" in the nav panel. */
   showMyCitySunrises?: boolean;
   /** Override bottom margin of the header wrapper (e.g. 0 for tighter layout when scroll content has its own padding). */
   wrapperMarginBottom?: number;
@@ -26,15 +33,43 @@ type Props = {
   onBackPress?: () => void;
 };
 
-export default function SunVantageHeader({ showBack, title, subtitle, children, hasLoggedToday = false, hideMenu = false, showBranding = false, showMyCitySunrises = false, wrapperMarginBottom, backLabel, onBackPress }: Props) {
+export default function SunVantageHeader({
+  showBack,
+  title,
+  subtitle,
+  tagline,
+  children,
+  hasLoggedToday = false,
+  hideMenu = false,
+  showBranding = false,
+  showMyCitySunrises = false,
+  wrapperMarginBottom,
+  backLabel,
+  onBackPress,
+}: Props) {
   const router = useRouter();
-  const [menuVisible, setMenuVisible] = useState(false);
+  const [navVisible, setNavVisible] = useState(false);
+  const arrowRotation = useRef(new Animated.Value(0)).current;
 
-  const firstMenuItemLabel = hasLoggedToday ? "Today's sunrise" : "Log today's sunrise";
-  const firstMenuItemRoute = '/witness';
+  useEffect(() => {
+    if (!navVisible) {
+      Animated.timing(arrowRotation, {
+        toValue: 0,
+        duration: ARROW_ROTATION_DURATION,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [navVisible]);
+
+  const handleHeaderPress = () => {
+    Animated.timing(arrowRotation, {
+      toValue: 1,
+      duration: ARROW_ROTATION_DURATION,
+      useNativeDriver: true,
+    }).start(() => setNavVisible(true));
+  };
 
   const handleSignOut = async () => {
-    setMenuVisible(false);
     await supabase.auth.signOut();
     router.replace('/auth' as never);
   };
@@ -57,13 +92,35 @@ export default function SunVantageHeader({ showBack, title, subtitle, children, 
         )}
         {!hideMenu && (
           <Pressable
-            style={({ pressed }) => [styles.headerRow, pressed && { opacity: 0.78 }]}
-            onPress={() => setMenuVisible(true)}
+            style={({ pressed }) => [styles.headerBlock, pressed && { opacity: 0.78 }]}
+            onPress={handleHeaderPress}
           >
-            <Text style={styles.appName}>SunVantage</Text>
-            <View style={[styles.chevronWrap, { transform: [{ rotate: menuVisible ? '90deg' : '0deg' }] }]}>
-              <Ionicons name="chevron-forward" size={18} color={Dawn.text.secondary} />
+            <View style={styles.headerRow}>
+              <Text style={styles.appName}>SunVantage</Text>
+              <Text style={styles.headerEmoji}>🧭</Text>
             </View>
+            {tagline ? (
+              <>
+                <Text style={styles.tagline}>{tagline}</Text>
+                <Animated.Text
+                  style={[
+                    styles.arrowIndicator,
+                    {
+                      transform: [
+                        {
+                          rotate: arrowRotation.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: ['0deg', '90deg'],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                >
+                  ⌄
+                </Animated.Text>
+              </>
+            ) : null}
           </Pressable>
         )}
         {hideMenu && showBranding ? <Text style={styles.appName}>SunVantage</Text> : null}
@@ -72,70 +129,20 @@ export default function SunVantageHeader({ showBack, title, subtitle, children, 
         {children}
       </View>
 
-      <Modal
-        visible={menuVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setMenuVisible(false)}
-        statusBarTranslucent
-      >
-        <Pressable style={styles.menuBackdrop} onPress={() => setMenuVisible(false)}>
-          <Pressable style={styles.menuSheet} onPress={() => {}}>
-            <View style={styles.menuDragIndicator} />
-            <Pressable
-              style={({ pressed }) => [styles.menuOption, pressed && { opacity: 0.78 }]}
-              onPress={() => { setMenuVisible(false); router.push(firstMenuItemRoute as never); }}
-            >
-              <Text style={styles.menuOptionText}>{firstMenuItemLabel}</Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.menuOption, pressed && { opacity: 0.78 }]}
-              onPress={() => { setMenuVisible(false); router.push('/tomorrow-plan' as never); }}
-            >
-              <Text style={styles.menuOptionText}>Tomorrow's plan</Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.menuOption, pressed && { opacity: 0.78 }]}
-              onPress={() => { setMenuVisible(false); router.push('/my-mornings'); }}
-            >
-              <Text style={styles.menuOptionText}>My Mornings</Text>
-            </Pressable>
-            {showMyCitySunrises ? (
-              <Pressable
-                style={({ pressed }) => [styles.menuOption, pressed && { opacity: 0.78 }]}
-                onPress={() => { setMenuVisible(false); router.push('/my-city-sunrises'); }}
-              >
-                <Text style={styles.menuOptionText}>My City's Sunrises</Text>
-              </Pressable>
-            ) : null}
-            <Pressable
-              style={({ pressed }) => [styles.menuOption, pressed && { opacity: 0.78 }]}
-              onPress={() => { setMenuVisible(false); router.push('/ritual-markers'); }}
-            >
-              <Text style={styles.menuOptionText}>My Ritual Markers</Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.menuOption, pressed && { opacity: 0.78 }]}
-              onPress={() => { setMenuVisible(false); router.push('/profile'); }}
-            >
-              <Text style={styles.menuOptionText}>My Profile</Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.menuOption, pressed && { opacity: 0.78 }]}
-              onPress={handleSignOut}
-            >
-              <Text style={styles.menuOptionText}>Sign out</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <NavigationOverlay
+        visible={navVisible}
+        onClose={() => setNavVisible(false)}
+        hasLoggedToday={hasLoggedToday}
+        showMyCitySunrises={showMyCitySunrises}
+        onSignOut={handleSignOut}
+      />
     </>
   );
 }
 
 const styles = StyleSheet.create({
   wrapper: {
-    marginBottom: 20,
+    marginBottom: ARROW_TO_CONTENT,
   },
   backControl: {
     alignSelf: 'flex-start',
@@ -144,6 +151,9 @@ const styles = StyleSheet.create({
   backControlText: {
     fontSize: 14,
     color: Dawn.text.secondary,
+  },
+  headerBlock: {
+    alignSelf: 'flex-start',
   },
   headerRow: {
     flexDirection: 'row',
@@ -155,8 +165,21 @@ const styles = StyleSheet.create({
     color: Dawn.text.primary,
     letterSpacing: 0.8,
   },
-  chevronWrap: {
+  headerEmoji: {
+    fontSize: 20,
     marginLeft: 6,
+  },
+  tagline: {
+    marginTop: TITLE_TO_TAGLINE,
+    fontSize: 14,
+    color: Dawn.text.secondary,
+  },
+  arrowIndicator: {
+    marginTop: TAGLINE_TO_ARROW,
+    marginBottom: 0,
+    fontSize: 14,
+    color: Dawn.text.secondary,
+    opacity: 0.8,
   },
   title: {
     marginTop: 6,
@@ -169,35 +192,5 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 14,
     color: Dawn.text.secondary,
-  },
-  menuBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(14, 34, 61, 0.6)',
-    justifyContent: 'flex-end',
-  },
-  menuSheet: {
-    backgroundColor: Dawn.background.primary,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 16,
-    paddingBottom: 40,
-    paddingHorizontal: 24,
-  },
-  menuDragIndicator: {
-    alignSelf: 'center',
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: Dawn.border.subtle,
-    marginBottom: 16,
-  },
-  menuOption: {
-    paddingVertical: 16,
-    paddingHorizontal: 4,
-    marginBottom: 2,
-  },
-  menuOptionText: {
-    fontSize: 17,
-    color: Dawn.text.primary,
   },
 });

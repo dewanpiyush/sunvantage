@@ -370,12 +370,15 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <SunVantageHeader hasLoggedToday={loggedToday} showMyCitySunrises={showMyCitySunrises} />
+        <SunVantageHeader
+          hasLoggedToday={loggedToday}
+          showMyCitySunrises={showMyCitySunrises}
+          tagline="Your quiet place to notice the morning."
+        />
 
-        {/* New user (no sunrise logged): Subheading, greeting, then ritual card */}
+        {/* New user (no sunrise logged): greeting, then ritual card (tagline is in header) */}
         {totalSunrises === 0 && (
           <>
-            <Text style={styles.subheading}>Your quiet place to notice the morning.</Text>
             <View style={styles.anchorBlock}>
               <Text style={styles.anchorLine1}>
                 {newUserPreSunrise
@@ -396,10 +399,9 @@ export default function HomeScreen() {
           </>
         )}
 
-        {/* Returning user: tagline, streak, reveal, then greeting */}
+        {/* Returning user: streak, reveal, then greeting (tagline is in header when nav is shown) */}
         {totalSunrises > 0 && (
           <>
-            <Text style={styles.tagline}>Your quiet place to notice the morning.</Text>
             <StreakBlock
               currentStreak={streak.current}
               longestStreak={streak.longest}
@@ -439,10 +441,11 @@ export default function HomeScreen() {
           </>
         )}
 
-        {/* Sunrise card — always shown; border only pre-sunrise / within ±45 min window */}
+        {/* Sunrise card — always shown; primary card when logged today (stronger + outline) */}
         <View style={[
           styles.sunriseContextCard,
           minutesToSunrise != null && minutesToSunrise < -45 && styles.sunriseContextCardPostSunrise,
+          loggedToday && styles.sunriseContextCardPrimary,
         ]}>
           <View style={styles.sunTitleRow}>
             <Text style={styles.sunEmoji}>☀️</Text>
@@ -473,7 +476,7 @@ export default function HomeScreen() {
           ) : loggedToday ? (
             <>
               <Text style={styles.sunriseContextCardBody}>
-                Sunrise in {cityName || 'your city'} was at {formatSunriseTime(sunriseToday)}.
+                {cityName || 'Your city'} · {formatSunriseTime(sunriseToday)}
               </Text>
               <Text style={styles.sunriseContextCardSub}>You welcomed the morning.</Text>
               <Pressable
@@ -502,6 +505,7 @@ export default function HomeScreen() {
               <Pressable
                 style={({ pressed }) => [
                   styles.modeCard,
+                  styles.modeCardSecondary,
                   totalSunrises === 1 && styles.modeCardFirstSunriseLoggedGap,
                   pressed && styles.modeCardPressed,
                 ]}
@@ -535,7 +539,7 @@ export default function HomeScreen() {
               </Pressable>
               {totalSunrises === 1 ? (
                 <Pressable
-                  style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
+                  style={({ pressed }) => [styles.modeCard, styles.modeCardSecondary, pressed && styles.modeCardPressed]}
                   onPress={() => router.push('/my-city-sunrises')}
                 >
                   <Text style={styles.modeCardTitle}>Shared dawn in {cityName || 'your city'}</Text>
@@ -548,7 +552,7 @@ export default function HomeScreen() {
                 </Pressable>
               ) : (
                 <Pressable
-                  style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
+                  style={({ pressed }) => [styles.modeCard, styles.modeCardSecondary, pressed && styles.modeCardPressed]}
                   onPress={() => router.push('/my-mornings')}
                 >
                   <Text style={styles.modeCardTitle}>View your mornings</Text>
@@ -779,20 +783,14 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 24,
-    paddingBottom: 24,
+    paddingBottom: 40,
     paddingTop: 12,
   },
   tagline: {
     marginTop: 12,
-    marginBottom: 4,
+    marginBottom: 0,
     fontSize: 14,
     color: Dawn.text.secondary,
-  },
-  subheading: {
-    fontSize: 15,
-    opacity: 0.7,
-    color: Dawn.text.secondary,
-    marginBottom: 14,
   },
   ritualIntroCard: {
     backgroundColor: Dawn.surface.card,
@@ -837,7 +835,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   anchorBlock: {
-    marginBottom: 12,
+    marginBottom: 16,
   },
   anchorLine1: {
     fontSize: 15,
@@ -854,8 +852,8 @@ const styles = StyleSheet.create({
     backgroundColor: Dawn.surface.card,
     borderRadius: 22,
     padding: 16,
-    marginTop: 20,
-    marginBottom: 8,
+    marginTop: 0,
+    marginBottom: 24,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Dawn.border.subtle,
@@ -869,6 +867,10 @@ const styles = StyleSheet.create({
     borderColor: Dawn.border.subtle,
     shadowOpacity: 0,
     elevation: 0,
+  },
+  sunriseContextCardPrimary: {
+    borderColor: Dawn.border.sunriseCard,
+    backgroundColor: '#1a3558',
   },
   sunriseContextCardTitle: {
     fontSize: 17,
@@ -919,10 +921,10 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   cardsBlockFirstSunriseLogged: {
-    marginTop: 20,
+    marginTop: 0,
   },
   modeCardFirstSunriseLoggedGap: {
-    marginBottom: 28,
+    marginBottom: 24,
   },
   modeCardLinkWrap: {
     marginTop: 24,
@@ -970,6 +972,9 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 24,
     alignItems: 'center',
+  },
+  modeCardSecondary: {
+    backgroundColor: '#122845',
   },
   modeCardTightBottom: {
     marginBottom: 6,

@@ -5,16 +5,20 @@ import { Dawn } from '../constants/theme';
 function getStreakLines(
   currentStreak: number,
   longestStreak: number
-): { primary: string; secondary: string } {
+): { primary: string; secondary: string; secondaryCompact: string } {
   const dayWord = (n: number) => (n === 1 ? 'day' : 'days');
-  const primary = `${currentStreak} ${dayWord(currentStreak)} streak`;
+  // Compact single-line uses "N day streak" (e.g. "2 day streak")
+  const primary = `${currentStreak} day streak`;
   let secondary: string;
+  let secondaryCompact: string;
   if (currentStreak >= 5 && currentStreak === longestStreak) {
     secondary = 'Your longest so far';
+    secondaryCompact = 'Your longest so far';
   } else {
     secondary = `Longest: ${longestStreak} ${dayWord(longestStreak)}`;
+    secondaryCompact = `Longest ${longestStreak}`;
   }
-  return { primary, secondary };
+  return { primary, secondary, secondaryCompact };
 }
 
 type Props = {
@@ -37,19 +41,19 @@ export default function StreakBlock({ currentStreak, longestStreak, loading = fa
     );
   }
 
-  const { primary, secondary } = getStreakLines(currentStreak, longestStreak);
+  const { primary, secondary, secondaryCompact } = getStreakLines(currentStreak, longestStreak);
   const showLongest = !(hideLongestWhenFirst && currentStreak === 1);
 
   return (
     <View style={blockStyle}>
       {currentStreak > 0 ? (
-        <>
-          <View style={styles.streakRow}>
-            <Text style={styles.emoji}>🔥</Text>
-            <Text style={styles.streakPrimary}>{primary}</Text>
-          </View>
-          {showLongest ? <Text style={styles.streakSecondary}>{secondary}</Text> : null}
-        </>
+        <View style={styles.streakRow}>
+          <Text style={styles.emoji}>🔥</Text>
+          <Text style={styles.streakPrimary}>
+            {primary}
+            {showLongest ? ` · ${secondaryCompact}` : ''}
+          </Text>
+        </View>
       ) : longestStreak > 0 ? (
         <>
           <Text style={styles.headerInvitation}>Ready to begin again?</Text>
@@ -64,9 +68,9 @@ export default function StreakBlock({ currentStreak, longestStreak, loading = fa
 
 const styles = StyleSheet.create({
   streakBlock: {
-    marginTop: 12,
+    marginTop: 16,
     paddingVertical: 2,
-    marginBottom: 16,
+    marginBottom: 8,
   },
   streakRow: {
     flexDirection: 'row',
