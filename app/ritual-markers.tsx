@@ -412,12 +412,11 @@ export default function RitualMarkersScreen() {
 
       <View style={styles.header}>
         <SunVantageHeader
-          showBack
-          hideMenu
-          showBranding
           title="Ritual Markers"
           subtitle="Moments your mornings have shaped."
           hasLoggedToday={hasLoggedToday(logs)}
+          screenTitle
+          onHeaderPress={() => router.push('/home')}
         />
       </View>
 

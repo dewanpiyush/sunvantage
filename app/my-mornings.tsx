@@ -280,12 +280,11 @@ export default function MyMorningsScreen() {
 
       <View style={styles.header}>
         <SunVantageHeader
-          showBack
-          hideMenu
-          showBranding
           title="My Mornings"
           subtitle="A chronological archive of your sunrise logs."
           hasLoggedToday={hasLoggedToday(logs)}
+          screenTitle
+          onHeaderPress={() => router.push('/home')}
         />
       </View>
 

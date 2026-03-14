@@ -1053,11 +1053,12 @@ export function SunriseLog({
       <View style={styles.gradientVignette} pointerEvents="none" />
       <View style={styles.header}>
         <SunVantageHeader
-          showBack
-          hideMenu
-          showBranding
+          title="Today's Sunrise"
           subtitle={getWitnessSubheading(currentStreak, totalSunrises)}
+          hasLoggedToday={hasLogged}
           wrapperMarginBottom={0}
+          screenTitle
+          onHeaderPress={() => router.push('/home')}
         >
           {!initialLoading && (
             currentStreak > 0 || longestStreak > 0 ? (

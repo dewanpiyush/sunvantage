@@ -75,6 +75,7 @@ export default function NavigationOverlay({
 
   const communityItems: NavItem[] = [
     { emoji: '🌍', label: "My City's Sunrises", route: '/my-city-sunrises', show: showMyCitySunrises },
+    { emoji: '🌐', label: 'Global Sunrise Map', route: '/global-sunrise-map' },
   ];
 
   const youItems: NavItem[] = [

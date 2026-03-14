@@ -31,6 +31,10 @@ type Props = {
   backLabel?: string;
   /** Override back button action (e.g. router.back() when returning to previous screen). */
   onBackPress?: () => void;
+  /** When true, title uses slightly larger screen-title style (for top-level pages). */
+  screenTitle?: boolean;
+  /** When set, header tap runs this (e.g. go home). When unset, header tap opens the nav drawer (Home only). */
+  onHeaderPress?: () => void;
 };
 
 export default function SunVantageHeader({
@@ -46,6 +50,8 @@ export default function SunVantageHeader({
   wrapperMarginBottom,
   backLabel,
   onBackPress,
+  screenTitle = false,
+  onHeaderPress,
 }: Props) {
   const router = useRouter();
   const [navVisible, setNavVisible] = useState(false);
@@ -62,6 +68,10 @@ export default function SunVantageHeader({
   }, [navVisible]);
 
   const handleHeaderPress = () => {
+    if (onHeaderPress) {
+      onHeaderPress();
+      return;
+    }
     Animated.timing(arrowRotation, {
       toValue: 1,
       duration: ARROW_ROTATION_DURATION,
@@ -96,8 +106,9 @@ export default function SunVantageHeader({
             onPress={handleHeaderPress}
           >
             <View style={styles.headerRow}>
+              {!tagline ? <Text style={styles.chevron}>‹</Text> : null}
               <Text style={styles.appName}>SunVantage</Text>
-              <Text style={styles.headerEmoji}>🧭</Text>
+              <Text style={styles.headerEmoji}>🌅</Text>
             </View>
             {tagline ? (
               <>
@@ -124,7 +135,7 @@ export default function SunVantageHeader({
           </Pressable>
         )}
         {hideMenu && showBranding ? <Text style={styles.appName}>SunVantage</Text> : null}
-        {title ? <Text style={styles.title}>{title}</Text> : null}
+        {title ? <Text style={[styles.title, screenTitle && styles.screenTitle]}>{title}</Text> : null}
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
         {children}
       </View>
@@ -159,6 +170,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  chevron: {
+    fontSize: 20,
+    color: Dawn.text.secondary,
+    marginRight: 4,
+    fontWeight: '300',
+  },
   appName: {
     fontSize: 24,
     fontWeight: '600',
@@ -187,6 +204,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Dawn.text.primary,
     letterSpacing: 0.8,
+  },
+  screenTitle: {
+    marginTop: 8,
+    fontSize: 26,
+    fontWeight: '700',
   },
   subtitle: {
     marginTop: 8,

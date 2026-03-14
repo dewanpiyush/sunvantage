@@ -300,12 +300,12 @@ export default function TomorrowPlanScreen() {
       <View style={styles.gradientLowerWarm} pointerEvents="none" />
 
       <SunVantageHeader
-        showBack
-        hideMenu
-        showBranding
-        title={isTodayMode ? 'Today morning' : 'Tomorrow morning'}
+        title={isTodayMode ? 'Today morning' : 'Plan Tomorrow'}
         subtitle={isTodayMode ? 'Dawn is approaching.' : 'The sun will rise again.'}
+        hasLoggedToday={false}
         wrapperMarginBottom={0}
+        screenTitle
+        onHeaderPress={() => router.push('/home')}
       />
 
       <KeyboardAvoidingView

@@ -403,7 +403,12 @@ export default function MyProfileScreen() {
       <View style={styles.gradientLowerWarm} pointerEvents="none" />
 
       <View style={styles.header}>
-        <SunVantageHeader showBack hideMenu showBranding title="My Profile" hasLoggedToday={hasLoggedToday(logs)} />
+        <SunVantageHeader
+          title="Profile"
+          hasLoggedToday={hasLoggedToday(logs)}
+          screenTitle
+          onHeaderPress={() => router.push('/home')}
+        />
       </View>
 
       {error ? (

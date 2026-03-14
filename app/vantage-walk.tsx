@@ -222,10 +222,11 @@ export default function VantageWalkScreen() {
         showsVerticalScrollIndicator={false}
       >
         <SunVantageHeader
-          showBack
-          hideMenu
           title="Vantage Hunt"
           subtitle="Walk toward somewhere new."
+          hasLoggedToday={false}
+          screenTitle
+          onHeaderPress={() => router.push('/home')}
         />
 
         {/* Streak — same as Witness, Header → 12px → Streak → 16px → Card */}
