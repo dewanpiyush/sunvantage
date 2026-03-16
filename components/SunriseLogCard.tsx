@@ -30,7 +30,7 @@ import { REFLECTION_PROMPT, getNextReflectionPrompt, setLastUsedReflectionPrompt
 import { normalizeVantageForStorage } from '../lib/vantageUtils';
 import { Dawn } from '../constants/theme';
 import { useMorningContext } from '../hooks/useMorningContext';
-import { getMinutesToSunrise } from '../services/weatherService';
+import { getMinutesToSunrise, getCoordinatesForCity } from '../services/weatherService';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 const photoBucket = 'sunrise_photos';
@@ -110,6 +110,7 @@ export default function SunriseLogCard({
   const [error, setError] = useState('');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [detectingVantageLocation, setDetectingVantageLocation] = useState(false);
+  const [overrideCoords, setOverrideCoords] = useState<{ latitude: number; longitude: number } | null>(null);
 
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const cardScale = useRef(new Animated.Value(0.96)).current;
@@ -282,6 +283,7 @@ export default function SunriseLogCard({
         setError('Location access was denied or unavailable.');
         return;
       }
+      setOverrideCoords(coords);
       const placeName = await reverseGeocodeToPlaceName(coords.latitude, coords.longitude);
       if (placeName) {
         setVantageName(placeName);
@@ -330,6 +332,7 @@ export default function SunriseLogCard({
     setReflectionText('');
     setPhotoUri(null);
     setPhotoBase64(null);
+    setOverrideCoords(null);
   }, []);
 
   const handleSave = useCallback(async () => {
@@ -352,9 +355,38 @@ export default function SunriseLogCard({
 
       const displayVantage = vantageName.trim() || null;
       const vantageNorm = displayVantage ? normalizeVantageForStorage(displayVantage) : null;
+
+      // City-level dot: store one lat/lng per city on each log.
+      // Prefer override coords (if the user allowed location), then profile coords, then default geocode for city.
+      const profileRes = await supabase
+        .from('profiles')
+        .select('city, latitude, longitude')
+        .eq('user_id', userId)
+        .maybeSingle();
+      const profile = profileRes.data as { city?: string | null; latitude?: number | null; longitude?: number | null } | null;
+      const resolvedCity = (profile?.city?.trim() || (city && city.trim()) || '');
+      let lat =
+        overrideCoords?.latitude ??
+        (typeof profile?.latitude === 'number' ? profile?.latitude : null);
+      let lng =
+        overrideCoords?.longitude ??
+        (typeof profile?.longitude === 'number' ? profile?.longitude : null);
+      if (
+        resolvedCity &&
+        (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng))
+      ) {
+        const geo = await getCoordinatesForCity(resolvedCity, { userId, supabase });
+        lat = geo?.latitude ?? null;
+        lng = geo?.longitude ?? null;
+      }
+
       const insertPayload: {
         user_id: string;
         created_at: string;
+        sunrise_day?: string;
+        city?: string;
+        latitude?: number;
+        longitude?: number;
         vantage_name?: string;
         vantage_name_normalized?: string;
         user_input_vantage?: string;
@@ -364,7 +396,13 @@ export default function SunriseLogCard({
       } = {
         user_id: userId,
         created_at: new Date().toISOString(),
+        sunrise_day: getTodayLocalDateString(),
       };
+      if (resolvedCity) insertPayload.city = resolvedCity;
+      if (lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng)) {
+        insertPayload.latitude = lat;
+        insertPayload.longitude = lng;
+      }
       if (vantageNorm != null && vantageNorm.userInputVantage !== '') {
         insertPayload.vantage_name = vantageNorm.userInputVantage;
         insertPayload.user_input_vantage = vantageNorm.userInputVantage;

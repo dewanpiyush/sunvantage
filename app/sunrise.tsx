@@ -19,6 +19,7 @@ import { computeBadgeStats, getEarnedBadges, computeEarnedAtByBadge, type BadgeD
 import { dismissBadgeReveal } from '../lib/ritualReveal';
 import { BADGE_ICONS } from './ritual-markers';
 import { normalizeVantageForStorage, getNormalizedVantageFromRow } from '../lib/vantageUtils';
+import { getCoordinatesForCity } from '../services/weatherService';
 
 const REFLECTION_PROMPTS = [
   'What are you grateful for this morning?',
@@ -700,11 +701,32 @@ export function SunriseLog({
         return;
       }
 
+      // City-level dot: store one lat/lng per city on each log.
+      // Prefer profile coordinates; otherwise geocode by city and persist back to profile.
+      const profileRes = await supabase
+        .from('profiles')
+        .select('city, latitude, longitude')
+        .eq('user_id', userId)
+        .maybeSingle();
+      const profile = profileRes.data as { city?: string | null; latitude?: number | null; longitude?: number | null } | null;
+      const profileCity = profile?.city?.trim() ?? '';
+      let lat = typeof profile?.latitude === 'number' ? profile?.latitude : null;
+      let lng = typeof profile?.longitude === 'number' ? profile?.longitude : null;
+      if (profileCity && (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng))) {
+        const geo = await getCoordinatesForCity(profileCity, { userId, supabase });
+        lat = geo?.latitude ?? null;
+        lng = geo?.longitude ?? null;
+      }
+
       const displayVantage = initialVantageName ?? null;
       const vantageNorm = displayVantage != null && displayVantage !== '' ? normalizeVantageForStorage(displayVantage) : null;
       const insertPayload: {
         user_id: string;
         created_at: string;
+        sunrise_day?: string;
+        city?: string;
+        latitude?: number;
+        longitude?: number;
         vantage_name?: string;
         vantage_name_normalized?: string;
         user_input_vantage?: string;
@@ -713,7 +735,13 @@ export function SunriseLog({
       } = {
         user_id: userId,
         created_at: new Date().toISOString(),
+        sunrise_day: getTodayLocalDateString(),
       };
+      if (profileCity) insertPayload.city = profileCity;
+      if (lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng)) {
+        insertPayload.latitude = lat;
+        insertPayload.longitude = lng;
+      }
       if (vantageNorm != null && vantageNorm.userInputVantage !== '') {
         insertPayload.vantage_name = vantageNorm.userInputVantage;
         insertPayload.user_input_vantage = vantageNorm.userInputVantage;

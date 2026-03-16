@@ -85,58 +85,86 @@ export default function SunVantageHeader({
   };
 
   const handleBackPress = onBackPress ?? (() => { router.push('/home'); });
-  const displayBackLabel = backLabel ?? (hideMenu ? '← Home' : '‹ SunVantage Home');
+  const isBackWithBrandingRow = Boolean(showBack && hideMenu && showBranding);
+  const displayBackLabel = backLabel ?? (isBackWithBrandingRow ? '‹' : hideMenu ? '← Home' : '‹ SunVantage Home');
 
   const wrapperStyle = wrapperMarginBottom !== undefined ? [styles.wrapper, { marginBottom: wrapperMarginBottom }] : styles.wrapper;
 
   return (
     <>
       <View style={wrapperStyle}>
-        {showBack && (
+        {isBackWithBrandingRow ? (
           <Pressable
-            style={({ pressed }) => [styles.backControl, pressed && { opacity: 0.72 }]}
+            style={({ pressed }) => [styles.backBrandingRow, pressed && { opacity: 0.78 }]}
             onPress={handleBackPress}
           >
-            <Text style={styles.backControlText}>{displayBackLabel}</Text>
+            <Text style={[styles.backControlText, styles.backBrandingSpacer]}>{displayBackLabel}</Text>
+            <Text style={styles.appName}>SunVantage</Text>
+            <Text style={styles.headerEmoji}>{'\u{1F305}'}</Text>
           </Pressable>
-        )}
-        {!hideMenu && (
-          <Pressable
-            style={({ pressed }) => [styles.headerBlock, pressed && { opacity: 0.78 }]}
-            onPress={handleHeaderPress}
-          >
-            <View style={styles.headerRow}>
-              {!tagline ? <Text style={styles.chevron}>‹</Text> : null}
-              <Text style={styles.appName}>SunVantage</Text>
-              <Text style={styles.headerEmoji}>🌅</Text>
-            </View>
-            {tagline ? (
-              <>
-                <Text style={styles.tagline}>{tagline}</Text>
-                <Animated.Text
-                  style={[
-                    styles.arrowIndicator,
-                    {
-                      transform: [
+        ) : (
+          <>
+            {showBack && (
+              <Pressable
+                style={({ pressed }) => [styles.backControl, pressed && { opacity: 0.72 }]}
+                onPress={handleBackPress}
+              >
+                <Text style={styles.backControlText}>{displayBackLabel}</Text>
+              </Pressable>
+            )}
+            {!hideMenu && (
+              <Pressable
+                style={({ pressed }) => [styles.headerBlock, pressed && { opacity: 0.78 }]}
+                onPress={handleHeaderPress}
+              >
+                <View style={styles.headerRow}>
+                  {!tagline ? <Text style={styles.chevron}>‹</Text> : null}
+                  <Text style={styles.appName}>SunVantage</Text>
+                  <Text style={styles.headerEmoji}>{'\u{1F305}'}</Text>
+                </View>
+                {tagline ? (
+                  <>
+                    <Text style={styles.tagline}>{tagline}</Text>
+                    <Animated.Text
+                      style={[
+                        styles.arrowIndicator,
                         {
-                          rotate: arrowRotation.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: ['0deg', '90deg'],
-                          }),
+                          transform: [
+                            {
+                              rotate: arrowRotation.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: ['0deg', '90deg'],
+                              }),
+                            },
+                          ],
                         },
-                      ],
-                    },
-                  ]}
-                >
-                  ⌄
-                </Animated.Text>
-              </>
-            ) : null}
-          </Pressable>
+                      ]}
+                    >
+                      ⌄
+                    </Animated.Text>
+                  </>
+                ) : null}
+              </Pressable>
+            )}
+            {hideMenu && showBranding && !showBack ? <Text style={styles.appName}>SunVantage</Text> : null}
+          </>
         )}
-        {hideMenu && showBranding ? <Text style={styles.appName}>SunVantage</Text> : null}
-        {title ? <Text style={[styles.title, screenTitle && styles.screenTitle]}>{title}</Text> : null}
-        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+        {title ? (
+          <Text
+            style={[
+              styles.title,
+              screenTitle && styles.screenTitle,
+              isBackWithBrandingRow && styles.titleCompact,
+            ]}
+          >
+            {title}
+          </Text>
+        ) : null}
+        {subtitle ? (
+          <Text style={[styles.subtitle, isBackWithBrandingRow && styles.subtitleCompact]}>
+            {subtitle}
+          </Text>
+        ) : null}
         {children}
       </View>
 
@@ -154,6 +182,17 @@ export default function SunVantageHeader({
 const styles = StyleSheet.create({
   wrapper: {
     marginBottom: ARROW_TO_CONTENT,
+  },
+  backBrandingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 0,
+    paddingVertical: 8,
+    paddingRight: 16,
+    alignSelf: 'flex-start',
+  },
+  backBrandingSpacer: {
+    marginRight: 8,
   },
   backControl: {
     alignSelf: 'flex-start',
@@ -210,9 +249,15 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: '700',
   },
+  titleCompact: {
+    marginTop: 4,
+  },
   subtitle: {
     marginTop: 8,
     fontSize: 14,
     color: Dawn.text.secondary,
+  },
+  subtitleCompact: {
+    marginTop: 4,
   },
 });

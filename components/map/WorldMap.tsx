@@ -7,17 +7,21 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { View, useWindowDimensions, StyleSheet } from 'react-native';
 import Svg, { Path, G } from 'react-native-svg';
 import { getMapProjection, getGeoPath } from '@/lib/mapProjection';
+import { Dawn } from '@/constants/theme';
 
-const LAND_COLOR = '#141B2D';
-const MAP_BG = '#0B0F1A';
+const LAND_COLOR = '#243350';
 
 const WORLD_GEOJSON_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/land-110m.json';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TopoLand = any;
 
-export default function WorldMap() {
-  const { width, height } = useWindowDimensions();
+type Props = { width?: number; height?: number };
+
+export default function WorldMap({ width: propWidth, height: propHeight }: Props = {} as Props) {
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
+  const width = propWidth ?? winWidth;
+  const height = propHeight ?? winHeight;
   const [landPaths, setLandPaths] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -59,18 +63,15 @@ export default function WorldMap() {
   }, [pathGen]);
 
   if (landPaths.length === 0 && !loading) {
-    // Fallback: simple placeholder so layout still works
     return (
-      <View style={[styles.container, { width, height }]}>
-        <View style={[styles.placeholder, { width, height }]} />
-      </View>
+      <View style={[styles.container, { width, height }]} />
     );
   }
 
   return (
     <View style={[styles.container, { width, height }]}>
-      <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
-        <G>
+      <Svg width={width} height={height} style={StyleSheet.absoluteFill} stroke="none">
+        <G stroke="none">
           {landPaths.map((d, i) => (
             <Path key={i} d={d} fill={LAND_COLOR} stroke="none" />
           ))}
@@ -82,9 +83,6 @@ export default function WorldMap() {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: MAP_BG,
-  },
-  placeholder: {
-    backgroundColor: MAP_BG,
+    backgroundColor: Dawn.background.primary,
   },
 });

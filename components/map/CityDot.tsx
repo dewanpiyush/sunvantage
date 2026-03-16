@@ -36,6 +36,8 @@ export type CityLog = {
 type Props = {
   city: CityLog;
   now: Date;
+  width?: number;
+  height?: number;
 };
 
 function radiusForLogs(logs: number): number {
@@ -43,8 +45,10 @@ function radiusForLogs(logs: number): number {
   return Math.min(MAX_RADIUS, Math.max(MIN_RADIUS, r));
 }
 
-export default function CityDot({ city, now }: Props) {
-  const { width, height } = useWindowDimensions();
+export default function CityDot({ city, now, width: propWidth, height: propHeight }: Props) {
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
+  const width = propWidth ?? winWidth;
+  const height = propHeight ?? winHeight;
   const [modalVisible, setModalVisible] = useState(false);
   const scaleAnim = useRef(new Animated.Value(1)).current;
 

@@ -26,10 +26,14 @@ export type UserCity = {
 type Props = {
   city: UserCity;
   now: Date;
+  width?: number;
+  height?: number;
 };
 
-export default function UserCityDot({ city, now }: Props) {
-  const { width, height } = useWindowDimensions();
+export default function UserCityDot({ city, now, width: propWidth, height: propHeight }: Props) {
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
+  const width = propWidth ?? winWidth;
+  const height = propHeight ?? winHeight;
   const [modalVisible, setModalVisible] = useState(false);
 
   const xy = useMemo(

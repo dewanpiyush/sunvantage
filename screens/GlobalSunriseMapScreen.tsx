@@ -1,11 +1,11 @@
 /**
  * Global Sunrise Map: where sunrise has happened, is happening, and where users logged.
- * Calm, contemplative, minimal, cosmic.
+ * Fetches today's sunrise_logs aggregated by city and drives stats + map dots.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { View, StyleSheet, useWindowDimensions } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SunVantageHeader from '@/components/SunVantageHeader';
 import WorldMap from '@/components/map/WorldMap';
@@ -13,74 +13,122 @@ import SunriseTerminator from '@/components/map/SunriseTerminator';
 import CityDot from '@/components/map/CityDot';
 import UserCityDot from '@/components/map/UserCityDot';
 import GlobalSunriseStats from '@/components/GlobalSunriseStats';
+import { Dawn } from '@/constants/theme';
+import { fetchGlobalSunriseLogs, type CityLogAggregate } from '@/lib/fetchGlobalSunriseLogs';
+import supabase from '@/supabase';
 
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
-const USER_CITY = {
-  city: 'Delhi',
-  lat: 28.6139,
-  lng: 77.209,
-};
-
-const COMMUNITY_CITIES: Array<{ city: string; country: string; lat: number; lng: number; logs: number }> = [
-  { city: 'Delhi', country: 'India', lat: 28.61, lng: 77.2, logs: 12 },
-  { city: 'Mumbai', country: 'India', lat: 19.07, lng: 72.87, logs: 8 },
-  { city: 'Bangkok', country: 'Thailand', lat: 13.75, lng: 100.5, logs: 5 },
-  { city: 'Lisbon', country: 'Portugal', lat: 38.72, lng: -9.13, logs: 2 },
-];
-
-const MAX_CITY_DOTS = 200;
+const DEFAULT_USER_CITY = { city: 'Delhi', lat: 28.6139, lng: 77.209 };
 
 export default function GlobalSunriseMapScreen() {
   const router = useRouter();
   const [now, setNow] = useState(() => new Date());
   const { width, height } = useWindowDimensions();
+  const [aggregate, setAggregate] = useState<{
+    cities: CityLogAggregate[];
+    totalWitnesses: number;
+    cityCount: number;
+    countryCount: number;
+    userWitnessedToday: boolean;
+  }>({ cities: [], totalWitnesses: 0, cityCount: 0, countryCount: 0, userWitnessedToday: false });
+  const [userCity, setUserCity] = useState(DEFAULT_USER_CITY);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), REFRESH_INTERVAL_MS);
-    return () => clearInterval(id);
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const userId = session?.user?.id ?? null;
+
+      const [agg, profileRes] = await Promise.all([
+        fetchGlobalSunriseLogs(userId),
+        userId
+          ? supabase.from('profiles').select('city, latitude, longitude').eq('user_id', userId).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      setAggregate(agg);
+      const profile = profileRes.data as { city?: string | null; latitude?: number | null; longitude?: number | null } | null;
+      const city = profile?.city?.trim();
+      const lat = profile?.latitude;
+      const lng = profile?.longitude;
+      if (city && lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng)) {
+        setUserCity({ city, lat, lng });
+      }
+    } catch {
+      setAggregate({ cities: [], totalWitnesses: 0, cityCount: 0, countryCount: 0, userWitnessedToday: false });
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const citiesToShow = useMemo(
-    () => COMMUNITY_CITIES.slice(0, MAX_CITY_DOTS),
-    []
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
   );
 
-  const totalSunrises = useMemo(
-    () => citiesToShow.reduce((s, c) => s + c.logs, 0),
-    [citiesToShow]
-  );
+  useEffect(() => {
+    const id = setInterval(() => {
+      setNow(new Date());
+      loadData();
+    }, REFRESH_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [loadData]);
 
-  const countryCount = useMemo(
-    () => new Set(citiesToShow.map((c) => c.country)).size,
-    [citiesToShow]
-  );
+  const userWitnessedToday = aggregate.userWitnessedToday;
+  const isUserFirstWitness = userWitnessedToday && aggregate.totalWitnesses === 1;
 
-  const mapHeight = height * 0.65;
+  const mapHeight = height * 0.48;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <SunVantageHeader
         showBack
-        title="Global Sunrise Map"
         hideMenu
-        onBackPress={() => router.back()}
+        showBranding
+        title="Global Sunrise Map"
+        subtitle="Celebrating the shared splendour of humanity"
+        screenTitle
         wrapperMarginBottom={0}
+        onBackPress={() => router.push('/home')}
       />
 
-      <View style={[styles.mapContainer, { height: mapHeight }]}>
-        <WorldMap />
-        <SunriseTerminator date={now} />
-        {citiesToShow.map((city) => (
-          <CityDot key={`${city.city}-${city.lat}`} city={city} now={now} />
+      <View style={[styles.mapContainer, { width, height: mapHeight }]}>
+        <WorldMap width={width} height={mapHeight} />
+        <SunriseTerminator date={now} width={width} height={mapHeight} />
+        {aggregate.cities.map((city) => (
+          <CityDot
+            key={`${city.city}-${city.lat}-${city.lng}`}
+            city={{ ...city, country: city.country || undefined }}
+            now={now}
+            width={width}
+            height={mapHeight}
+          />
         ))}
-        <UserCityDot city={USER_CITY} now={now} />
+        <UserCityDot city={userCity} now={now} width={width} height={mapHeight} />
+        <View style={styles.terminatorLabelContainer} pointerEvents="none">
+          <View style={styles.terminatorLegend} aria-hidden>
+            <View style={styles.terminatorLegendOuter} />
+            <View style={styles.terminatorLegendMid} />
+            <View style={styles.terminatorLegendCore} />
+          </View>
+          <Text style={styles.terminatorLabelText}>Sunrise now</Text>
+        </View>
       </View>
 
       <GlobalSunriseStats
-        totalSunrises={totalSunrises}
-        cityCount={citiesToShow.length}
-        countryCount={countryCount}
+        totalWitnesses={aggregate.totalWitnesses}
+        cityCount={aggregate.cityCount}
+        countryCount={aggregate.countryCount}
+        userWitnessedToday={userWitnessedToday}
+        isUserFirstWitness={isUserFirstWitness}
       />
     </SafeAreaView>
   );
@@ -89,11 +137,66 @@ export default function GlobalSunriseMapScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#0B0F1A',
+    backgroundColor: Dawn.background.primary,
   },
   mapContainer: {
     width: '100%',
-    backgroundColor: '#0B0F1A',
+    marginTop: 20,
+    backgroundColor: Dawn.background.primary,
     overflow: 'hidden',
+    borderWidth: 0,
+    borderLeftWidth: 0,
+    borderRightWidth: 0,
+    borderTopWidth: 0,
+    borderBottomWidth: 0,
+    borderColor: 'transparent',
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  terminatorLabelContainer: {
+    position: 'absolute',
+    bottom: 10,
+    left: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(7, 16, 35, 0.78)',
+  },
+  terminatorLegend: {
+    width: 18,
+    height: 10,
+    marginRight: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  terminatorLegendOuter: {
+    position: 'absolute',
+    width: 18,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: '#F4C95D',
+    opacity: 0.08,
+  },
+  terminatorLegendMid: {
+    position: 'absolute',
+    width: 18,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#F4C95D',
+    opacity: 0.18,
+  },
+  terminatorLegendCore: {
+    position: 'absolute',
+    width: 18,
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: '#F4C95D',
+    opacity: 0.9,
+  },
+  terminatorLabelText: {
+    fontSize: 12,
+    color: '#E9F0FF',
   },
 });

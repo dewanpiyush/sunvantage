@@ -8,6 +8,9 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
+  TouchableWithoutFeedback,
+  ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import supabase from '../supabase';
@@ -46,6 +49,7 @@ export default function AuthScreen() {
   }, [router]);
 
   const handleAuth = async () => {
+    Keyboard.dismiss();
     if (!email || !password) {
       setError('Please enter email and password.');
       return;
@@ -117,75 +121,89 @@ export default function AuthScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
     >
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <View style={styles.gradientTop} />
-        <View style={styles.gradientLowerWarm} />
-      </View>
-      <View style={styles.inner}>
-        <View style={styles.header}>
-          <Text style={styles.appName}>SunVantage</Text>
-          <Text style={styles.tagline}>See the day differently.</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.title}>{isSignIn ? 'Welcome back' : 'Create your account'}</Text>
-          <Text style={styles.subtitle}>
-            {isSignIn
-              ? 'Sign in to catch today’s sunrise with intention.'
-              : 'Sign up to start a gentle sunrise ritual.'}
-          </Text>
-
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              placeholder="you@example.com"
-              placeholderTextColor="rgba(220, 218, 212, 0.6)"
-              autoCapitalize="none"
-              keyboardType="email-address"
-              onFocus={() => setEmailFocused(true)}
-              onBlur={() => setEmailFocused(false)}
-              style={[styles.input, emailFocused && styles.inputFocused]}
-            />
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <View style={styles.flex}>
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            <View style={styles.gradientTop} />
+            <View style={styles.gradientLowerWarm} />
           </View>
-
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Password</Text>
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Minimum 6 characters"
-              placeholderTextColor="rgba(220, 218, 212, 0.6)"
-              secureTextEntry
-              onFocus={() => setPasswordFocused(true)}
-              onBlur={() => setPasswordFocused(false)}
-              style={[styles.input, passwordFocused && styles.inputFocused]}
-            />
-          </View>
-
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-          {message ? <Text style={styles.messageText}>{message}</Text> : null}
-
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleAuth}
-            disabled={loading}
+          <ScrollView
+            contentContainerStyle={styles.inner}
+            keyboardShouldPersistTaps="handled"
           >
-            {loading ? (
-              <ActivityIndicator color={Dawn.accent.sunriseOn} />
-            ) : (
-              <Text style={styles.buttonText}>{isSignIn ? 'Sign in' : 'Sign up'}</Text>
-            )}
-          </TouchableOpacity>
+            <View style={styles.header}>
+              <Text style={styles.appName}>SunVantage</Text>
+              <Text style={styles.tagline}>See the day differently.</Text>
+            </View>
 
-          <TouchableOpacity onPress={toggleMode} style={styles.linkWrapper}>
-            <Text style={styles.linkText}>
-              {isSignIn ? "New here? Create an account" : 'Already have an account? Sign in'}
-            </Text>
-          </TouchableOpacity>
+            <View style={styles.card}>
+              <Text style={styles.title}>{isSignIn ? 'Welcome back' : 'Create your account'}</Text>
+              <Text style={styles.subtitle}>
+                {isSignIn
+                  ? 'Sign in to catch today’s sunrise with intention.'
+                  : 'Sign up to start a gentle sunrise ritual.'}
+              </Text>
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>Email</Text>
+                <TextInput
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="you@example.com"
+                  placeholderTextColor="rgba(220, 218, 212, 0.6)"
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  onFocus={() => setEmailFocused(true)}
+                  onBlur={() => setEmailFocused(false)}
+                  style={[styles.input, emailFocused && styles.inputFocused]}
+                  returnKeyType="next"
+                  onSubmitEditing={() => {
+                    // Move focus to password when pressing next on email
+                  }}
+                  blurOnSubmit={false}
+                />
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>Password</Text>
+                <TextInput
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Minimum 6 characters"
+                  placeholderTextColor="rgba(220, 218, 212, 0.6)"
+                  secureTextEntry
+                  onFocus={() => setPasswordFocused(true)}
+                  onBlur={() => setPasswordFocused(false)}
+                  style={[styles.input, passwordFocused && styles.inputFocused]}
+                  returnKeyType="done"
+                  onSubmitEditing={handleAuth}
+                />
+              </View>
+
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+              {message ? <Text style={styles.messageText}>{message}</Text> : null}
+
+              <TouchableOpacity
+                style={[styles.button, loading && styles.buttonDisabled]}
+                onPress={handleAuth}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color={Dawn.accent.sunriseOn} />
+                ) : (
+                  <Text style={styles.buttonText}>{isSignIn ? 'Sign in' : 'Sign up'}</Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={toggleMode} style={styles.linkWrapper}>
+                <Text style={styles.linkText}>
+                  {isSignIn ? "New here? Create an account" : 'Already have an account? Sign in'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
         </View>
-      </View>
+      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 }
@@ -210,6 +228,9 @@ const styles = StyleSheet.create({
     top: '55%',
     bottom: 0,
     backgroundColor: 'rgba(255, 179, 71, 0.058)',
+  },
+  flex: {
+    flex: 1,
   },
   inner: {
     flex: 1,
