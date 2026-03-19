@@ -15,16 +15,16 @@ import {
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Dawn } from '../constants/theme';
+import { useDawn } from '@/hooks/use-dawn';
 
 const PANEL_WIDTH_RATIO = 0.62;
 const PANEL_PADDING_H = 24;
-const SECTION_GAP = 26;
+const SECTION_GAP = 16;
 const TITLE_TO_TAGLINE = 6;
-const TAGLINE_TO_FIRST_SECTION = 28;
-const SECTION_TITLE_TO_ITEMS = 12;
-const ITEM_GAP = 10;
-const ROW_MIN_HEIGHT = 50;
+const TAGLINE_TO_FIRST_SECTION = 18;
+const SECTION_TITLE_TO_ITEMS = 10;
+const ITEM_GAP = 4;
+const ROW_MIN_HEIGHT = 42;
 const EMOJI_WIDTH = 28;
 const SIGN_OUT_DIVIDER_MARGIN_TOP = 24;
 const SIGN_OUT_DIVIDER_MARGIN_BOTTOM = 12;
@@ -57,6 +57,7 @@ export default function NavigationOverlay({
   const pathname = usePathname() ?? '';
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const Dawn = useDawn();
   const panelWidth = Math.round(windowWidth * PANEL_WIDTH_RATIO);
   const panelTopPadding = insets.top + Math.round(insets.top * PANEL_TOP_OFFSET_RATIO);
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -76,11 +77,13 @@ export default function NavigationOverlay({
   const communityItems: NavItem[] = [
     { emoji: '🌍', label: "My City's Sunrises", route: '/my-city-sunrises', show: showMyCitySunrises },
     { emoji: '🌐', label: 'Global Sunrise Map', route: '/global-sunrise-map' },
+    { emoji: '🖼️', label: 'World Sunrise Gallery', route: '/world-sunrise-gallery' },
   ];
 
   const youItems: NavItem[] = [
     { emoji: '✨', label: 'Ritual Markers', route: '/ritual-markers' },
     { emoji: '👤', label: 'Profile', route: '/profile' },
+    { emoji: '⚙️', label: 'Settings', route: '/settings' },
   ];
 
   useEffect(() => {
@@ -144,7 +147,7 @@ export default function NavigationOverlay({
     if (visibleItems.length === 0) return null;
     return (
       <View style={[styles.section, isFirst && styles.sectionFirst]} key={title}>
-        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={[styles.sectionTitle, { color: Dawn.text.secondary }]}>{title}</Text>
         {visibleItems.map((item) => {
           const isCurrent = item.route != null && pathname.replace(/^\/+/, '') === item.route.replace(/^\/+/, '');
           return (
@@ -160,7 +163,13 @@ export default function NavigationOverlay({
               <View style={styles.emojiCell}>
                 <Text style={styles.navRowEmoji}>{item.emoji}</Text>
               </View>
-              <Text style={[styles.navRowLabel, isCurrent && styles.navRowLabelCurrent]} numberOfLines={1}>
+              <Text
+                style={[
+                  styles.navRowLabel,
+                  { color: isCurrent ? Dawn.text.secondary : Dawn.text.primary },
+                ]}
+                numberOfLines={1}
+              >
                 {item.label}
               </Text>
             </Pressable>
@@ -193,6 +202,7 @@ export default function NavigationOverlay({
           {
             width: panelWidth,
             height: windowHeight,
+            backgroundColor: Dawn.background.primary,
             transform: [{ translateX: panelTranslateX }],
           },
         ]}
@@ -200,28 +210,28 @@ export default function NavigationOverlay({
         <SafeAreaView style={[styles.panelInner, { paddingTop: panelTopPadding }]} edges={[]}>
           <View style={styles.headerBlock}>
             <View style={styles.headerRow}>
-              <Text style={styles.panelTitle}>SunVantage</Text>
+              <Text style={[styles.panelTitle, { color: Dawn.text.primary }]}>SunVantage</Text>
               <Pressable
                 style={({ pressed }) => [styles.closeButton, pressed && styles.navRowPressed]}
                 onPress={handleClose}
                 hitSlop={12}
               >
-                <Text style={styles.closeButtonText}>✕</Text>
+                <Text style={[styles.closeButtonText, { color: Dawn.text.secondary }]}>✕</Text>
               </Pressable>
             </View>
-            <Text style={styles.tagline}>Your quiet place to notice the morning.</Text>
+            <Text style={[styles.tagline, { color: Dawn.text.secondary }]}>Your quiet place to notice the morning.</Text>
           </View>
 
           {renderSection('Morning', morningItems, true)}
           {renderSection('Community', communityItems, false)}
           {renderSection('You', youItems, false)}
 
-          <View style={styles.signOutDivider} />
+          <View style={[styles.signOutDivider, { backgroundColor: Dawn.border.subtle }]} />
           <Pressable
             style={({ pressed }) => [styles.signOutRow, pressed && styles.navRowPressed]}
             onPress={handleSignOut}
           >
-            <Text style={styles.signOutText}>Sign out</Text>
+            <Text style={[styles.signOutText, { color: Dawn.text.secondary }]}>Sign out</Text>
           </Pressable>
         </SafeAreaView>
       </Animated.View>
@@ -238,7 +248,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     top: 0,
-    backgroundColor: Dawn.background.primary,
+    // set dynamically in component style to avoid static token capture
   },
   panelInner: {
     flex: 1,
@@ -256,12 +266,12 @@ const styles = StyleSheet.create({
   panelTitle: {
     fontSize: 22,
     fontWeight: '600',
-    color: Dawn.text.primary,
+    // set dynamically in component style
     letterSpacing: 0.8,
   },
   tagline: {
     fontSize: 13,
-    color: Dawn.text.secondary,
+    // set dynamically in component style
     opacity: 0.9,
   },
   closeButton: {
@@ -273,7 +283,7 @@ const styles = StyleSheet.create({
   },
   closeButtonText: {
     fontSize: 20,
-    color: Dawn.text.secondary,
+    // set dynamically in component style
     fontWeight: '300',
   },
   section: {
@@ -285,7 +295,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 12,
     fontWeight: '600',
-    color: Dawn.text.secondary,
+    // set dynamically in component style
     letterSpacing: 0.6,
     textTransform: 'uppercase',
     marginBottom: SECTION_TITLE_TO_ITEMS,
@@ -294,7 +304,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: ROW_MIN_HEIGHT,
-    paddingVertical: 12,
+    paddingVertical: 10,
     marginBottom: ITEM_GAP,
   },
   navRowPressed: {
@@ -313,15 +323,15 @@ const styles = StyleSheet.create({
   },
   navRowLabel: {
     fontSize: 16,
-    color: Dawn.text.primary,
+    // set dynamically in component style
     flex: 1,
   },
   navRowLabelCurrent: {
-    color: Dawn.text.secondary,
+    // color set dynamically in component style
   },
   signOutDivider: {
     height: 1,
-    backgroundColor: Dawn.border.subtle,
+    // set dynamically in component style
     marginTop: SIGN_OUT_DIVIDER_MARGIN_TOP,
     marginBottom: SIGN_OUT_DIVIDER_MARGIN_BOTTOM,
   },
@@ -331,6 +341,6 @@ const styles = StyleSheet.create({
   },
   signOutText: {
     fontSize: 16,
-    color: Dawn.text.secondary,
+    // set dynamically in component style
   },
 });

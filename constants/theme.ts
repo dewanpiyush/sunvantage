@@ -8,13 +8,21 @@ import { Platform } from 'react-native';
 const tintColorLight = '#0a7ea4';
 const tintColorDark = '#fff';
 
-/** Dawn palette — warmer "dawn" UI. Use for app background, cards, buttons, text, dividers. */
-export const Dawn = {
+export type AppAppearanceMode = 'morning-light' | 'night-calm';
+
+/** Night Calm (existing) — warmer "dawn" UI used across main app screens. */
+export const NightCalm = {
   background: {
     primary: '#0E223D',
   },
   surface: {
     card: '#162F52',
+    cardSecondary: '#122845',
+    cardPrimary: '#1a3558',
+  },
+  /** Subtle sections / secondary surface. In Night Calm we reuse card surface. */
+  surfaceSecondary: {
+    subtle: '#122845',
   },
   accent: {
     sunrise: '#FFB347',
@@ -30,6 +38,48 @@ export const Dawn = {
     secondary: '#AFC2DA',
   },
 } as const;
+
+/** Morning Light — soft sky-inspired light mode. */
+export const MorningLight = {
+  background: {
+    /** Do NOT use pure white for full screen backgrounds. */
+    primary: '#EAF3FB',
+  },
+  surface: {
+    card: '#FFFFFF',
+    cardSecondary: '#DCEAF7',
+    cardPrimary: '#FFFFFF',
+  },
+  surfaceSecondary: {
+    /** Subtle sections. */
+    subtle: '#DCEAF7',
+  },
+  accent: {
+    /** CTA unchanged. */
+    sunrise: '#F5A623',
+    /** Text/icon on CTA. */
+    sunriseOn: '#1F2A37',
+  },
+  border: {
+    subtle: '#E3EAF2',
+    soft: '#E3EAF2',
+    /** Keep sunrise emphasis without heavy contrast. */
+    sunriseCard: 'rgba(245,166,35,0.40)',
+  },
+  text: {
+    primary: '#1F2A37',
+    secondary: '#6B7280',
+  },
+} as const;
+
+/** Back-compat: many screens import `Dawn` as the Night Calm palette today. */
+export const Dawn = NightCalm;
+
+export type DawnPalette = typeof NightCalm;
+
+export function getDawnPalette(mode: AppAppearanceMode): DawnPalette {
+  return mode === 'morning-light' ? (MorningLight as unknown as DawnPalette) : NightCalm;
+}
 
 export const Colors = {
   light: {

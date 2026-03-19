@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, type ViewStyle } from 'react-native';
-import { Dawn } from '../constants/theme';
+import { useDawn } from '@/hooks/use-dawn';
 
 function getStreakLines(
   currentStreak: number,
@@ -31,6 +31,8 @@ type Props = {
 };
 
 export default function StreakBlock({ currentStreak, longestStreak, loading = false, style, hideLongestWhenFirst = false }: Props) {
+  const Dawn = useDawn();
+  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   const blockStyle = [styles.streakBlock, style];
 
   if (loading) {
@@ -66,7 +68,8 @@ export default function StreakBlock({ currentStreak, longestStreak, loading = fa
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+  return StyleSheet.create({
   streakBlock: {
     marginTop: 16,
     paddingVertical: 2,
@@ -96,4 +99,5 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: Dawn.text.primary,
   },
-});
+  });
+}

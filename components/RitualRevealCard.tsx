@@ -12,7 +12,7 @@ import {
   Animated,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Dawn } from '../constants/theme';
+import { useDawn } from '@/hooks/use-dawn';
 
 export type RitualRevealCardProps = {
   visible: boolean;
@@ -38,6 +38,8 @@ export default function RitualRevealCard({
   description,
   ctaText = 'View markers',
 }: RitualRevealCardProps) {
+  const Dawn = useDawn();
+  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   const translateY = useRef(new Animated.Value(SLIDE_DISTANCE)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const isExiting = useRef(false);
@@ -133,7 +135,8 @@ export default function RitualRevealCard({
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+  return StyleSheet.create({
   wrap: {
     alignSelf: 'stretch',
     marginBottom: 16,
@@ -216,4 +219,5 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: Dawn.accent.sunrise,
   },
-});
+  });
+}

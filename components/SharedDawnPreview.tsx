@@ -19,7 +19,7 @@ import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import supabase from '../supabase';
-import { Dawn } from '../constants/theme';
+import { useDawn } from '@/hooks/use-dawn';
 import { getFullScreenOverlayLines } from '../lib/vantageUtils';
 
 const BUCKET = 'sunrise_photos';
@@ -49,6 +49,8 @@ type Props = {
 
 export default function SharedDawnPreview({ city, currentUserId, fromScreen }: Props) {
   const router = useRouter();
+  const Dawn = useDawn();
+  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   const galleryHref = fromScreen ? `/my-city-sunrises?from=${fromScreen}` : '/my-city-sunrises';
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [rows, setRows] = useState<Row[]>([]);
@@ -270,7 +272,8 @@ export default function SharedDawnPreview({ city, currentUserId, fromScreen }: P
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+  return StyleSheet.create({
   section: {
     alignItems: 'center',
     minHeight: 180,
@@ -406,4 +409,5 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.82)',
     letterSpacing: 0.2,
   },
-});
+  });
+}

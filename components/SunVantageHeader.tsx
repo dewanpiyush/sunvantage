@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import supabase from '../supabase';
-import { Dawn } from '../constants/theme';
+import { useDawn } from '@/hooks/use-dawn';
 import NavigationOverlay from './NavigationOverlay';
 
 const ARROW_ROTATION_DURATION = 180;
@@ -54,6 +54,7 @@ export default function SunVantageHeader({
   onHeaderPress,
 }: Props) {
   const router = useRouter();
+  const Dawn = useDawn();
   const [navVisible, setNavVisible] = useState(false);
   const arrowRotation = useRef(new Animated.Value(0)).current;
 
@@ -98,8 +99,10 @@ export default function SunVantageHeader({
             style={({ pressed }) => [styles.backBrandingRow, pressed && { opacity: 0.78 }]}
             onPress={handleBackPress}
           >
-            <Text style={[styles.backControlText, styles.backBrandingSpacer]}>{displayBackLabel}</Text>
-            <Text style={styles.appName}>SunVantage</Text>
+            <Text style={[styles.backControlText, styles.backBrandingSpacer, { color: Dawn.text.secondary }]}>
+              {displayBackLabel}
+            </Text>
+            <Text style={[styles.appName, { color: Dawn.text.primary }]}>SunVantage</Text>
             <Text style={styles.headerEmoji}>{'\u{1F305}'}</Text>
           </Pressable>
         ) : (
@@ -109,7 +112,7 @@ export default function SunVantageHeader({
                 style={({ pressed }) => [styles.backControl, pressed && { opacity: 0.72 }]}
                 onPress={handleBackPress}
               >
-                <Text style={styles.backControlText}>{displayBackLabel}</Text>
+                <Text style={[styles.backControlText, { color: Dawn.text.secondary }]}>{displayBackLabel}</Text>
               </Pressable>
             )}
             {!hideMenu && (
@@ -118,16 +121,17 @@ export default function SunVantageHeader({
                 onPress={handleHeaderPress}
               >
                 <View style={styles.headerRow}>
-                  {!tagline ? <Text style={styles.chevron}>‹</Text> : null}
-                  <Text style={styles.appName}>SunVantage</Text>
+                  {!tagline ? <Text style={[styles.chevron, { color: Dawn.text.secondary }]}>‹</Text> : null}
+                  <Text style={[styles.appName, { color: Dawn.text.primary }]}>SunVantage</Text>
                   <Text style={styles.headerEmoji}>{'\u{1F305}'}</Text>
                 </View>
                 {tagline ? (
                   <>
-                    <Text style={styles.tagline}>{tagline}</Text>
+                    <Text style={[styles.tagline, { color: Dawn.text.secondary }]}>{tagline}</Text>
                     <Animated.Text
                       style={[
                         styles.arrowIndicator,
+                        { color: Dawn.text.secondary },
                         {
                           transform: [
                             {
@@ -146,7 +150,9 @@ export default function SunVantageHeader({
                 ) : null}
               </Pressable>
             )}
-            {hideMenu && showBranding && !showBack ? <Text style={styles.appName}>SunVantage</Text> : null}
+            {hideMenu && showBranding && !showBack ? (
+              <Text style={[styles.appName, { color: Dawn.text.primary }]}>SunVantage</Text>
+            ) : null}
           </>
         )}
         {title ? (
@@ -155,13 +161,14 @@ export default function SunVantageHeader({
               styles.title,
               screenTitle && styles.screenTitle,
               isBackWithBrandingRow && styles.titleCompact,
+              { color: Dawn.text.primary },
             ]}
           >
             {title}
           </Text>
         ) : null}
         {subtitle ? (
-          <Text style={[styles.subtitle, isBackWithBrandingRow && styles.subtitleCompact]}>
+          <Text style={[styles.subtitle, isBackWithBrandingRow && styles.subtitleCompact, { color: Dawn.text.secondary }]}>
             {subtitle}
           </Text>
         ) : null}
@@ -200,7 +207,7 @@ const styles = StyleSheet.create({
   },
   backControlText: {
     fontSize: 14,
-    color: Dawn.text.secondary,
+    // color set dynamically in component
   },
   headerBlock: {
     alignSelf: 'flex-start',
@@ -211,14 +218,14 @@ const styles = StyleSheet.create({
   },
   chevron: {
     fontSize: 20,
-    color: Dawn.text.secondary,
+    // color set dynamically in component
     marginRight: 4,
     fontWeight: '300',
   },
   appName: {
     fontSize: 24,
     fontWeight: '600',
-    color: Dawn.text.primary,
+    // color set dynamically in component
     letterSpacing: 0.8,
   },
   headerEmoji: {
@@ -228,20 +235,20 @@ const styles = StyleSheet.create({
   tagline: {
     marginTop: TITLE_TO_TAGLINE,
     fontSize: 14,
-    color: Dawn.text.secondary,
+    // color set dynamically in component
   },
   arrowIndicator: {
     marginTop: TAGLINE_TO_ARROW,
     marginBottom: 0,
     fontSize: 14,
-    color: Dawn.text.secondary,
+    // color set dynamically in component
     opacity: 0.8,
   },
   title: {
     marginTop: 6,
     fontSize: 24,
     fontWeight: '600',
-    color: Dawn.text.primary,
+    // color set dynamically in component
     letterSpacing: 0.8,
   },
   screenTitle: {
@@ -255,7 +262,7 @@ const styles = StyleSheet.create({
   subtitle: {
     marginTop: 8,
     fontSize: 14,
-    color: Dawn.text.secondary,
+    // color set dynamically in component
   },
   subtitleCompact: {
     marginTop: 4,

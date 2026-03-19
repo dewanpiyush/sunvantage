@@ -13,7 +13,7 @@ import supabase from '../supabase';
 import SunVantageHeader from '../components/SunVantageHeader';
 import CitySunriseGallery from '../components/CitySunriseGallery';
 import { hasLoggedToday } from '../lib/hasLoggedToday';
-import { Dawn } from '../constants/theme';
+import { useDawn } from '@/hooks/use-dawn';
 
 // Local map: reflection_question_id → question text (align with prompts used when saving).
 // Extend this when you add more questions or persist question_id in sunrise_logs.
@@ -155,6 +155,8 @@ const GALLERY_LIMIT = 10;
 
 export default function MyMorningsScreen() {
   const router = useRouter();
+  const Dawn = useDawn();
+  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   const [logs, setLogs] = useState<SunriseLogRow[]>([]);
   const [imageUrls, setImageUrls] = useState<Record<number, string | null>>({});
   const [loading, setLoading] = useState(true);
@@ -434,7 +436,8 @@ export default function MyMorningsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+  return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Dawn.background.primary,
@@ -521,7 +524,7 @@ const styles = StyleSheet.create({
   },
   timeAnchorLabelToday: {
     opacity: 0.9,
-    color: 'rgba(231,238,247,0.85)',
+    color: Dawn.text.primary,
   },
   memoryCard: {
     backgroundColor: Dawn.surface.card,
@@ -529,7 +532,7 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255,179,71,0.32)',
+    borderColor: Dawn.border.subtle,
     alignItems: 'center',
   },
   memoryCardTop: {
@@ -542,7 +545,7 @@ const styles = StyleSheet.create({
   },
   memoryCardVantage: {
     fontSize: 14,
-    color: 'rgba(231,238,247,0.92)',
+    color: Dawn.text.primary,
   },
   memoryCardPhotoWrap: {
     width: '100%',
@@ -626,8 +629,9 @@ const styles = StyleSheet.create({
   },
   gallerySectionSubtext: {
     fontSize: 13,
-    color: 'rgba(231, 238, 247, 0.65)',
+    color: Dawn.text.secondary,
     marginBottom: 8,
+    opacity: 0.85,
   },
   galleryGrid: {
     flexDirection: 'row',
@@ -729,4 +733,5 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-});
+  });
+}

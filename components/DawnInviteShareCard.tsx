@@ -5,13 +5,16 @@
 
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { Dawn } from '@/constants/theme';
 
 export const CARD_HEIGHT = 330;
 
 // Deep blue card: #0B2340 → #173C63
 const GRADIENT_TOP = '#0B2340';
 const GRADIENT_BOTTOM = '#173C63';
+const SUNRISE = '#F5A623';
+const SUNRISE_ON = '#0E223D';
+const TEXT_PRIMARY = 'rgba(255,255,255,0.92)';
+const TEXT_SECONDARY = 'rgba(231,238,247,0.78)';
 
 export type DawnInviteShareCardProps = {
   city: string;
@@ -50,7 +53,9 @@ export default function DawnInviteShareCard({
       ) : null}
 
       <View style={styles.content}>
-        <Text style={styles.title}>Tomorrow's sunrise in {displayCity}</Text>
+        <Text style={styles.title}>
+          Tomorrow{"'"}s sunrise in {displayCity}
+        </Text>
 
         <View style={styles.timeBlock}>
           <Text style={styles.sunIcon}>☀️</Text>
@@ -58,7 +63,7 @@ export default function DawnInviteShareCard({
         </View>
 
         <Text style={styles.copy}>
-          I'll be there at dawn.{'\n'}
+          I{"'"}ll be there at dawn.{'\n'}
           Join me in greeting the first light.
         </Text>
 
@@ -108,7 +113,7 @@ const styles = StyleSheet.create({
   },
   dismissChar: {
     fontSize: 28,
-    color: Dawn.text.secondary,
+    color: TEXT_SECONDARY,
     fontWeight: '300',
     lineHeight: 32,
   },
@@ -123,7 +128,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '500',
-    color: Dawn.text.primary,
+    color: TEXT_PRIMARY,
     textAlign: 'center',
     marginBottom: 12,
   },
@@ -138,12 +143,12 @@ const styles = StyleSheet.create({
   time: {
     fontSize: 32,
     fontWeight: '700',
-    color: Dawn.accent.sunrise,
+    color: SUNRISE,
     textAlign: 'center',
   },
   copy: {
     fontSize: 14,
-    color: Dawn.text.secondary,
+    color: TEXT_SECONDARY,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 20,
@@ -152,7 +157,7 @@ const styles = StyleSheet.create({
     height: 40,
     paddingHorizontal: 24,
     borderRadius: 999,
-    backgroundColor: Dawn.accent.sunrise,
+    backgroundColor: SUNRISE,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
@@ -163,12 +168,12 @@ const styles = StyleSheet.create({
   ctaText: {
     fontSize: 15,
     fontWeight: '600',
-    color: Dawn.accent.sunriseOn,
+    color: SUNRISE_ON,
   },
   brand: {
     fontSize: 12,
     fontWeight: '500',
-    color: Dawn.text.secondary,
+    color: TEXT_SECONDARY,
     letterSpacing: 0.5,
     opacity: 0.9,
   },

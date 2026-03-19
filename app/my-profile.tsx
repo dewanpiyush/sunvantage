@@ -17,9 +17,10 @@ import supabase from '../supabase';
 import { BADGE_REGISTRY, BADGE_ICONS, computeBadgeStats } from './ritual-markers';
 import SunVantageHeader from '../components/SunVantageHeader';
 import { hasLoggedToday } from '../lib/hasLoggedToday';
-import { Dawn } from '../constants/theme';
+import { useDawn } from '@/hooks/use-dawn';
 
 const AVATAR_BUCKET = 'avatars';
+const PENDING_BUCKET = 'uploads_pending';
 const AVATAR_SIZE = 512;
 
 // ----- Streak computation (client-side) -----
@@ -145,6 +146,8 @@ type LogRow = {
 
 export default function MyProfileScreen() {
   const router = useRouter();
+  const Dawn = useDawn();
+  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -235,25 +238,69 @@ export default function MyProfileScreen() {
       const file = new File(manipulated.uri);
       const buffer = await file.arrayBuffer();
       const bytes = new Uint8Array(buffer);
-      const path = `${userId}.jpg`;
-      const { error: uploadError } = await supabase.storage
-        .from(AVATAR_BUCKET)
-        .upload(path, bytes, { contentType: 'image/jpeg', upsert: true });
+
+      const stagedPath = `${userId}/${Date.now()}.jpg`;
+      const { error: uploadError } = await supabase.storage.from(PENDING_BUCKET).upload(stagedPath, bytes, {
+        contentType: 'image/jpeg',
+        upsert: true,
+      });
       if (uploadError) {
         setError(uploadError.message || 'Upload failed.');
         return;
       }
-      const { data: urlData } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(path);
-      const avatarUrl = urlData?.publicUrl ?? null;
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ avatar_url: avatarUrl })
-        .eq('user_id', userId);
-      if (updateError) {
-        setError(updateError.message || 'Could not update profile.');
+
+      const {
+        data: { session: modSession },
+      } = await supabase.auth.getSession();
+      const accessToken = modSession?.access_token;
+      if (!accessToken) {
+        setError('Please sign in again to process your photo.');
         return;
       }
-      // Cache-bust so the image component refetches (same path is overwritten in storage)
+
+      const functions = supabase.functions;
+      functions.setAuth(accessToken);
+
+      const invokePromise = functions.invoke('moderate-image', {
+        body: { path: stagedPath, type: 'avatar' as const, userId },
+      });
+      const timeoutMs = 25_000;
+      const timed = await Promise.race([
+        invokePromise,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Processing timed out. Please try again.')), timeoutMs)),
+      ]);
+
+      const { data, error: fnError } = timed as unknown as {
+        data: { status: 'approved' | 'rejected'; publicUrl?: string } | null;
+        error: { message?: string; context?: unknown } | null;
+      };
+
+      if (fnError) {
+        const ctx = (fnError as any)?.context;
+        const ctxMsg =
+          typeof ctx?.body === 'string'
+            ? ctx.body
+            : typeof ctx === 'string'
+              ? ctx
+              : ctx
+                ? JSON.stringify(ctx)
+                : '';
+        setError((ctxMsg && `${fnError.message || 'Processing failed'}: ${ctxMsg}`) || fnError.message || 'Could not process photo.');
+        return;
+      }
+
+      if (!data || (data.status !== 'approved' && data.status !== 'rejected')) {
+        setError('Could not process photo.');
+        return;
+      }
+
+      if (data.status === 'rejected') {
+        setError("This doesn’t seem like a sunrise moment 🌅 Please try another photo.");
+        return;
+      }
+
+      const avatarUrl = data.publicUrl ?? null;
+      // Cache-bust so the image component refetches
       const displayUrl = avatarUrl ? `${avatarUrl}?t=${Date.now()}` : null;
       setProfile((prev) => (prev ? { ...prev, avatar_url: displayUrl } : null));
     } catch (e) {
@@ -269,7 +316,6 @@ export default function MyProfileScreen() {
     setUploadingAvatar(true);
     setError('');
     try {
-      await supabase.storage.from(AVATAR_BUCKET).remove([`${userId}.jpg`]);
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ avatar_url: null })
@@ -434,7 +480,7 @@ export default function MyProfileScreen() {
                   ) : null}
                   {sinceText ? (
                     <Text style={styles.sinceText}>
-                      You've been greeting the morning since {sinceText}.
+                      You{"'"}ve been greeting the morning since {sinceText}.
                     </Text>
                   ) : null}
                 </View>
@@ -565,7 +611,8 @@ export default function MyProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+  return StyleSheet.create({
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -615,7 +662,7 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: Dawn.border.sunriseCard,
+    borderColor: Dawn.border.subtle,
     overflow: 'hidden',
     marginBottom: 24,
   },
@@ -667,7 +714,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: 'rgba(175, 194, 218, 0.25)',
+    backgroundColor: Dawn.surfaceSecondary.subtle,
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
@@ -815,4 +862,5 @@ const styles = StyleSheet.create({
     color: '#FCA5A5',
     textAlign: 'center',
   },
-});
+  });
+}

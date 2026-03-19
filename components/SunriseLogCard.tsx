@@ -28,7 +28,7 @@ import { formatSunriseTime } from '../lib/formatSunriseTime';
 import { getCurrentPosition, reverseGeocodeToPlaceName } from '../lib/location';
 import { REFLECTION_PROMPT, getNextReflectionPrompt, setLastUsedReflectionPrompt } from '../lib/reflectionPrompts';
 import { normalizeVantageForStorage } from '../lib/vantageUtils';
-import { Dawn } from '../constants/theme';
+import { useDawn } from '@/hooks/use-dawn';
 import { useMorningContext } from '../hooks/useMorningContext';
 import { getMinutesToSunrise, getCoordinatesForCity } from '../services/weatherService';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -98,6 +98,8 @@ export default function SunriseLogCard({
   sunriseTime = null,
   initialVantageName = null,
 }: SunriseLogCardProps) {
+  const Dawn = useDawn();
+  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   const [step, setStep] = useState<0 | 1 | 2 | 3>(0);
   const [showMissedScreen, setShowMissedScreen] = useState(false);
   const [vantageName, setVantageName] = useState('');
@@ -109,6 +111,8 @@ export default function SunriseLogCard({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const processingOpacity = useRef(new Animated.Value(0.85)).current;
+  const processingLoopRef = useRef<Animated.CompositeAnimation | null>(null);
   const [detectingVantageLocation, setDetectingVantageLocation] = useState(false);
   const [overrideCoords, setOverrideCoords] = useState<{ latitude: number; longitude: number } | null>(null);
 
@@ -195,6 +199,33 @@ export default function SunriseLogCard({
       return () => clearTimeout(t);
     }
   }, [visible, step]);
+
+  // While saving: run a very subtle fade for the calm processing copy.
+  useEffect(() => {
+    if (!saving) {
+      processingOpacity.setValue(0.85);
+      processingLoopRef.current?.stop?.();
+      processingLoopRef.current = null;
+      return;
+    }
+
+    processingLoopRef.current = Animated.loop(
+      Animated.sequence([
+        Animated.timing(processingOpacity, {
+          toValue: 1,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+        Animated.timing(processingOpacity, {
+          toValue: 0.85,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    processingLoopRef.current.start();
+    return () => processingLoopRef.current?.stop?.();
+  }, [saving, processingOpacity]);
 
   const handleClose = useCallback(() => {
     Keyboard.dismiss();
@@ -338,6 +369,7 @@ export default function SunriseLogCard({
   const handleSave = useCallback(async () => {
     setSaving(true);
     setError('');
+    let didSucceed = false;
     try {
       const {
         data: { session },
@@ -428,19 +460,31 @@ export default function SunriseLogCard({
 
       const logId = insertData?.[0]?.id as number | undefined;
       if (logId != null && photoBase64 && photoUri) {
-        try {
-          const path = `${userId}/${logId}-${Date.now()}.jpg`;
-          const binary = atob(photoBase64);
-          const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-          const { error: uploadError } = await supabase.storage
-            .from(photoBucket)
-            .upload(path, bytes, { contentType: photoMime, upsert: true });
-          if (!uploadError) {
-            await supabase.from('sunrise_logs').update({ photo_url: path }).eq('id', logId);
-          }
-        } catch {
-          // non-blocking
+        const stagedPath = `${userId}/${logId}-${Date.now()}.jpg`;
+        const binary = atob(photoBase64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+        const { error: uploadError } = await supabase.storage
+          .from('uploads_pending')
+          .upload(stagedPath, bytes, { contentType: photoMime, upsert: true });
+        if (uploadError) {
+          throw new Error(uploadError.message || 'Upload failed.');
+        }
+
+        const functions = supabase.functions;
+        const { data: modData, error: fnError } = await functions.invoke('moderate-image', {
+          body: { path: stagedPath, type: 'sunrise' as const, logId, userId },
+          // Auth is temporarily disabled in the function for pipeline validation.
+          // Ownership is enforced via `userId` + `path` prefix check.
+        });
+
+        if (fnError) {
+          throw new Error(fnError.message || 'Moderation failed.');
+        }
+
+        if (!modData || modData.status !== 'approved') {
+          throw new Error('Photo rejected.');
         }
       }
 
@@ -462,6 +506,7 @@ export default function SunriseLogCard({
       resetFormAfterSave();
 
       // Land the moment: softly shrink + fade, then close so the page card feels like the moment landed
+      didSucceed = true;
       Animated.parallel([
         Animated.timing(cardOpacity, {
           toValue: 0,
@@ -480,7 +525,8 @@ export default function SunriseLogCard({
     } catch {
       setError('Something went wrong. Please try again.');
     } finally {
-      setSaving(false);
+      // Keep the processing UI visible until we close the modal.
+      if (!didSucceed) setSaving(false);
     }
   }, [vantageName, reflectionText, reflectionPrompt, photoBase64, photoUri, photoMime, onSaved, handleClose, resetFormAfterSave, cardOpacity, cardScale]);
 
@@ -551,7 +597,7 @@ export default function SunriseLogCard({
                         <Text style={styles.headerTitleEmoji}>🌅</Text>
                         <View style={styles.headerTitleAndTime}>
                           <Text style={[styles.headerTitle, styles.headerTitleMissed]}>
-                            Tomorrow's sunrise in {cityLabel}
+                            Tomorrow{"'"}s sunrise in {cityLabel}
                           </Text>
                           <Text style={styles.headerSubMissed}>{tomorrowSunriseLabel}</Text>
                         </View>
@@ -606,6 +652,13 @@ export default function SunriseLogCard({
                   showsVerticalScrollIndicator={false}
                 >
                   <View style={styles.stepContent}>
+                    {saving ? (
+                      <Animated.View style={[styles.stepInner, styles.processingContent, { opacity: processingOpacity }]}>
+                        <Text style={styles.processingTitle}>Processing your sunrise… 🌅</Text>
+                        <Text style={styles.processingHelper}>Just a moment.</Text>
+                      </Animated.View>
+                    ) : (
+                    <>
                     {/* Missed screen — tomorrow's sunrise + reminder */}
                     {showMissedScreen && (
                       <View style={[styles.stepInner, styles.missedScreenContent]}>
@@ -721,6 +774,8 @@ export default function SunriseLogCard({
                         {error ? <Text style={styles.errorText}>{error}</Text> : null}
                       </Animated.View>
                     )}
+                    </>
+                    )}
                   </View>
                 </ScrollView>
 
@@ -814,11 +869,7 @@ export default function SunriseLogCard({
                       onPress={handleSave}
                       disabled={saving}
                     >
-                      {saving ? (
-                        <ActivityIndicator color={Dawn.accent.sunriseOn} size="small" />
-                      ) : (
-                        <Text style={styles.saveBtnText}>Save morning</Text>
-                      )}
+                      <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save morning'}</Text>
                     </Pressable>
                   ) : null}
                 </View>
@@ -831,7 +882,8 @@ export default function SunriseLogCard({
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+  return StyleSheet.create({
   modalRoot: {
     flex: 1,
     justifyContent: 'center',
@@ -1109,6 +1161,25 @@ const styles = StyleSheet.create({
   stepInner: {
     paddingBottom: 4,
   },
+  processingContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 16,
+    paddingHorizontal: 16,
+  },
+  processingTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Dawn.text.primary,
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  processingHelper: {
+    fontSize: 13,
+    color: Dawn.text.secondary,
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
   sectionLabel: {
     fontSize: 17,
     fontWeight: '500',
@@ -1245,4 +1316,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Dawn.accent.sunriseOn,
   },
-});
+  });
+}

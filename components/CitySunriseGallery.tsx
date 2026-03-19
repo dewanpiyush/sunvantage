@@ -18,7 +18,7 @@ import {
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import supabase from '../supabase';
-import { Dawn } from '../constants/theme';
+import { useDawn } from '@/hooks/use-dawn';
 import { getFullScreenOverlayLines, toTitleCaseVantage, shouldShowVantageName } from '../lib/vantageUtils';
 
 const BUCKET = 'sunrise_photos';
@@ -51,10 +51,14 @@ type Props = {
   cityFallback?: string | null;
   /** Current viewer's user id; used to show vantage name for private vantages when viewer = owner. */
   currentUserId?: string | null;
+  /** When true, overlay uses city name instead of vantage (for global gallery). */
+  showCityOverlay?: boolean;
 };
 
-export default function CitySunriseGallery({ rows, limit, cityFallback, currentUserId }: Props) {
+export default function CitySunriseGallery({ rows, limit, cityFallback, currentUserId, showCityOverlay }: Props) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const Dawn = useDawn();
+  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   const [urls, setUrls] = useState<(string | null)[]>([]);
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
   const [galleryVisibleIndex, setGalleryVisibleIndex] = useState(0);
@@ -110,6 +114,7 @@ export default function CitySunriseGallery({ rows, limit, cityFallback, currentU
       <View style={[styles.galleryGrid, { width: windowWidth - 48 }]}>
         {data.map((row, index) => {
           const url = urls[index];
+          const cityLabel = (row.city ?? cityFallback ?? '').trim();
           return (
             <Pressable
               key={`${row.created_at}-${index}`}
@@ -132,14 +137,25 @@ export default function CitySunriseGallery({ rows, limit, cityFallback, currentU
                   <Text style={styles.galleryTileDateText}>{formatShortMonthDay(row.created_at)}</Text>
                 </View>
               ) : null}
-              {row.vantage_name?.trim() &&
-              shouldShowVantageName(row.vantage_category ?? null, currentUserId != null && row.user_id === currentUserId) ? (
-                <View style={styles.galleryTileOverlay}>
-                  <Text style={styles.galleryTileVantage} numberOfLines={1}>
-                    {toTitleCaseVantage(row.vantage_name.trim())}
-                  </Text>
-                </View>
-              ) : null}
+              {showCityOverlay
+                ? cityLabel && (
+                    <View style={styles.galleryTileOverlay}>
+                      <Text style={styles.galleryTileVantage} numberOfLines={1}>
+                        {cityLabel}
+                      </Text>
+                    </View>
+                  )
+                : row.vantage_name?.trim() &&
+                  shouldShowVantageName(
+                    row.vantage_category ?? null,
+                    currentUserId != null && row.user_id === currentUserId
+                  ) && (
+                    <View style={styles.galleryTileOverlay}>
+                      <Text style={styles.galleryTileVantage} numberOfLines={1}>
+                        {toTitleCaseVantage(row.vantage_name.trim())}
+                      </Text>
+                    </View>
+                  )}
             </Pressable>
           );
         })}
@@ -246,7 +262,8 @@ export default function CitySunriseGallery({ rows, limit, cityFallback, currentU
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+  return StyleSheet.create({
   galleryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -255,6 +272,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: Dawn.surface.card,
+    borderWidth: 1,
+    borderColor: Dawn.border.subtle,
   },
   galleryTileImage: {
     width: '100%',
@@ -363,4 +382,5 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.82)',
     letterSpacing: 0.2,
   },
-});
+  });
+}

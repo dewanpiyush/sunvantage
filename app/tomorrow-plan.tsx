@@ -18,7 +18,8 @@ import SunVantageHeader from '../components/SunVantageHeader';
 import StreakBlock from '../components/StreakBlock';
 import DawnInvitationSection from '../components/DawnInvitationSection';
 import { useMorningContext } from '../hooks/useMorningContext';
-import { Dawn } from '../constants/theme';
+import { useDawn } from '@/hooks/use-dawn';
+import { useAppTheme } from '@/context/AppThemeContext';
 
 const TOMORROW_INTENTION_KEY = 'sunvantage_tomorrow_intention';
 export const TOMORROW_ALARM_SET_KEY = 'sunvantage_tomorrow_alarm_set';
@@ -98,6 +99,9 @@ Notifications.setNotificationHandler({
 
 export default function TomorrowPlanScreen() {
   const router = useRouter();
+  const Dawn = useDawn();
+  const { mode } = useAppTheme();
+  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn, mode]);
   const [profile, setProfile] = useState<{ city: string | null; current_streak: number; longest_streak: number } | null>(null);
   const [streakLoading, setStreakLoading] = useState(true);
   const [intention, setIntention] = useState('');
@@ -294,7 +298,7 @@ export default function TomorrowPlanScreen() {
   const weatherLineShort = getSunriseWeatherLine(tomorrowWeather);
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} key={mode}>
       <View style={styles.gradientTop} pointerEvents="none" />
       <View style={styles.gradientMid} pointerEvents="none" />
       <View style={styles.gradientLowerWarm} pointerEvents="none" />
@@ -371,18 +375,20 @@ export default function TomorrowPlanScreen() {
             )}
             {reminderTimeFormatted && !isDawnMode && (
               <View style={styles.adjustRow}>
-                <Pressable
-                  style={styles.adjustBtn}
-                  onPress={() => (alarmTime != null ? adjustReminderAndReschedule(-10) : adjustReminder(-10))}
-                >
-                  <Text style={styles.adjustBtnText}>−10</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.adjustBtn}
-                  onPress={() => (alarmTime != null ? adjustReminderAndReschedule(-5) : adjustReminder(-5))}
-                >
-                  <Text style={styles.adjustBtnText}>−5</Text>
-                </Pressable>
+                <View style={styles.adjustCol}>
+                  <Pressable
+                    style={styles.adjustBtn}
+                    onPress={() => (alarmTime != null ? adjustReminderAndReschedule(-10) : adjustReminder(-10))}
+                  >
+                    <Text style={styles.adjustBtnText}>−10</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.adjustBtn}
+                    onPress={() => (alarmTime != null ? adjustReminderAndReschedule(-5) : adjustReminder(-5))}
+                  >
+                    <Text style={styles.adjustBtnText}>−5</Text>
+                  </Pressable>
+                </View>
                 <View style={styles.reminderTimesBlock}>
                   <Text style={styles.reminderTimesLine}>
                     Sunrise: {formatSunriseTime(sunriseDisplay)}
@@ -391,18 +397,20 @@ export default function TomorrowPlanScreen() {
                     Reminder: {reminderTimeFormatted ?? '—'}
                   </Text>
                 </View>
-                <Pressable
-                  style={styles.adjustBtn}
-                  onPress={() => (alarmTime != null ? adjustReminderAndReschedule(5) : adjustReminder(5))}
-                >
-                  <Text style={styles.adjustBtnText}>+5</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.adjustBtn}
-                  onPress={() => (alarmTime != null ? adjustReminderAndReschedule(10) : adjustReminder(10))}
-                >
-                  <Text style={styles.adjustBtnText}>+10</Text>
-                </Pressable>
+                <View style={styles.adjustCol}>
+                  <Pressable
+                    style={styles.adjustBtn}
+                    onPress={() => (alarmTime != null ? adjustReminderAndReschedule(5) : adjustReminder(5))}
+                  >
+                    <Text style={styles.adjustBtnText}>+5</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.adjustBtn}
+                    onPress={() => (alarmTime != null ? adjustReminderAndReschedule(10) : adjustReminder(10))}
+                  >
+                    <Text style={styles.adjustBtnText}>+10</Text>
+                  </Pressable>
+                </View>
               </View>
             )}
             <Pressable
@@ -427,14 +435,15 @@ export default function TomorrowPlanScreen() {
           <DawnInvitationSection city={cityName} sunriseTomorrow={sunriseTomorrow} />
 
           {/* Closing text */}
-          <Text style={styles.closing}>You don't have to capture it. Just notice it.</Text>
+          <Text style={styles.closing}>You don{"'"}t have to capture it. Just notice it.</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+  return StyleSheet.create({
   titleRowCentered: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -536,6 +545,8 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 20,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Dawn.border.subtle,
   },
   prompt: {
     fontSize: 15,
@@ -572,19 +583,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     marginBottom: 14,
     gap: 8,
+  },
+  adjustCol: {
+    gap: 8,
+    alignItems: 'center',
   },
   adjustBtn: {
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: Dawn.surfaceSecondary.subtle,
+    borderWidth: 1,
+    borderColor: Dawn.border.subtle,
   },
   adjustBtnText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '500',
     color: Dawn.text.primary,
   },
   reminderTimesBlock: {
@@ -626,4 +643,5 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 8,
   },
-});
+  });
+}

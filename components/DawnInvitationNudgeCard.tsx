@@ -1,12 +1,14 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { Dawn } from '@/constants/theme';
+import { useDawn } from '@/hooks/use-dawn';
 
 type Props = {
   onPress: () => void;
 };
 
 export default function DawnInvitationNudgeCard({ onPress }: Props) {
+  const Dawn = useDawn();
+  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   return (
     <View style={styles.wrap}>
       <View style={styles.card}>
@@ -31,7 +33,8 @@ export default function DawnInvitationNudgeCard({ onPress }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+  return StyleSheet.create({
   wrap: {
     alignSelf: 'stretch',
     marginTop: 16,
@@ -101,5 +104,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Dawn.accent.sunrise,
   },
-});
+  });
+}
 

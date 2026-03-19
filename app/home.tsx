@@ -16,7 +16,7 @@ import RitualRevealCard from '../components/RitualRevealCard';
 import { useMorningContext } from '../hooks/useMorningContext';
 import { computeBadgeStats, getEarnedBadges, computeEarnedAtByBadge, BADGE_ICONS, type BadgeDef } from './ritual-markers';
 import { getDismissedBadgeIds, dismissBadgeReveal } from '../lib/ritualReveal';
-import { Dawn } from '../constants/theme';
+import { useDawn } from '@/hooks/use-dawn';
 
 // ----- Streak (same logic as elsewhere) -----
 const YMD_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -162,6 +162,8 @@ function computeStreakFromLogDates(
 
 export default function HomeScreen() {
   const router = useRouter();
+  const Dawn = useDawn();
+  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   const [profile, setProfile] = useState<{ first_name: string | null; city: string | null } | null>(null);
   const [logs, setLogs] = useState<{ created_at: string; reflection_text?: string | null; vantage_name?: string | null; city?: string | null }[]>([]);
   const [streak, setStreak] = useState<{ current: number; longest: number }>({ current: 0, longest: 0 });
@@ -483,7 +485,9 @@ export default function HomeScreen() {
                 style={({ pressed }) => [styles.sunriseContextCardButton, pressed && styles.modeCardPressed]}
                 onPress={handleOpenWitness}
               >
-                <Text style={styles.sunriseContextCardButtonText}>Today's sunrise</Text>
+                <Text style={styles.sunriseContextCardButtonText}>
+                  Today{"'"}s sunrise
+                </Text>
               </Pressable>
             </>
           ) : (
@@ -556,7 +560,7 @@ export default function HomeScreen() {
                   onPress={() => router.push('/my-mornings')}
                 >
                   <Text style={styles.modeCardTitle}>View your mornings</Text>
-                  <Text style={styles.modeCardDesc}>Revisit the sunrises you've welcomed.</Text>
+                  <Text style={styles.modeCardDesc}>Revisit the sunrises you{"'"}ve welcomed.</Text>
                   <View style={styles.modeCardButton}>
                     <Text style={styles.modeCardButtonText}>Open My Mornings</Text>
                   </View>
@@ -727,7 +731,8 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+  return StyleSheet.create({
   titleRowCentered: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -870,7 +875,7 @@ const styles = StyleSheet.create({
   },
   sunriseContextCardPrimary: {
     borderColor: Dawn.border.sunriseCard,
-    backgroundColor: '#1a3558',
+    backgroundColor: Dawn.surface.cardPrimary,
   },
   sunriseContextCardTitle: {
     fontSize: 17,
@@ -972,9 +977,11 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 24,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Dawn.border.subtle,
   },
   modeCardSecondary: {
-    backgroundColor: '#122845',
+    backgroundColor: Dawn.surface.cardSecondary,
   },
   modeCardTightBottom: {
     marginBottom: 6,
@@ -1016,4 +1023,5 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: Dawn.accent.sunriseOn,
   },
-});
+  });
+}

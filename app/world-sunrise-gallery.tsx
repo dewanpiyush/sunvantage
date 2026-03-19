@@ -1,33 +1,21 @@
 /**
- * My City's Sunrises — gallery of sunrise photos shared by others in the same city.
- * Reuses CitySunriseGallery (same grid + modal as "Morning light across {city}" in My Mornings).
- * Nav entry is conditional: only shown when count(other users' photos in city) > 1.
+ * Global Sunrise Gallery — gallery of recent sunrise photos from across SunVantage.
+ * Reuses CitySunriseGallery grid + modal; pulls from global sunrise_logs (no city filter).
  */
 import React, { useEffect, useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  ActivityIndicator,
-} from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { useRouter } from 'expo-router';
 import supabase from '../supabase';
 import SunVantageHeader from '../components/SunVantageHeader';
 import CitySunriseGallery, { type CitySunriseGalleryRow } from '../components/CitySunriseGallery';
-import { useDawn } from '@/hooks/use-dawn';
+import { Dawn } from '../constants/theme';
 
-const GALLERY_LIMIT = 21;
+const GALLERY_LIMIT = 30;
 
-export default function MyCitySunrisesScreen() {
+export default function WorldSunriseGalleryScreen() {
   const router = useRouter();
-  const Dawn = useDawn();
-  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
-  const params = useLocalSearchParams<{ from?: string }>();
-  const fromWitness = params.from === 'witness';
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [cityName, setCityName] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [rows, setRows] = useState<CitySunriseGalleryRow[]>([]);
 
@@ -41,35 +29,16 @@ export default function MyCitySunrisesScreen() {
       } = await supabase.auth.getSession();
       const userId = session?.user?.id;
       if (sessionError || !userId) {
-        setError('Please sign in to see your city’s sunrises.');
+        setError('Please sign in to see shared sunrises.');
         setRows([]);
-        setCityName(null);
         setCurrentUserId(null);
         return;
       }
       setCurrentUserId(userId);
 
-      const profileRes = await supabase
-        .from('profiles')
-        .select('city')
-        .eq('user_id', userId)
-        .maybeSingle();
-      const city = (profileRes.data as { city?: string } | null)?.city?.trim() ?? null;
-      setCityName(city);
-
-      if (!city) {
-        setRows([]);
-        return;
-      }
-
-      const { data, error: fetchError } = await supabase
-        .from('sunrise_logs')
-        .select('photo_url, vantage_name, created_at, vantage_category, user_id')
-        .eq('city', city)
-        .neq('user_id', userId)
-        .not('photo_url', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(GALLERY_LIMIT);
+      const { data, error: fetchError } = await supabase.rpc('get_global_sunrise_gallery', {
+        limit_count: GALLERY_LIMIT,
+      });
 
       if (fetchError) {
         setError(fetchError.message || 'Could not load photos.');
@@ -111,21 +80,16 @@ export default function MyCitySunrisesScreen() {
 
       <View style={styles.header}>
         <SunVantageHeader
-          showBack={fromWitness}
-          hideMenu={fromWitness}
-          showBranding={fromWitness}
-          title="My City's Sunrises"
-          backLabel={fromWitness ? '← Back' : undefined}
-          onBackPress={fromWitness ? () => router.back() : undefined}
+          showBack
+          hideMenu
+          showBranding
+          title="Global Sunrises Welcomed"
+          onBackPress={() => router.back()}
           hasLoggedToday={false}
-          screenTitle={!fromWitness}
-          onHeaderPress={!fromWitness ? () => router.push('/home') : undefined}
+          screenTitle={false}
+          onHeaderPress={() => router.push('/home')}
         />
-        {cityName ? (
-          <Text style={styles.headerLine}>
-            Some recent shared mornings in {cityName}.
-          </Text>
-        ) : null}
+        <Text style={styles.headerLine}>Some recent shared mornings on SunVantage.</Text>
       </View>
 
       {error ? (
@@ -142,18 +106,20 @@ export default function MyCitySunrisesScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <CitySunriseGallery rows={rows} limit={GALLERY_LIMIT} cityFallback={cityName} currentUserId={currentUserId} />
-          <Text style={styles.footerLine}>
-            Each dawn looks different from somewhere new.
-          </Text>
+          <CitySunriseGallery
+            rows={rows}
+            limit={GALLERY_LIMIT}
+            currentUserId={currentUserId}
+            showCityOverlay
+          />
+          <Text style={styles.footerLine}>Each dawn looks different from somewhere new.</Text>
         </ScrollView>
       )}
     </View>
   );
 }
 
-function makeStyles(Dawn: ReturnType<typeof useDawn>) {
-  return StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Dawn.background.primary,
@@ -187,8 +153,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   headerLine: {
     marginTop: 10,
     fontSize: 13,
-    color: Dawn.text.secondary,
-    opacity: 0.85,
+    color: 'rgba(231, 238, 247, 0.65)',
   },
   scroll: {
     flex: 1,
@@ -200,9 +165,8 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   footerLine: {
     marginTop: 14,
     fontSize: 13,
-    color: Dawn.text.secondary,
+    color: 'rgba(231, 238, 247, 0.65)',
     textAlign: 'center',
-    opacity: 0.85,
   },
   centered: {
     flex: 1,
@@ -225,5 +189,5 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     color: Dawn.text.secondary,
     textAlign: 'center',
   },
-  });
-}
+});
+

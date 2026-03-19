@@ -6,7 +6,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
-import { Dawn } from '../constants/theme';
+import { useDawn } from '@/hooks/use-dawn';
 
 export type MarkerCardEarnedProps = {
   variant: 'earned';
@@ -27,6 +27,8 @@ export type MarkerCardLockedProps = {
 export type MarkerCardProps = MarkerCardEarnedProps | MarkerCardLockedProps;
 
 export default function MarkerCard(props: MarkerCardProps) {
+  const Dawn = useDawn();
+  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   const isLocked = props.variant === 'locked';
   return (
     <View style={[styles.card, isLocked && styles.cardLocked]}>
@@ -56,7 +58,8 @@ export default function MarkerCard(props: MarkerCardProps) {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+  return StyleSheet.create({
   card: {
     borderRadius: 16,
     borderWidth: 1,
@@ -123,4 +126,5 @@ const styles = StyleSheet.create({
     color: Dawn.text.secondary,
     lineHeight: 18,
   },
-});
+  });
+}

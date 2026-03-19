@@ -8,7 +8,8 @@ import supabase from '../supabase';
 import { clearTomorrowPlan } from '../lib/clearTomorrowPlan';
 import { getWitnessSubheading } from '../lib/ritualState';
 import { useMorningContext } from '../hooks/useMorningContext';
-import { Dawn } from '../constants/theme';
+import { useDawn } from '@/hooks/use-dawn';
+import { useAppTheme } from '@/context/AppThemeContext';
 import SunVantageHeader from '../components/SunVantageHeader';
 import SunriseLogCard from '../components/SunriseLogCard';
 import StreakBlock from '../components/StreakBlock';
@@ -282,7 +283,12 @@ export function SunriseLog({
   context = 'witness',
   initialVantageName = null,
 }: SunriseLogProps) {
+  const Dawn = useDawn();
+  const { mode } = useAppTheme();
+  const isMorningLight = mode === 'morning-light';
+  const styles = React.useMemo(() => makeStyles(Dawn, isMorningLight), [Dawn, isMorningLight]);
   const photoBucket = 'sunrise_photos';
+  const pendingBucket = 'uploads_pending';
   const reflectionDebounceMs = 800;
   const signedUrlExpirySeconds = 60 * 60; // 1 hour
 
@@ -314,6 +320,7 @@ export function SunriseLog({
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [moderatingPhoto, setModeratingPhoto] = useState(false);
   const [logId, setLogId] = useState<number | null>(null);
   const [photoMessage, setPhotoMessage] = useState('');
   const [hasReplacedPhoto, setHasReplacedPhoto] = useState(false);
@@ -953,7 +960,7 @@ export function SunriseLog({
   }, [logId]);
 
   const handleAddPhoto = async () => {
-    if (!hasLogged || uploadingPhoto || logId == null) return;
+    if (!hasLogged || uploadingPhoto || moderatingPhoto || logId == null) return;
     if (photoUrl && hasReplacedPhoto) return; // already used the one replace for today
 
     try {
@@ -998,8 +1005,8 @@ export function SunriseLog({
         return;
       }
 
-      const extension = asset.fileName?.split('.').pop() || 'jpg';
-      const path = `${userId}/${logId}-${Date.now()}.${extension}`;
+      const timestamp = Date.now();
+      const stagedPath = `${userId}/${logId}-${timestamp}.jpg`;
 
       // Use base64 from picker so upload has real bytes (fetch(asset.uri) often gives 0 bytes in RN)
       // RN Blob doesn't support ArrayBufferView; Supabase upload accepts Uint8Array/ArrayBuffer.
@@ -1022,53 +1029,100 @@ export function SunriseLog({
         return;
       }
 
-      const { error: uploadError } = await supabase.storage
-        .from(photoBucket)
-        .upload(path, body, {
-          contentType: asset.mimeType || 'image/jpeg',
-          upsert: true,
-        });
+      const { error: uploadError } = await supabase.storage.from(pendingBucket).upload(stagedPath, body, {
+        contentType: asset.mimeType || 'image/jpeg',
+        upsert: true,
+      });
 
       if (uploadError) {
-        setError('We could not upload that photo. Please try again.');
+        setError(uploadError.message || 'We could not upload that photo. Please try again.');
         return;
       }
 
-      // Use the path we just uploaded (when replacing, list() could return old + new and pick the wrong one)
-      const storedPath = path;
       const isReplacing = !!photoPath && !photoPath.startsWith('http');
 
-      const { error: updateError } = await supabase
-        .from('sunrise_logs')
-        .update(
-          isReplacing ? { photo_url: storedPath, photo_replaced_once: true } : { photo_url: storedPath }
-        )
-        .eq('id', logId);
+      setModeratingPhoto(true);
+      setPhotoMessage('Processing your sunrise…');
 
-      if (updateError) {
-        setError('We could not save that photo. Please try again.');
+      const {
+        data: { session: modSession },
+      } = await supabase.auth.getSession();
+      const accessToken = modSession?.access_token;
+      if (!accessToken) {
+        setError('Please sign in again to process your photo.');
         return;
       }
 
-      if (isReplacing && photoPath) {
-        await supabase.storage.from(photoBucket).remove([photoPath]);
+      const functions = supabase.functions;
+      functions.setAuth(accessToken);
+
+      const invokePromise = functions.invoke('moderate-image', {
+        body: { path: stagedPath, type: 'sunrise' as const, logId, userId },
+      });
+      const timeoutMs = 25_000;
+      const timed = await Promise.race([
+        invokePromise,
+        new Promise<{ data: null; error: { message: string } }>((_, reject) =>
+          setTimeout(() => reject(new Error('Moderation timed out. Please try again.')), timeoutMs)
+        ),
+      ] as const).catch((e) => {
+        throw e instanceof Error ? e : new Error('Moderation failed. Please try again.');
+      });
+
+      const { data, error: fnError } = timed as unknown as {
+        data: { status: 'approved' | 'rejected'; publicUrl?: string } | null;
+        error: { message?: string; context?: unknown } | null;
+      };
+
+      if (fnError) {
+        const ctx = (fnError as any)?.context;
+        const ctxMsg =
+          typeof ctx?.body === 'string'
+            ? ctx.body
+            : typeof ctx === 'string'
+              ? ctx
+              : ctx
+                ? JSON.stringify(ctx)
+                : '';
+        setError((ctxMsg && `${fnError.message || 'Moderation failed'}: ${ctxMsg}`) || fnError.message || 'We could not process that photo. Please try again.');
+        return;
+      }
+
+      if (!data || (data.status !== 'approved' && data.status !== 'rejected')) {
+        setError('We could not process that photo. Please try again.');
+        return;
+      }
+
+      if (data.status === 'rejected') {
+        setError("This doesn’t seem like a sunrise moment 🌅 Please try another photo.");
+        setPhotoMessage('');
+        return;
+      }
+
+      const approvedUrl = data.publicUrl;
+      if (!approvedUrl) {
+        setError('Photo approved, but we could not publish it. Please try again.');
+        return;
+      }
+
+      // DB photo_url is set by the Edge Function. We still mark replacement flag client-side.
+      if (isReplacing) {
+        await supabase.from('sunrise_logs').update({ photo_replaced_once: true }).eq('id', logId);
       }
 
       if (isReplacing) setHasReplacedPhoto(true);
 
-      setPhotoPath(storedPath);
-      setPhotoUrl(null);
-      const displayUrl = await resolvePhotoDisplayUrl(storedPath);
-      setPhotoUrl(displayUrl);
-
-      if (!displayUrl) {
-        setError('Photo saved, but we couldn’t create a secure link to show it. Check the Metro terminal for details.');
-      }
-      setPhotoMessage(isReplacing ? 'Photo updated. Your morning was part of something larger.' : 'Your morning was part of something larger.');
+      setPhotoPath(approvedUrl);
+      setPhotoUrl(approvedUrl);
+      setPhotoMessage(
+        isReplacing ? 'Photo updated. Your morning was part of something larger.' : 'Your morning was part of something larger.'
+      );
     } catch (e) {
-      setError('Something went wrong while adding your photo.');
+      const message = e instanceof Error ? e.message : 'Something went wrong while adding your photo.';
+      setError(message || 'Something went wrong while adding your photo.');
     } finally {
       setUploadingPhoto(false);
+      setModeratingPhoto(false);
     }
   };
 
@@ -1417,7 +1471,8 @@ export function SunriseLog({
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
+  return StyleSheet.create({
   titleRowCentered: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1489,7 +1544,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: '32%',
-    backgroundColor: 'rgba(14, 34, 61, 0.4)',
+    backgroundColor: isMorningLight ? 'transparent' : 'rgba(14, 34, 61, 0.4)',
   },
   header: {
     marginBottom: 0,
@@ -1797,7 +1852,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 320,
     alignSelf: 'center',
-    backgroundColor: 'rgba(22, 47, 82, 0.85)',
+    backgroundColor: isMorningLight ? Dawn.surface.card : 'rgba(22, 47, 82, 0.85)',
     borderRadius: 24,
     padding: 20,
     borderWidth: 1,
@@ -1877,7 +1932,7 @@ const styles = StyleSheet.create({
   yourMorningReflectionQuote: {
     fontSize: 14,
     lineHeight: 22,
-    color: Dawn.text.secondary,
+    color: isMorningLight ? Dawn.text.primary : Dawn.text.secondary,
     textAlign: 'center',
     fontStyle: 'italic',
     marginBottom: 8,
@@ -1913,8 +1968,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 12,
-    borderWidth: 0,
-    backgroundColor: 'rgba(14, 34, 61, 0.5)',
+    borderWidth: isMorningLight ? 1 : 0,
+    borderColor: isMorningLight ? Dawn.border.subtle : 'transparent',
+    backgroundColor: isMorningLight ? Dawn.surfaceSecondary.subtle : 'rgba(14, 34, 61, 0.5)',
     color: Dawn.text.primary,
     fontSize: 15,
     lineHeight: 22,
@@ -2126,7 +2182,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Dawn.text.secondary,
   },
-});
+  });
+}
 
 export default function SunriseWitnessScreen() {
   const params = useLocalSearchParams<{ vantageName?: string | string[]; context?: string | string[] }>();

@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import supabase from '../supabase';
-import { Dawn } from '../constants/theme';
+import { useDawn } from '@/hooks/use-dawn';
 import SunVantageHeader from '../components/SunVantageHeader';
 import MarkerCard from '../components/MarkerCard';
 import { hasLoggedToday } from '../lib/hasLoggedToday';
@@ -331,6 +331,8 @@ export function getEarnedBadges(stats: BadgeStats): BadgeDef[] {
 // ----- Screen -----
 export default function RitualMarkersScreen() {
   const router = useRouter();
+  const Dawn = useDawn();
+  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -477,7 +479,8 @@ export default function RitualMarkersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+  return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Dawn.background.primary,
@@ -541,4 +544,5 @@ const styles = StyleSheet.create({
     color: '#FCA5A5',
     textAlign: 'center',
   },
-});
+  });
+}

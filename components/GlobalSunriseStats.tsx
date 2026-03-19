@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { useDawn } from '@/hooks/use-dawn';
 
 function pluralize(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : plural;
@@ -25,6 +26,8 @@ export default function GlobalSunriseStats({
   userWitnessedToday,
   isUserFirstWitness,
 }: Props) {
+  const Dawn = useDawn();
+  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   const subLine =
     cityCount > 1
       ? `Across ${cityCount.toLocaleString()} ${pluralize(cityCount, 'city', 'cities')}.`
@@ -76,7 +79,20 @@ export default function GlobalSunriseStats({
     );
   }
 
-  // Case 5 — Multiple witnesses across multiple cities
+  // Case 5 — Multiple witnesses across multiple cities (hierarchical layout)
+  if (totalWitnesses >= 2 && cityCount >= 2) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.countLine}>
+          {'\u{1F305}'} {totalWitnesses.toLocaleString()} people
+        </Text>
+        <Text style={styles.mainLine}>greeted the sunrise today</Text>
+        {subLine ? <Text style={styles.subLine}>{subLine}</Text> : null}
+      </View>
+    );
+  }
+
+  // Fallback (should rarely hit): keep the calm plural wording
   return (
     <View style={styles.container}>
       <Text style={styles.mainLine}>
@@ -87,7 +103,8 @@ export default function GlobalSunriseStats({
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+  return StyleSheet.create({
   container: {
     paddingVertical: 16,
     paddingHorizontal: 24,
@@ -96,15 +113,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  countLine: {
+    fontSize: 17,
+    fontWeight: '500',
+    color: Dawn.text.primary,
+    textAlign: 'center',
+    marginBottom: 2,
+  },
   mainLine: {
-    fontSize: 15,
-    color: '#AFC2DA',
+    fontSize: 14,
+    color: Dawn.text.secondary,
     textAlign: 'center',
     marginBottom: 4,
   },
   subLine: {
     fontSize: 13,
-    color: '#7A8BA3',
+    color: Dawn.text.secondary,
     textAlign: 'center',
+    opacity: 0.85,
   },
-});
+  });
+}

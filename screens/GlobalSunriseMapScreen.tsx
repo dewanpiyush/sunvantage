@@ -13,7 +13,8 @@ import SunriseTerminator from '@/components/map/SunriseTerminator';
 import CityDot from '@/components/map/CityDot';
 import UserCityDot from '@/components/map/UserCityDot';
 import GlobalSunriseStats from '@/components/GlobalSunriseStats';
-import { Dawn } from '@/constants/theme';
+import { useDawn } from '@/hooks/use-dawn';
+import { useAppTheme } from '@/context/AppThemeContext';
 import { fetchGlobalSunriseLogs, type CityLogAggregate } from '@/lib/fetchGlobalSunriseLogs';
 import supabase from '@/supabase';
 
@@ -23,6 +24,10 @@ const DEFAULT_USER_CITY = { city: 'Delhi', lat: 28.6139, lng: 77.209 };
 
 export default function GlobalSunriseMapScreen() {
   const router = useRouter();
+  const Dawn = useDawn();
+  const { mode } = useAppTheme();
+  const isMorningLight = mode === 'morning-light';
+  const styles = React.useMemo(() => makeStyles(Dawn, isMorningLight), [Dawn, isMorningLight]);
   const [now, setNow] = useState(() => new Date());
   const { width, height } = useWindowDimensions();
   const [aggregate, setAggregate] = useState<{
@@ -85,7 +90,7 @@ export default function GlobalSunriseMapScreen() {
   const userWitnessedToday = aggregate.userWitnessedToday;
   const isUserFirstWitness = userWitnessedToday && aggregate.totalWitnesses === 1;
 
-  const mapHeight = height * 0.48;
+  const mapHeight = height * 0.5;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -134,14 +139,15 @@ export default function GlobalSunriseMapScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
+  return StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: Dawn.background.primary,
   },
   mapContainer: {
     width: '100%',
-    marginTop: 20,
+    marginTop: 12,
     backgroundColor: Dawn.background.primary,
     overflow: 'hidden',
     borderWidth: 0,
@@ -162,7 +168,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: 'rgba(7, 16, 35, 0.78)',
+    backgroundColor: isMorningLight ? 'rgba(255,255,255,0.85)' : 'rgba(7, 16, 35, 0.78)',
+    borderWidth: isMorningLight ? 1 : 0,
+    borderColor: isMorningLight ? Dawn.border.subtle : 'transparent',
   },
   terminatorLegend: {
     width: 18,
@@ -197,6 +205,7 @@ const styles = StyleSheet.create({
   },
   terminatorLabelText: {
     fontSize: 12,
-    color: '#E9F0FF',
+    color: isMorningLight ? Dawn.text.primary : '#E9F0FF',
   },
-});
+  });
+}

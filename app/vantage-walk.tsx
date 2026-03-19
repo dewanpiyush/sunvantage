@@ -20,7 +20,8 @@ import { hasLoggedToday, isTodayLocal } from '../lib/hasLoggedToday';
 import { computeBadgeStats, getEarnedBadges, computeEarnedAtByBadge, type BadgeDef } from './ritual-markers';
 import { dismissBadgeReveal } from '../lib/ritualReveal';
 import { BADGE_ICONS } from './ritual-markers';
-import { Dawn } from '../constants/theme';
+import { useDawn } from '@/hooks/use-dawn';
+import { useAppTheme } from '@/context/AppThemeContext';
 
 type TodayLogDetails = {
   vantage_name: string | null;
@@ -56,6 +57,10 @@ function formatSunriseTime(hhmm: string | null): string {
 }
 
 export default function VantageWalkScreen() {
+  const Dawn = useDawn();
+  const { mode } = useAppTheme();
+  const isMorningLight = mode === 'morning-light';
+  const styles = React.useMemo(() => makeStyles(Dawn, isMorningLight), [Dawn, isMorningLight]);
   const [profileCity, setProfileCity] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [streak, setStreak] = useState<{ current: number; longest: number }>({ current: 0, longest: 0 });
@@ -393,7 +398,8 @@ export default function VantageWalkScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
+  return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Dawn.background.primary,
@@ -552,7 +558,7 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: Dawn.border.sunriseCard,
+    borderColor: Dawn.border.subtle,
     alignItems: 'center',
   },
   memoryCardTop: {
@@ -589,7 +595,7 @@ const styles = StyleSheet.create({
   },
   memoryCardReflection: {
     fontSize: 14,
-    color: Dawn.text.secondary,
+    color: isMorningLight ? Dawn.text.primary : Dawn.text.secondary,
     lineHeight: 22,
     marginBottom: 14,
     textAlign: 'center',
@@ -627,4 +633,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
   },
-});
+  });
+}
