@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import supabase from '@/supabase';
+import { usePendingModerationRecoveryOnAppActive } from '@/hooks/use-pending-moderation-recovery-on-app-active';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -7,7 +9,6 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { fetchProfileCompleteness } from '@/lib/profileGuard';
-import supabase from '@/supabase';
 import { Dawn } from '@/constants/theme';
 import { AppThemeProvider, useAppTheme } from '@/context/AppThemeContext';
 
@@ -88,6 +89,9 @@ function RootLayoutInner() {
   const colorScheme = useColorScheme();
   const { colorScheme: appScheme } = useAppTheme();
   const scheme = appScheme ?? colorScheme;
+
+  /** Pending sunrise moderation when app foregrounds (any screen), not only Home focus. */
+  usePendingModerationRecoveryOnAppActive(supabase);
 
   return (
     <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>

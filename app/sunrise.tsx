@@ -3,6 +3,7 @@ import { View, Text, Pressable, TouchableOpacity, StyleSheet, ActivityIndicator,
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import supabase from '../supabase';
 import { clearTomorrowPlan } from '../lib/clearTomorrowPlan';
@@ -21,6 +22,7 @@ import { dismissBadgeReveal } from '../lib/ritualReveal';
 import { BADGE_ICONS } from './ritual-markers';
 import { normalizeVantageForStorage, getNormalizedVantageFromRow } from '../lib/vantageUtils';
 import { getCoordinatesForCity } from '../services/weatherService';
+import { invokeModerateImage } from '../lib/moderateImageInvoke';
 
 const REFLECTION_PROMPTS = [
   'What are you grateful for this morning?',
@@ -295,17 +297,25 @@ export function SunriseLog({
   const resolvePhotoDisplayUrl = async (ref: string) => {
     if (!ref) return null;
     if (ref.startsWith('http://') || ref.startsWith('https://')) return ref;
+    const cleaned = ref.replace(/^\/+/, '');
+    const isPendingRef = cleaned.startsWith(`${pendingBucket}/`);
+    const bucket = isPendingRef ? pendingBucket : photoBucket;
+    const key = isPendingRef
+      ? cleaned.slice(`${pendingBucket}/`.length)
+      : cleaned.startsWith(`${photoBucket}/`)
+        ? cleaned.slice(`${photoBucket}/`.length)
+        : cleaned;
 
     const { data, error } = await supabase.storage
-      .from(photoBucket)
-      .createSignedUrl(ref, signedUrlExpirySeconds);
+      .from(bucket)
+      .createSignedUrl(key, signedUrlExpirySeconds);
 
     if (error) {
-      console.warn('[SunVantage] createSignedUrl error', { path: ref, message: error.message, name: error.name });
+      console.warn('[SunVantage] createSignedUrl error', { path: key, bucket, message: error.message, name: error.name });
       return null;
     }
     if (!data?.signedUrl) {
-      console.warn('[SunVantage] createSignedUrl no signedUrl', { path: ref, dataKeys: data ? Object.keys(data) : [] });
+      console.warn('[SunVantage] createSignedUrl no signedUrl', { path: key, bucket, dataKeys: data ? Object.keys(data) : [] });
       return null;
     }
     const url = data.signedUrl;
@@ -614,13 +624,16 @@ export function SunriseLog({
           setEditingVantage(false);
           const ref = todayLog.photo_url ?? null;
           setPhotoPath(ref);
-          setPhotoUrl(null);
 
           if (ref) {
             const displayUrl = await resolvePhotoDisplayUrl(ref);
-            setPhotoUrl(displayUrl);
+            if (displayUrl) setPhotoUrl(displayUrl);
           } else {
-            setPhotoUrl(null);
+            setPhotoUrl((prev) => {
+              if (!prev) return null;
+              if (prev.startsWith('file:') || prev.startsWith('content:')) return prev;
+              return null;
+            });
           }
 
           const norm = getNormalizedVantageFromRow(todayLog as { vantage_name?: string | null; normalized_vantage?: string | null; user_input_vantage?: string | null });
@@ -1040,83 +1053,52 @@ export function SunriseLog({
       }
 
       const isReplacing = !!photoPath && !photoPath.startsWith('http');
+      const pendingPhotoRef = `${pendingBucket}/${stagedPath}`;
+      await supabase
+        .from('sunrise_logs')
+        .update({ moderation_status: 'pending', photo_url: pendingPhotoRef })
+        .eq('id', logId)
+        .eq('user_id', userId);
 
-      setModeratingPhoto(true);
-      setPhotoMessage('Processing your sunrise…');
+      // Keep UX non-blocking: show the picked photo immediately while moderation runs in background.
+      setPhotoPath(pendingPhotoRef);
+      setPhotoUrl(asset.uri);
+      setPhotoMessage('Your morning is part of something larger.');
 
-      const {
-        data: { session: modSession },
-      } = await supabase.auth.getSession();
-      const accessToken = modSession?.access_token;
-      if (!accessToken) {
-        setError('Please sign in again to process your photo.');
-        return;
-      }
+      // DB photo_url + moderation_status are finalized by the Edge Function asynchronously.
+      void invokeModerateImage(supabase, {
+        path: stagedPath,
+        type: 'sunrise',
+        logId,
+      }).then(({ data, error: invokeError }) => {
+          if (invokeError) {
+            console.warn('[SunVantage] moderate-image invoke failed', {
+              logId,
+              stagedPath,
+              message: invokeError.message,
+            });
+            return;
+          }
+          const status = (data as { status?: string } | null)?.status;
+          if (status !== 'approved' && status !== 'rejected') {
+            console.warn('[SunVantage] moderate-image unexpected response', {
+              logId,
+              stagedPath,
+              data,
+            });
+            return;
+          }
+          setRefreshTrigger((t) => t + 1);
+        });
 
-      const functions = supabase.functions;
-      functions.setAuth(accessToken);
-
-      const invokePromise = functions.invoke('moderate-image', {
-        body: { path: stagedPath, type: 'sunrise' as const, logId, userId },
-      });
-      const timeoutMs = 25_000;
-      const timed = await Promise.race([
-        invokePromise,
-        new Promise<{ data: null; error: { message: string } }>((_, reject) =>
-          setTimeout(() => reject(new Error('Moderation timed out. Please try again.')), timeoutMs)
-        ),
-      ] as const).catch((e) => {
-        throw e instanceof Error ? e : new Error('Moderation failed. Please try again.');
-      });
-
-      const { data, error: fnError } = timed as unknown as {
-        data: { status: 'approved' | 'rejected'; publicUrl?: string } | null;
-        error: { message?: string; context?: unknown } | null;
-      };
-
-      if (fnError) {
-        const ctx = (fnError as any)?.context;
-        const ctxMsg =
-          typeof ctx?.body === 'string'
-            ? ctx.body
-            : typeof ctx === 'string'
-              ? ctx
-              : ctx
-                ? JSON.stringify(ctx)
-                : '';
-        setError((ctxMsg && `${fnError.message || 'Moderation failed'}: ${ctxMsg}`) || fnError.message || 'We could not process that photo. Please try again.');
-        return;
-      }
-
-      if (!data || (data.status !== 'approved' && data.status !== 'rejected')) {
-        setError('We could not process that photo. Please try again.');
-        return;
-      }
-
-      if (data.status === 'rejected') {
-        setError("This doesn’t seem like a sunrise moment 🌅 Please try another photo.");
-        setPhotoMessage('');
-        return;
-      }
-
-      const approvedUrl = data.publicUrl;
-      if (!approvedUrl) {
-        setError('Photo approved, but we could not publish it. Please try again.');
-        return;
-      }
-
-      // DB photo_url is set by the Edge Function. We still mark replacement flag client-side.
       if (isReplacing) {
         await supabase.from('sunrise_logs').update({ photo_replaced_once: true }).eq('id', logId);
       }
 
       if (isReplacing) setHasReplacedPhoto(true);
-
-      setPhotoPath(approvedUrl);
-      setPhotoUrl(approvedUrl);
-      setPhotoMessage(
-        isReplacing ? 'Photo updated. Your morning was part of something larger.' : 'Your morning was part of something larger.'
-      );
+      if (isReplacing) {
+        setPhotoMessage('Photo updated. Your morning was part of something larger.');
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Something went wrong while adding your photo.';
       setError(message || 'Something went wrong while adding your photo.');
@@ -1127,12 +1109,18 @@ export function SunriseLog({
   };
 
   const canShowPhoto = hasLogged && typeof photoUrl === 'string' && photoUrl.length > 10;
+  const backgroundColors = isMorningLight
+    ? (['#EAF3FB', '#DCEAF7', '#CFE2F3'] as const)
+    : (['#102A43', '#1B3554', '#243F63'] as const);
   return (
     <View style={styles.container}>
-      <View style={styles.gradientTop} pointerEvents="none" />
-      <View style={styles.gradientMid} pointerEvents="none" />
-      <View style={styles.gradientLowerWarm} pointerEvents="none" />
-      <View style={styles.gradientVignette} pointerEvents="none" />
+      <LinearGradient
+        colors={backgroundColors}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={styles.backgroundGradient}
+        pointerEvents="none"
+      />
       <View style={styles.header}>
         <SunVantageHeader
           title="Today's Sunrise"
@@ -1332,7 +1320,7 @@ export function SunriseLog({
                             style={styles.yourMorningPhoto}
                             contentFit="cover"
                             cachePolicy="none"
-                            onError={() => setError('Photo failed to load.')}
+                            onError={() => setError('Finalizing your morning...')}
                             onLoad={() => {}}
                           />
                         </View>
@@ -1410,16 +1398,16 @@ export function SunriseLog({
                               {reflectionText?.trim() ? 'Edit reflection' : 'Add reflection'}
                             </Text>
                           </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.actionLink}
-                            onPress={handleAddPhoto}
-                            disabled={uploadingPhoto}
-                            activeOpacity={0.8}
-                          >
-                            <Text style={styles.actionLinkText}>
-                              {photoUrl ? 'Change photo' : 'Add photo'}
-                            </Text>
-                          </TouchableOpacity>
+                          {photoUrl ? (
+                            <TouchableOpacity
+                              style={styles.actionLink}
+                              onPress={handleAddPhoto}
+                              disabled={uploadingPhoto}
+                              activeOpacity={0.8}
+                            >
+                              <Text style={styles.actionLinkText}>Change photo</Text>
+                            </TouchableOpacity>
+                          ) : null}
                         </View>
                       </>
                     )}
@@ -1456,12 +1444,27 @@ export function SunriseLog({
       <SunriseLogCard
         visible={showLogCard}
         onClose={() => setShowLogCard(false)}
-        onSaved={() => {
+        onSaved={(result) => {
           setShowLogCard(false);
           setJustLanded(true);
           justLandedRef.current = true;
+          // Show something immediately (best-effort), then overwrite with a signed URL
+          // for the pending upload so it always loads after the modal closes.
+          if (result?.localPhotoUri) setPhotoUrl(result.localPhotoUri);
+          if (result?.pendingPhotoRef) {
+            setPhotoPath(result.pendingPhotoRef);
+            void (async () => {
+              try {
+                const displayUrl = await resolvePhotoDisplayUrl(result.pendingPhotoRef!);
+                if (displayUrl) setPhotoUrl(displayUrl);
+              } catch {
+                // Best-effort only — DB reload will eventually populate approved photo.
+              }
+            })();
+          }
           setRefreshTrigger((t) => t + 1);
         }}
+        onModerationComplete={() => setRefreshTrigger((t) => t + 1)}
         onPlanForTomorrow={() => router.push('/tomorrow-plan')}
         city={profileCity}
         sunriseTime={sunriseToday}
@@ -1512,39 +1515,8 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     paddingBottom: 40,
     justifyContent: 'space-between',
   },
-  gradientTop: {
+  backgroundGradient: {
     ...StyleSheet.absoluteFillObject,
-    height: '50%',
-    backgroundColor: Dawn.background.primary,
-  },
-  gradientMid: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '35%',
-    height: '30%',
-    backgroundColor: 'rgba(148, 163, 184, 0.055)',
-  },
-  ritualWarmOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    height: '55%',
-    backgroundColor: 'rgba(255, 179, 71, 0.07)',
-  },
-  gradientLowerWarm: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '50%',
-    bottom: 0,
-    backgroundColor: 'rgba(255, 179, 71, 0.058)',
-  },
-  gradientVignette: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '32%',
-    backgroundColor: isMorningLight ? 'transparent' : 'rgba(14, 34, 61, 0.4)',
   },
   header: {
     marginBottom: 0,

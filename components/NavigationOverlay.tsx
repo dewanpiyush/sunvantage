@@ -1,6 +1,7 @@
 /**
  * Side navigation drawer: slides in from the left, ~60–65% width.
  * Brand-led header with tagline; dims app; tap outside or ✕ dismisses.
+ * Vertical rhythm: larger gaps between sections than between items; soft section labels.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -19,15 +20,18 @@ import { useDawn } from '@/hooks/use-dawn';
 
 const PANEL_WIDTH_RATIO = 0.62;
 const PANEL_PADDING_H = 24;
-const SECTION_GAP = 16;
-const TITLE_TO_TAGLINE = 6;
-const TAGLINE_TO_FIRST_SECTION = 18;
+/** Space between drawer header block and first section (target 24–28px) */
+const TAGLINE_TO_FIRST_SECTION = 26;
+/** Space between section groups — “islands” (target 32–36px) */
+const SECTION_SPACING = 34;
+const TITLE_TO_TAGLINE = 3;
 const SECTION_TITLE_TO_ITEMS = 10;
-const ITEM_GAP = 4;
-const ROW_MIN_HEIGHT = 42;
-const EMOJI_WIDTH = 28;
+/** Vertical rhythm between nav rows (target 16–18px between items) */
+const ITEM_GAP_BELOW_ROW = 16;
+const ROW_MIN_HEIGHT = 40;
+const EMOJI_WIDTH = 26;
 const SIGN_OUT_DIVIDER_MARGIN_TOP = 24;
-const SIGN_OUT_DIVIDER_MARGIN_BOTTOM = 12;
+const SIGN_OUT_DIVIDER_MARGIN_BOTTOM = 10;
 /** Extra top offset as a fraction of safe area (so header doesn’t cut into status bar / notch). */
 const PANEL_TOP_OFFSET_RATIO = 0.25;
 
@@ -36,6 +40,8 @@ type NavItem = {
   label: string;
   route: string | null;
   show?: boolean;
+  /** Slightly brighter label — gentle section lead (not pushy) */
+  emphasis?: 'lead';
 };
 
 type Props = {
@@ -69,19 +75,20 @@ export default function NavigationOverlay({
       emoji: '☀️',
       label: hasLoggedToday ? "Today's Sunrise" : "Log Today's Sunrise",
       route: '/witness',
+      emphasis: 'lead',
     },
     { emoji: '🌅', label: 'Plan Tomorrow', route: '/tomorrow-plan' },
     { emoji: '📷', label: 'My Mornings', route: '/my-mornings' },
   ];
 
   const communityItems: NavItem[] = [
+    { emoji: '🌐', label: 'Global Sunrise Map', route: '/global-sunrise-map', emphasis: 'lead' },
     { emoji: '🌍', label: "My City's Sunrises", route: '/my-city-sunrises', show: showMyCitySunrises },
-    { emoji: '🌐', label: 'Global Sunrise Map', route: '/global-sunrise-map' },
     { emoji: '🖼️', label: 'World Sunrise Gallery', route: '/world-sunrise-gallery' },
   ];
 
   const youItems: NavItem[] = [
-    { emoji: '✨', label: 'Ritual Markers', route: '/ritual-markers' },
+    { emoji: '✨', label: 'Ritual Markers', route: '/ritual-markers', emphasis: 'lead' },
     { emoji: '👤', label: 'Profile', route: '/profile' },
     { emoji: '⚙️', label: 'Settings', route: '/settings' },
   ];
@@ -146,27 +153,41 @@ export default function NavigationOverlay({
     const visibleItems = items.filter((i) => i.show !== false);
     if (visibleItems.length === 0) return null;
     return (
-      <View style={[styles.section, isFirst && styles.sectionFirst]} key={title}>
+      <View style={isFirst ? styles.sectionFirst : styles.sectionAfter} key={title}>
         <Text style={[styles.sectionTitle, { color: Dawn.text.secondary }]}>{title}</Text>
-        {visibleItems.map((item) => {
-          const isCurrent = item.route != null && pathname.replace(/^\/+/, '') === item.route.replace(/^\/+/, '');
+        {visibleItems.map((item, index) => {
+          const isCurrent =
+            item.route != null && pathname.replace(/^\/+/, '') === item.route.replace(/^\/+/, '');
+          const isLead = item.emphasis === 'lead';
+          const isMuted = !isCurrent && !isLead;
+          const isLast = index === visibleItems.length - 1;
           return (
             <Pressable
               key={item.label}
               style={({ pressed }) => [
                 styles.navRow,
+                !isLast && styles.navRowWithGap,
                 pressed && styles.navRowPressed,
                 isCurrent && styles.navRowCurrent,
               ]}
               onPress={() => handleItemPress(item)}
             >
               <View style={styles.emojiCell}>
-                <Text style={styles.navRowEmoji}>{item.emoji}</Text>
+                <Text
+                  style={[
+                    styles.navRowEmoji,
+                    isMuted && styles.navRowEmojiMuted,
+                  ]}
+                >
+                  {item.emoji}
+                </Text>
               </View>
               <Text
                 style={[
                   styles.navRowLabel,
-                  { color: isCurrent ? Dawn.text.secondary : Dawn.text.primary },
+                  isCurrent && { color: Dawn.text.secondary },
+                  !isCurrent && isLead && { color: Dawn.text.primary },
+                  !isCurrent && !isLead && { color: Dawn.text.secondary },
                 ]}
                 numberOfLines={1}
               >
@@ -219,7 +240,9 @@ export default function NavigationOverlay({
                 <Text style={[styles.closeButtonText, { color: Dawn.text.secondary }]}>✕</Text>
               </Pressable>
             </View>
-            <Text style={[styles.tagline, { color: Dawn.text.secondary }]}>Your quiet place to notice the morning.</Text>
+            <Text style={[styles.tagline, { color: Dawn.text.secondary }]}>
+              Your quiet place to notice the morning.
+            </Text>
           </View>
 
           {renderSection('Morning', morningItems, true)}
@@ -270,9 +293,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   tagline: {
-    fontSize: 13,
+    fontSize: 12,
+    lineHeight: 17,
     // set dynamically in component style
-    opacity: 0.9,
+    opacity: 0.7,
   },
   closeButton: {
     width: 40,
@@ -286,26 +310,29 @@ const styles = StyleSheet.create({
     // set dynamically in component style
     fontWeight: '300',
   },
-  section: {
-    marginTop: SECTION_GAP,
-  },
   sectionFirst: {
     marginTop: 0,
   },
+  sectionAfter: {
+    marginTop: SECTION_SPACING,
+  },
   sectionTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     // set dynamically in component style
-    letterSpacing: 0.6,
+    letterSpacing: 1.35,
     textTransform: 'uppercase',
     marginBottom: SECTION_TITLE_TO_ITEMS,
+    opacity: 0.6,
   },
   navRow: {
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: ROW_MIN_HEIGHT,
-    paddingVertical: 10,
-    marginBottom: ITEM_GAP,
+    paddingVertical: 8,
+  },
+  navRowWithGap: {
+    marginBottom: ITEM_GAP_BELOW_ROW,
   },
   navRowPressed: {
     opacity: 0.78,
@@ -319,15 +346,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   navRowEmoji: {
-    fontSize: 20,
+    fontSize: 18,
+    lineHeight: 22,
+    opacity: 0.92,
+  },
+  navRowEmojiMuted: {
+    opacity: 0.82,
   },
   navRowLabel: {
     fontSize: 16,
     // set dynamically in component style
     flex: 1,
-  },
-  navRowLabelCurrent: {
-    // color set dynamically in component style
   },
   signOutDivider: {
     height: 1,
@@ -336,11 +365,13 @@ const styles = StyleSheet.create({
     marginBottom: SIGN_OUT_DIVIDER_MARGIN_BOTTOM,
   },
   signOutRow: {
-    paddingVertical: 14,
+    paddingTop: 0,
+    paddingBottom: 14,
     alignItems: 'center',
   },
   signOutText: {
     fontSize: 16,
     // set dynamically in component style
+    opacity: 0.72,
   },
 });

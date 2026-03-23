@@ -73,20 +73,27 @@ function formatReminderTime(date: Date): string {
   return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-/** Short weather line for sunrise card (two-line card: city • time, then weather). */
+/** Observational weather line (less “forecast app”, more noticing). */
 function getSunriseWeatherLine(weather: string | null): string {
   switch (weather) {
     case 'clear':
-      return 'Clear at dawn.';
+      return 'Clear skies expected at dawn.';
     case 'cloudy':
-      return 'Clouds at dawn.';
+      return 'Clouds expected at dawn.';
     case 'rain':
-      return 'Rain at dawn.';
+      return 'Rain expected at dawn.';
     case 'storm':
-      return 'Stormy weather possible.';
+      return 'Stormy conditions possible at dawn.';
     default:
       return 'Dawn awaits.';
   }
+}
+
+function getPlaceLeadingEmoji(place: string): string {
+  const n = place.trim().toLowerCase();
+  const homeLike = ['home', 'room', 'balcony', 'terrace', 'window', 'yard'];
+  if (homeLike.some((w) => n === w || n.split(/\s+/).includes(w))) return '🏠';
+  return '📍';
 }
 
 Notifications.setNotificationHandler({
@@ -105,6 +112,7 @@ export default function TomorrowPlanScreen() {
   const [profile, setProfile] = useState<{ city: string | null; current_streak: number; longest_streak: number } | null>(null);
   const [streakLoading, setStreakLoading] = useState(true);
   const [intention, setIntention] = useState('');
+  const [placeFieldFocused, setPlaceFieldFocused] = useState(false);
   const [reminderMinsBefore, setReminderMinsBefore] = useState(DEFAULT_MINS_BEFORE_SUNRISE);
   const [alarmScheduled, setAlarmScheduled] = useState(false);
   const [alarmTime, setAlarmTime] = useState<string | null>(null);
@@ -347,20 +355,27 @@ export default function TomorrowPlanScreen() {
             <Text style={styles.sunriseContextCardWeather}>{weatherLineShort}</Text>
           </View>
 
-          {/* Intention input */}
+          {/* Place — pill chip (memory / quick edit), not a form field */}
           <Text style={styles.prompt}>Where will you greet the sunrise?</Text>
-          <TextInput
-            style={styles.input}
-            value={intention}
-            onChangeText={saveIntention}
-            placeholder="Balcony"
-            placeholderTextColor={Dawn.text.secondary}
-            returnKeyType="done"
-          />
+          <View style={styles.placeChip}>
+            <Text style={styles.placeChipEmoji}>{intention.trim() ? getPlaceLeadingEmoji(intention) : '📍'}</Text>
+            <TextInput
+              style={styles.placeChipInput}
+              value={intention}
+              onChangeText={saveIntention}
+              placeholder={placeFieldFocused ? '' : 'Balcony'}
+              placeholderTextColor={Dawn.text.secondary}
+              onFocus={() => setPlaceFieldFocused(true)}
+              onBlur={() => setPlaceFieldFocused(false)}
+              returnKeyType="done"
+              underlineColorAndroid="transparent"
+            />
+          </View>
+          <Text style={styles.placeChipHint}>Tap to edit</Text>
 
           {/* Sunrise reminder card */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Wake up for the ritual.</Text>
+            <Text style={styles.cardTitle}>Be there for the morning.</Text>
             {alarmTime != null ? (
               <>
                 <Text style={styles.cardDesc}>
@@ -374,43 +389,37 @@ export default function TomorrowPlanScreen() {
               <Text style={styles.cardDesc}>Set a gentle reminder before dawn.</Text>
             )}
             {reminderTimeFormatted && !isDawnMode && (
-              <View style={styles.adjustRow}>
-                <View style={styles.adjustCol}>
-                  <Pressable
-                    style={styles.adjustBtn}
-                    onPress={() => (alarmTime != null ? adjustReminderAndReschedule(-10) : adjustReminder(-10))}
-                  >
-                    <Text style={styles.adjustBtnText}>−10</Text>
-                  </Pressable>
-                  <Pressable
-                    style={styles.adjustBtn}
-                    onPress={() => (alarmTime != null ? adjustReminderAndReschedule(-5) : adjustReminder(-5))}
-                  >
-                    <Text style={styles.adjustBtnText}>−5</Text>
-                  </Pressable>
-                </View>
-                <View style={styles.reminderTimesBlock}>
-                  <Text style={styles.reminderTimesLine}>
-                    Sunrise: {formatSunriseTime(sunriseDisplay)}
-                  </Text>
-                  <Text style={styles.reminderTimesLine}>
-                    Reminder: {reminderTimeFormatted ?? '—'}
+              <View style={styles.reminderTunerRow}>
+                <Pressable
+                  style={({ pressed }) => [styles.tunerBtn, pressed && styles.tunerBtnPressed]}
+                  onPress={() => (alarmTime != null ? adjustReminderAndReschedule(-10) : adjustReminder(-10))}
+                >
+                  <Text style={styles.tunerBtnText}>−10</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.tunerBtn, pressed && styles.tunerBtnPressed]}
+                  onPress={() => (alarmTime != null ? adjustReminderAndReschedule(-5) : adjustReminder(-5))}
+                >
+                  <Text style={styles.tunerBtnText}>−5</Text>
+                </Pressable>
+                <View style={styles.tunerCenter}>
+                  <Text style={styles.tunerCenterText}>
+                    <Text style={styles.tunerCenterMuted}>Reminder: </Text>
+                    <Text style={styles.tunerCenterTime}>{reminderTimeFormatted}</Text>
                   </Text>
                 </View>
-                <View style={styles.adjustCol}>
-                  <Pressable
-                    style={styles.adjustBtn}
-                    onPress={() => (alarmTime != null ? adjustReminderAndReschedule(5) : adjustReminder(5))}
-                  >
-                    <Text style={styles.adjustBtnText}>+5</Text>
-                  </Pressable>
-                  <Pressable
-                    style={styles.adjustBtn}
-                    onPress={() => (alarmTime != null ? adjustReminderAndReschedule(10) : adjustReminder(10))}
-                  >
-                    <Text style={styles.adjustBtnText}>+10</Text>
-                  </Pressable>
-                </View>
+                <Pressable
+                  style={({ pressed }) => [styles.tunerBtn, pressed && styles.tunerBtnPressed]}
+                  onPress={() => (alarmTime != null ? adjustReminderAndReschedule(5) : adjustReminder(5))}
+                >
+                  <Text style={styles.tunerBtnText}>+5</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.tunerBtn, pressed && styles.tunerBtnPressed]}
+                  onPress={() => (alarmTime != null ? adjustReminderAndReschedule(10) : adjustReminder(10))}
+                >
+                  <Text style={styles.tunerBtnText}>+10</Text>
+                </Pressable>
               </View>
             )}
             <Pressable
@@ -554,16 +563,33 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     color: Dawn.text.primary,
     marginBottom: 8,
   },
-  input: {
-    backgroundColor: Dawn.surface.card,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+  placeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Dawn.surfaceSecondary.subtle,
+    borderRadius: 999,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 6,
+    alignSelf: 'stretch',
+    gap: 8,
+  },
+  placeChipEmoji: {
+    fontSize: 16,
+  },
+  placeChipInput: {
+    flex: 1,
     fontSize: 15,
     color: Dawn.text.primary,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: Dawn.border.subtle,
+    paddingVertical: 0,
+    margin: 0,
+    minHeight: 22,
+  },
+  placeChipHint: {
+    fontSize: 12,
+    color: Dawn.text.secondary,
+    opacity: 0.75,
+    marginBottom: 20,
   },
   cardTitle: {
     fontSize: 18,
@@ -579,39 +605,51 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     lineHeight: 22,
     marginBottom: 16,
   },
-  adjustRow: {
+  reminderTunerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    flexWrap: 'nowrap',
+    justifyContent: 'space-between',
+    width: '100%',
     marginBottom: 14,
-    gap: 8,
+    gap: 4,
   },
-  adjustCol: {
-    gap: 8,
-    alignItems: 'center',
-  },
-  adjustBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 8,
+  tunerBtn: {
+    paddingVertical: 7,
+    paddingHorizontal: 5,
+    borderRadius: 10,
     backgroundColor: Dawn.surfaceSecondary.subtle,
     borderWidth: 1,
     borderColor: Dawn.border.subtle,
-  },
-  adjustBtnText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: Dawn.text.primary,
-  },
-  reminderTimesBlock: {
-    minWidth: 120,
+    minWidth: 34,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  reminderTimesLine: {
+  tunerBtnPressed: {
+    opacity: 0.88,
+  },
+  tunerBtnText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: Dawn.text.secondary,
+  },
+  tunerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    minWidth: 0,
+  },
+  tunerCenterText: {
+    textAlign: 'center',
+  },
+  tunerCenterMuted: {
     fontSize: 13,
     color: Dawn.text.secondary,
-    textAlign: 'center',
+  },
+  tunerCenterTime: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Dawn.text.primary,
   },
   cardButton: {
     paddingVertical: 10,

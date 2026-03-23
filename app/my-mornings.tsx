@@ -8,12 +8,14 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import supabase from '../supabase';
 import SunVantageHeader from '../components/SunVantageHeader';
 import CitySunriseGallery from '../components/CitySunriseGallery';
 import { hasLoggedToday } from '../lib/hasLoggedToday';
 import { useDawn } from '@/hooks/use-dawn';
+import { useAppTheme } from '@/context/AppThemeContext';
 
 // Local map: reflection_question_id → question text (align with prompts used when saving).
 // Extend this when you add more questions or persist question_id in sunrise_logs.
@@ -133,18 +135,26 @@ type CityGalleryRow = {
 };
 
 const photoBucket = 'sunrise_photos';
+const pendingBucket = 'uploads_pending';
 const signedUrlExpirySeconds = 60 * 60;
 
 async function resolvePhotoDisplayUrl(ref: string): Promise<string | null> {
   if (!ref) return null;
   if (ref.startsWith('http://') || ref.startsWith('https://')) return ref;
-  const normalizedRef = ref.replace(/^\/+/, '').replace(new RegExp(`^${photoBucket}\/`), '');
+  const cleaned = ref.replace(/^\/+/, '');
+  const isPendingRef = cleaned.startsWith(`${pendingBucket}/`);
+  const bucket = isPendingRef ? pendingBucket : photoBucket;
+  const normalizedRef = isPendingRef
+    ? cleaned.slice(`${pendingBucket}/`.length)
+    : cleaned.replace(new RegExp(`^${photoBucket}\/`), '');
 
   const { data, error } = await supabase.storage
-    .from(photoBucket)
+    .from(bucket)
     .createSignedUrl(normalizedRef, signedUrlExpirySeconds);
 
   if (!error && data?.signedUrl) return data.signedUrl;
+
+  if (bucket === pendingBucket) return null;
 
   // Fallback: if bucket is public, this will render without signed URLs.
   const publicUrl = supabase.storage.from(photoBucket).getPublicUrl(normalizedRef).data?.publicUrl;
@@ -156,6 +166,8 @@ const GALLERY_LIMIT = 10;
 export default function MyMorningsScreen() {
   const router = useRouter();
   const Dawn = useDawn();
+  const { mode } = useAppTheme();
+  const isMorningLight = mode === 'morning-light';
   const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   const [logs, setLogs] = useState<SunriseLogRow[]>([]);
   const [imageUrls, setImageUrls] = useState<Record<number, string | null>>({});
@@ -235,6 +247,7 @@ export default function MyMorningsScreen() {
         .select('photo_url, vantage_name, created_at, city, vantage_category, user_id')
         .eq('city', trimmed)
         .not('photo_url', 'is', null)
+        .eq('moderation_status', 'approved')
         .order('created_at', { ascending: false })
         .limit(GALLERY_LIMIT);
 
@@ -263,9 +276,13 @@ export default function MyMorningsScreen() {
   if (loading && logs.length === 0) {
     return (
       <View style={styles.container}>
-        <View style={styles.gradientTop} pointerEvents="none" />
-        <View style={styles.gradientMid} pointerEvents="none" />
-        <View style={styles.gradientLowerWarm} pointerEvents="none" />
+        <LinearGradient
+          colors={isMorningLight ? ['#EAF3FB', '#DCEAF7', '#CFE2F3'] : ['#102A43', '#1B3554', '#243F63']}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={styles.backgroundGradient}
+          pointerEvents="none"
+        />
         <View style={styles.centered}>
           <ActivityIndicator color={Dawn.accent.sunrise} />
           <Text style={styles.loadingText}>Loading your mornings…</Text>
@@ -276,16 +293,21 @@ export default function MyMorningsScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.gradientTop} pointerEvents="none" />
-      <View style={styles.gradientMid} pointerEvents="none" />
-      <View style={styles.gradientLowerWarm} pointerEvents="none" />
+      <LinearGradient
+        colors={isMorningLight ? ['#EAF3FB', '#DCEAF7', '#CFE2F3'] : ['#102A43', '#1B3554', '#243F63']}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={styles.backgroundGradient}
+        pointerEvents="none"
+      />
 
       <View style={styles.header}>
         <SunVantageHeader
           title="My Mornings"
-          subtitle="A chronological archive of your sunrise logs."
+          subtitle="Your mornings, gathered over time."
           hasLoggedToday={hasLoggedToday(logs)}
           screenTitle
+          hideHeaderEmoji
           onHeaderPress={() => router.push('/home')}
         />
       </View>
@@ -339,17 +361,15 @@ export default function MyMorningsScreen() {
               return (
                 <>
                   <Text style={styles.welcomedLine}>
-                    🌅 {logs.length} morning{logs.length === 1 ? '' : 's'} welcomed on SunVantage
+                    🌅 {logs.length} morning{logs.length === 1 ? '' : 's'} welcomed
                   </Text>
                   {orderedAnchors.map((anchor, anchorIndex) => {
-                    const isTodaySection = anchor === 'Today';
                     return (
                       <View key={anchor} style={styles.anchorSection}>
                         <Text
                           style={[
                             styles.timeAnchorLabel,
                             anchorIndex === 0 && styles.timeAnchorLabelFirst,
-                            isTodaySection && styles.timeAnchorLabelToday,
                           ]}
                         >
                           {anchor.toUpperCase()}
@@ -358,19 +378,12 @@ export default function MyMorningsScreen() {
                           const isEditable = isLogFromToday(log.created_at);
                           return (
                             <View key={log.id} style={styles.memoryCard}>
-                              <View style={styles.memoryCardTop}>
-                                <Text>
-                                  <Text style={styles.memoryCardDate}>
-                                    {formatLogDate(log.created_at)}
-                                    {log.vantage_name?.trim() ? ' • ' : ''}
-                                  </Text>
-                                  {log.vantage_name?.trim() ? (
-                                    <Text style={styles.memoryCardVantage}>
-                                      📍 {toTitleCase(log.vantage_name.trim())}
-                                    </Text>
-                                  ) : null}
-                                </Text>
-                              </View>
+                              <Text style={styles.memoryCardMeta}>
+                                {formatLogDate(log.created_at)}
+                                {log.vantage_name?.trim()
+                                  ? ` • 📍 ${toTitleCase(log.vantage_name.trim())}`
+                                  : ''}
+                              </Text>
                               {imageUrls[log.id] ? (
                                 <View style={styles.memoryCardPhotoWrap}>
                                   <Image
@@ -443,26 +456,9 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     backgroundColor: Dawn.background.primary,
     paddingTop: 52,
   },
-  gradientTop: {
+  /** Same full-screen gradient as Home — cards float on a continuous field */
+  backgroundGradient: {
     ...StyleSheet.absoluteFillObject,
-    height: '50%',
-    backgroundColor: Dawn.background.primary,
-  },
-  gradientMid: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '35%',
-    height: '30%',
-    backgroundColor: 'rgba(148, 163, 184, 0.055)',
-  },
-  gradientLowerWarm: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '50%',
-    bottom: 0,
-    backgroundColor: 'rgba(255, 179, 71, 0.058)',
   },
   header: {
     paddingHorizontal: 24,
@@ -506,25 +502,22 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   welcomedLine: {
     fontSize: 14,
     color: Dawn.text.secondary,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   anchorSection: {
     marginBottom: 8,
   },
   timeAnchorLabel: {
     fontSize: 12,
-    opacity: 0.7,
-    letterSpacing: 1,
+    fontWeight: '600',
+    opacity: 0.6,
+    letterSpacing: 1.35,
     color: Dawn.text.secondary,
     marginTop: 20,
     marginBottom: 10,
   },
   timeAnchorLabelFirst: {
     marginTop: 0,
-  },
-  timeAnchorLabelToday: {
-    opacity: 0.9,
-    color: Dawn.text.primary,
   },
   memoryCard: {
     backgroundColor: Dawn.surface.card,
@@ -535,17 +528,13 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     borderColor: Dawn.border.subtle,
     alignItems: 'center',
   },
-  memoryCardTop: {
+  memoryCardMeta: {
     alignSelf: 'stretch',
-    marginBottom: 12,
-  },
-  memoryCardDate: {
-    fontSize: 14,
+    fontSize: 13,
+    lineHeight: 18,
     color: Dawn.text.secondary,
-  },
-  memoryCardVantage: {
-    fontSize: 14,
-    color: Dawn.text.primary,
+    opacity: 0.75,
+    marginBottom: 12,
   },
   memoryCardPhotoWrap: {
     width: '100%',
@@ -564,10 +553,11 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   },
   memoryCardReflection: {
     fontSize: 16,
-    lineHeight: 24,
+    lineHeight: 26,
     color: Dawn.text.primary,
     textAlign: 'left',
     fontStyle: 'italic',
+    opacity: 0.98,
   },
   memoryCardReflectionNudge: {
     fontSize: 14,
@@ -581,7 +571,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 16,
-    marginTop: 12,
+    marginTop: 18,
     alignSelf: 'stretch',
   },
   memoryCardActionLink: {
@@ -592,8 +582,9 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     opacity: 0.8,
   },
   memoryCardActionLinkText: {
-    fontSize: 13,
+    fontSize: 12,
     color: Dawn.text.secondary,
+    opacity: 0.65,
   },
   centered: {
     flex: 1,

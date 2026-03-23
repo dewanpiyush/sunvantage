@@ -45,18 +45,19 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: Dawn.border.sunriseCard,
+    /** Softer than full sunrise outline — optional layer, not core flow */
+    borderColor: Dawn.border.subtle,
   },
   glow: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,180,80,0.06)',
+    backgroundColor: 'rgba(255,180,80,0.025)',
     borderTopLeftRadius: 80,
     borderTopRightRadius: 80,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
   },
   inner: {
-    backgroundColor: Dawn.surface.card,
+    backgroundColor: Dawn.surface.cardSecondary,
     borderRadius: 15,
     margin: 1,
     paddingTop: 14,
@@ -86,6 +87,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     lineHeight: 19,
     marginTop: 6,
     marginBottom: 12,
+    opacity: 0.92,
   },
   cta: {
     alignSelf: 'center',
@@ -94,7 +96,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     borderRadius: 999,
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: Dawn.accent.sunrise,
+    borderColor: 'rgba(255, 179, 71, 0.32)',
   },
   ctaPressed: {
     opacity: 0.85,
@@ -103,6 +105,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     fontSize: 14,
     fontWeight: '600',
     color: Dawn.accent.sunrise,
+    opacity: 0.82,
   },
   });
 }

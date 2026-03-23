@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ScrollView,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import supabase from '../supabase';
@@ -17,6 +18,8 @@ import { useMorningContext } from '../hooks/useMorningContext';
 import { computeBadgeStats, getEarnedBadges, computeEarnedAtByBadge, BADGE_ICONS, type BadgeDef } from './ritual-markers';
 import { getDismissedBadgeIds, dismissBadgeReveal } from '../lib/ritualReveal';
 import { useDawn } from '@/hooks/use-dawn';
+import { useAppTheme } from '@/context/AppThemeContext';
+import { runPendingModerationRecoveryDebounced } from '@/lib/pendingModerationRecovery';
 
 // ----- Streak (same logic as elsewhere) -----
 const YMD_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -77,17 +80,6 @@ function formatSunriseTime(hhmm: string | null): string {
   return `${h}:${m} ${ampm}`;
 }
 
-/** Time-aware sunrise glow alpha. minutesToSunrise = minutes until sunrise (negative after). */
-function getSunriseGlowAlpha(minutesToSunrise: number | null): number {
-  if (minutesToSunrise == null) return 0.04;
-  const minutesFromSunrise = -minutesToSunrise;
-  if (minutesFromSunrise < -60) return 0;
-  if (minutesFromSunrise < -10) return 0.06;
-  if (minutesFromSunrise <= 10) return 0.16;
-  if (minutesFromSunrise <= 60) return 0.10;
-  return 0.04;
-}
-
 const TOMORROW_INTENTION_KEY = 'sunvantage_tomorrow_intention';
 const TOMORROW_ALARM_SET_KEY = 'sunvantage_tomorrow_alarm_set';
 const TOMORROW_ALARM_TIME_KEY = 'sunvantage_tomorrow_alarm_time';
@@ -114,16 +106,11 @@ function getTomorrowPlanSubtext(place: string | null, alarmSet: boolean): string
   return "Your reminder is ready.\nThe morning will be waiting.";
 }
 
-/** Weather line for tomorrow morning from morning context. */
-function getTomorrowWeatherLine(weather: string | null): string | null {
-  if (!weather || weather === 'unknown') return null;
-  const lines: Record<string, string> = {
-    clear: 'Tomorrow morning may be clear.',
-    cloudy: 'Tomorrow morning may be cloudy.',
-    rain: 'Tomorrow morning may be rainy.',
-    storm: 'Tomorrow morning may be stormy.',
-  };
-  return lines[weather] ?? null;
+/** Ritual-first line: city + tomorrow's sunrise time (replaces weather on Home). */
+function getTomorrowSunriseLine(city: string | null, sunriseTomorrow: string | null): string | null {
+  if (!sunriseTomorrow || !/^\d{1,2}:\d{2}$/.test(sunriseTomorrow)) return null;
+  const place = city?.trim() || 'Your city';
+  return `${place} · Sunrise tomorrow: ${formatSunriseTime(sunriseTomorrow)}`;
 }
 
 function computeStreakFromLogDates(
@@ -163,6 +150,8 @@ function computeStreakFromLogDates(
 export default function HomeScreen() {
   const router = useRouter();
   const Dawn = useDawn();
+  const { mode } = useAppTheme();
+  const isMorningLight = mode === 'morning-light';
   const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   const [profile, setProfile] = useState<{ first_name: string | null; city: string | null } | null>(null);
   const [logs, setLogs] = useState<{ created_at: string; reflection_text?: string | null; vantage_name?: string | null; city?: string | null }[]>([]);
@@ -178,12 +167,16 @@ export default function HomeScreen() {
     alarmTime: string | null;
   }>({ exists: false, place: null, alarmSet: false, alarmTime: null });
 
-  const { minutesToSunrise, sunriseToday, tomorrowWeather, isDawnMode, sunriseCardTimeMessage } = useMorningContext(profile?.city ?? null);
+  const {
+    minutesToSunrise,
+    sunriseToday,
+    sunriseTomorrow,
+    isDawnMode,
+    sunriseCardTimeMessage,
+  } = useMorningContext(profile?.city ?? null);
   const sunrisePassed = minutesToSunrise != null && minutesToSunrise < 0;
   const isPreSunrise = minutesToSunrise != null && minutesToSunrise > 0;
   const greeting = getGreeting();
-  const sunriseGlowAlpha = getSunriseGlowAlpha(minutesToSunrise);
-
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -268,7 +261,8 @@ export default function HomeScreen() {
           .select('*', { count: 'exact', head: true })
           .eq('city', city)
           .neq('user_id', userId)
-          .not('photo_url', 'is', null);
+          .not('photo_url', 'is', null)
+          .eq('moderation_status', 'approved');
         setShowMyCitySunrises((count ?? 0) > 1);
       } else {
         setShowMyCitySunrises(false);
@@ -297,7 +291,7 @@ export default function HomeScreen() {
     totalSunrises === 0 && hasOpenedBefore && minutesToSunrise != null && minutesToSunrise > 0;
   const newUserReturningPostSunrise =
     totalSunrises === 0 && hasOpenedBefore && (minutesToSunrise == null || minutesToSunrise <= 0);
-  const tomorrowWeatherLine = getTomorrowWeatherLine(tomorrowWeather);
+  const tomorrowSunriseLine = getTomorrowSunriseLine(cityName, sunriseTomorrow);
 
   useEffect(() => {
     loadData();
@@ -330,6 +324,7 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       loadTomorrowPlan();
+      runPendingModerationRecoveryDebounced(supabase);
     }, [loadTomorrowPlan])
   );
 
@@ -360,10 +355,11 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.gradientTop} pointerEvents="none" />
-      <View style={styles.gradientMid} pointerEvents="none" />
-      <View
-        style={[styles.gradientLowerWarm, { backgroundColor: `rgba(255,179,71,${sunriseGlowAlpha})` }]}
+      <LinearGradient
+        colors={isMorningLight ? ['#EAF3FB', '#DCEAF7', '#CFE2F3'] : ['#102A43', '#1B3554', '#243F63']}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={styles.backgroundGradient}
         pointerEvents="none"
       />
 
@@ -443,73 +439,61 @@ export default function HomeScreen() {
           </>
         )}
 
-        {/* Sunrise card — always shown; primary card when logged today (stronger + outline) */}
-        <View style={[
-          styles.sunriseContextCard,
-          minutesToSunrise != null && minutesToSunrise < -45 && styles.sunriseContextCardPostSunrise,
-          loggedToday && styles.sunriseContextCardPrimary,
-        ]}>
-          <View style={styles.sunTitleRow}>
-            <Text style={styles.sunEmoji}>☀️</Text>
-            <Text style={styles.sunTitle}>Sunrise today</Text>
-          </View>
-          {minutesToSunrise != null && minutesToSunrise > 10 ? (
-            <>
-              <Text style={styles.sunriseContextCardBody}>
-                Sunrise in {cityName || 'your city'} will be at {formatSunriseTime(sunriseToday)}.
-              </Text>
-              <Text style={styles.sunriseContextCardSub}>
-                {sunriseCardTimeMessage ?? 'The morning is on its way.'}
-              </Text>
-            </>
-          ) : minutesToSunrise != null && minutesToSunrise >= -10 && minutesToSunrise <= 10 ? (
-            <>
-              <Text style={styles.sunriseContextCardBody}>
-                Sunrise in {cityName || 'your city'} will be at {formatSunriseTime(sunriseToday)}.
-              </Text>
-              <Text style={styles.sunriseContextCardSub}>The show is on. Step outside.</Text>
-            </>
-          ) : sunrisePassed && !loggedToday ? (
-            <>
-              <Text style={styles.sunriseContextCardBody}>
-                Sunrise in {cityName || 'your city'} was at {formatSunriseTime(sunriseToday)}. You can still mark the moment.
-              </Text>
-            </>
-          ) : loggedToday ? (
-            <>
-              <Text style={styles.sunriseContextCardBody}>
-                {cityName || 'Your city'} · {formatSunriseTime(sunriseToday)}
-              </Text>
-              <Text style={styles.sunriseContextCardSub}>You welcomed the morning.</Text>
-              <Pressable
-                style={({ pressed }) => [styles.sunriseContextCardButton, pressed && styles.modeCardPressed]}
-                onPress={handleOpenWitness}
-              >
-                <Text style={styles.sunriseContextCardButtonText}>
-                  Today{"'"}s sunrise
+        {/* Sunrise card — when not logged yet; after logging, “today” moves below Plan (settled state) */}
+        {!loggedToday ? (
+          <View
+            style={[
+              styles.sunriseContextCard,
+              minutesToSunrise != null && minutesToSunrise < -45 && styles.sunriseContextCardPostSunrise,
+            ]}
+          >
+            <View style={styles.sunriseCardHeadlineRow}>
+              <Text style={styles.sunEmoji}>☀️</Text>
+              <Text style={styles.sunTitle}>Sunrise today</Text>
+            </View>
+            {minutesToSunrise != null && minutesToSunrise > 10 ? (
+              <>
+                <Text style={styles.sunriseContextCardBody}>
+                  Sunrise in {cityName || 'your city'} will be at {formatSunriseTime(sunriseToday)}.
                 </Text>
-              </Pressable>
-            </>
-          ) : (
-            <>
-              <Text style={styles.sunriseContextCardBody}>
-                Sunrise in {cityName || 'your city'} will be at {formatSunriseTime(sunriseToday)}.
-              </Text>
-              <Text style={styles.sunriseContextCardSub}>
-                {sunriseCardTimeMessage ?? 'The morning is on its way.'}
-              </Text>
-            </>
-          )}
-        </View>
+                <Text style={styles.sunriseContextCardSub}>
+                  {sunriseCardTimeMessage ?? 'The morning is on its way.'}
+                </Text>
+              </>
+            ) : minutesToSunrise != null && minutesToSunrise >= -10 && minutesToSunrise <= 10 ? (
+              <>
+                <Text style={styles.sunriseContextCardBody}>
+                  Sunrise in {cityName || 'your city'} will be at {formatSunriseTime(sunriseToday)}.
+                </Text>
+                <Text style={styles.sunriseContextCardSub}>The show is on. Step outside.</Text>
+              </>
+            ) : sunrisePassed ? (
+              <>
+                <Text style={styles.sunriseContextCardBody}>
+                  Sunrise in {cityName || 'your city'} was at {formatSunriseTime(sunriseToday)}. You can still mark the moment.
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.sunriseContextCardBody}>
+                  Sunrise in {cityName || 'your city'} will be at {formatSunriseTime(sunriseToday)}.
+                </Text>
+                <Text style={styles.sunriseContextCardSub}>
+                  {sunriseCardTimeMessage ?? 'The morning is on its way.'}
+                </Text>
+              </>
+            )}
+          </View>
+        ) : null}
 
         {loggedToday ? (
-          /* State B — After sunrise logged */
+          /* State B — After sunrise logged: Plan first (primary), then today settled, then archive */
           <>
             <View style={[styles.cardsBlock, totalSunrises === 1 && styles.cardsBlockFirstSunriseLogged]}>
               <Pressable
                 style={({ pressed }) => [
                   styles.modeCard,
-                  styles.modeCardSecondary,
+                  styles.modeCardPrimary,
                   totalSunrises === 1 && styles.modeCardFirstSunriseLoggedGap,
                   pressed && styles.modeCardPressed,
                 ]}
@@ -532,15 +516,35 @@ export default function HomeScreen() {
                       : 'The same sunrise reveals differently from different vantages.'}
                   </Text>
                 )}
-                {!tomorrowPlan.exists && tomorrowWeatherLine && (
-                  <Text style={styles.modeCardDesc}>{tomorrowWeatherLine}</Text>
-                )}
+                {!tomorrowPlan.exists && tomorrowSunriseLine ? (
+                  <Text style={styles.modeCardDesc}>{tomorrowSunriseLine}</Text>
+                ) : null}
                 <View style={styles.modeCardButton}>
                   <Text style={styles.modeCardButtonText}>
                     {tomorrowPlan.exists ? 'Review your plan' : 'Plan for tomorrow'}
                   </Text>
                 </View>
               </Pressable>
+
+              <View style={[styles.sunriseContextCard, styles.sunriseContextCardSettled]}>
+                <View style={styles.sunriseCardHeadlineRow}>
+                  <Text style={styles.sunEmoji}>☀️</Text>
+                  <Text style={styles.sunTitle}>Sunrise today</Text>
+                </View>
+                <Text style={styles.sunriseContextCardBody}>
+                  {cityName || 'Your city'} · {formatSunriseTime(sunriseToday)}
+                </Text>
+                <Text style={styles.sunriseContextCardSub}>You welcomed the morning.</Text>
+                <Pressable
+                  style={({ pressed }) => [styles.sunriseContextCardButton, pressed && styles.modeCardPressed]}
+                  onPress={handleOpenWitness}
+                >
+                  <Text style={styles.sunriseContextCardButtonText}>
+                    Today{"'"}s sunrise
+                  </Text>
+                </Pressable>
+              </View>
+
               {totalSunrises === 1 ? (
                 <Pressable
                   style={({ pressed }) => [styles.modeCard, styles.modeCardSecondary, pressed && styles.modeCardPressed]}
@@ -739,17 +743,20 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     justifyContent: 'center',
     gap: 8,
   },
-  sunTitleRow: {
+  sunriseCardHeadlineRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'center',
+    gap: 8,
     marginBottom: 8,
   },
   sunEmoji: {
     fontSize: 18,
+    lineHeight: 22,
   },
   sunTitle: {
     fontSize: 18,
+    lineHeight: 22,
     fontWeight: '600',
     color: Dawn.text.primary,
   },
@@ -762,26 +769,8 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     backgroundColor: Dawn.background.primary,
     paddingTop: 52,
   },
-  gradientTop: {
+  backgroundGradient: {
     ...StyleSheet.absoluteFillObject,
-    height: '50%',
-    backgroundColor: Dawn.background.primary,
-  },
-  gradientMid: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '35%',
-    height: '30%',
-    backgroundColor: 'rgba(148, 163, 184, 0.055)',
-  },
-  gradientLowerWarm: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '50%',
-    bottom: 0,
-    backgroundColor: 'rgba(255, 179, 71, 0.058)',
   },
   scroll: {
     flex: 1,
@@ -873,9 +862,14 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     shadowOpacity: 0,
     elevation: 0,
   },
-  sunriseContextCardPrimary: {
-    borderColor: Dawn.border.sunriseCard,
-    backgroundColor: Dawn.surface.cardPrimary,
+  /** Logged-in home: “today” card — softer, no glow (Plan holds primary focus) */
+  sunriseContextCardSettled: {
+    backgroundColor: Dawn.surface.cardSecondary,
+    borderColor: Dawn.border.subtle,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
   },
   sunriseContextCardTitle: {
     fontSize: 17,
@@ -889,13 +883,13 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     fontSize: 14,
     color: Dawn.text.secondary,
     textAlign: 'center',
-    marginBottom: 4,
+    marginBottom: 5,
   },
   sunriseContextCardSub: {
     fontSize: 14,
     color: Dawn.text.secondary,
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   sunriseContextCardButton: {
     paddingVertical: 10,
@@ -982,6 +976,16 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   },
   modeCardSecondary: {
     backgroundColor: Dawn.surface.cardSecondary,
+  },
+  /** After logging: “Plan for tomorrow” is the primary card (glow + contrast) */
+  modeCardPrimary: {
+    backgroundColor: Dawn.surface.cardPrimary,
+    borderColor: Dawn.border.sunriseCard,
+    shadowColor: Dawn.accent.sunrise,
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
   modeCardTightBottom: {
     marginBottom: 6,

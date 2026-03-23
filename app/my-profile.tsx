@@ -17,6 +17,7 @@ import supabase from '../supabase';
 import { BADGE_REGISTRY, BADGE_ICONS, computeBadgeStats } from './ritual-markers';
 import SunVantageHeader from '../components/SunVantageHeader';
 import { hasLoggedToday } from '../lib/hasLoggedToday';
+import { invokeModerateImage } from '../lib/moderateImageInvoke';
 import { useDawn } from '@/hooks/use-dawn';
 
 const AVATAR_BUCKET = 'avatars';
@@ -121,17 +122,27 @@ function isHomeLikePlace(place: string): boolean {
   return homeLike.some((w) => n === w || n.split(/\s+/).includes(w));
 }
 
-const NUMBER_WORDS: Record<number, string> = {
-  1: 'One', 2: 'Two', 3: 'Three', 4: 'Four', 5: 'Five',
-  6: 'Six', 7: 'Seven', 8: 'Eight', 9: 'Nine', 10: 'Ten',
-};
-function morningsGreetedText(n: number): string {
-  if (n <= 0) return '';
-  const word = NUMBER_WORDS[n] ?? String(n);
-  const mornings = n === 1 ? 'morning' : 'mornings';
-  return n === 1
-    ? 'One morning greeted.'
-    : `${word} ${mornings} greeted. A ritual taking shape.`;
+/** Contextual copy under the primary streak stat (profile streak card). */
+function getStreakContextMessage(current: number, longest: number): string {
+  if (current === 0 && longest === 0) {
+    return 'Your first sunrise on SunVantage awaits.';
+  }
+  if (current === 0 && longest > 0) {
+    return 'Begin again.';
+  }
+  if (current === 1 && longest === 1) {
+    return 'It begins.';
+  }
+  if (current === 1 && longest > 1) {
+    return 'You are back.';
+  }
+  if (current >= 2 && current <= 6) {
+    return "You're showing up.";
+  }
+  if (current >= 7) {
+    return 'This is becoming a ritual.';
+  }
+  return '';
 }
 
 type ProfileRow = { first_name: string | null; city: string | null; avatar_url: string | null };
@@ -249,20 +260,9 @@ export default function MyProfileScreen() {
         return;
       }
 
-      const {
-        data: { session: modSession },
-      } = await supabase.auth.getSession();
-      const accessToken = modSession?.access_token;
-      if (!accessToken) {
-        setError('Please sign in again to process your photo.');
-        return;
-      }
-
-      const functions = supabase.functions;
-      functions.setAuth(accessToken);
-
-      const invokePromise = functions.invoke('moderate-image', {
-        body: { path: stagedPath, type: 'avatar' as const, userId },
+      const invokePromise = invokeModerateImage(supabase, {
+        path: stagedPath,
+        type: 'avatar',
       });
       const timeoutMs = 25_000;
       const timed = await Promise.race([
@@ -428,6 +428,9 @@ export default function MyProfileScreen() {
   const previewBadges = earnedBadges.slice(0, 2);
   const hasRitualMarkers = earnedBadges.length > 0;
 
+  /** Places card: avoid “favourite” when the journey is still very new. */
+  const placesFavouriteLabel = totalMornings <= 2 ? "You've been here" : 'Your favourite';
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -479,8 +482,8 @@ export default function MyProfileScreen() {
                     <Text style={styles.userCity}>{profile.city.trim()}</Text>
                   ) : null}
                   {sinceText ? (
-                    <Text style={styles.sinceText}>
-                      You{"'"}ve been greeting the morning since {sinceText}.
+                    <Text style={[styles.cardMeta, styles.profileSinceSpacing]}>
+                      You began in {sinceText}
                     </Text>
                   ) : null}
                 </View>
@@ -518,38 +521,17 @@ export default function MyProfileScreen() {
           {/* 2. My sunrise streak card */}
           <View style={styles.card}>
             <View style={styles.cardInner}>
-              <Text style={styles.ritualCardTitle}>🔥 My sunrise streak</Text>
-              <View style={styles.statsRow}>
-                <View style={styles.statColumn}>
-                  <Text style={styles.statLabel}>Current streak</Text>
-                  <Text style={styles.statValue}>
-                    {streak.current === 0
-                      ? '—'
-                      : `${streak.current} morning${streak.current === 1 ? '' : 's'}`}
-                  </Text>
-                </View>
-                <View style={styles.statColumn}>
-                  <Text style={styles.statLabel}>Longest streak</Text>
-                  <Text style={styles.statValue}>
-                    {streak.longest === 0
-                      ? '—'
-                      : `${streak.longest} morning${streak.longest === 1 ? '' : 's'}`}
-                  </Text>
-                </View>
-                <View style={styles.statColumn}>
-                  <Text style={styles.statLabel}>Sunrises welcomed</Text>
-                  <Text style={styles.statValue}>
-                    {totalMornings === 0
-                      ? '—'
-                      : `${totalMornings} morning${totalMornings === 1 ? '' : 's'}`}
-                  </Text>
-                </View>
-              </View>
-              {totalMornings > 0 && (
-                <Text style={styles.reflectiveLine}>
-                  {morningsGreetedText(totalMornings)}
-                </Text>
-              )}
+              <Text style={[styles.cardTitle, styles.streakHeadline]}>
+                {streak.current === 0
+                  ? '🔥 A streak is awaited.'
+                  : `🔥 ${streak.current} day${streak.current === 1 ? '' : 's'} streak`}
+              </Text>
+              <Text style={[styles.cardPrimary, styles.streakPrimaryLine]}>
+                {getStreakContextMessage(streak.current, streak.longest)}
+              </Text>
+              <Text style={[styles.cardMeta, styles.streakMetaLine]}>
+                Longest: {streak.longest} · {totalMornings} morning{totalMornings === 1 ? '' : 's'}
+              </Text>
             </View>
           </View>
 
@@ -557,18 +539,18 @@ export default function MyProfileScreen() {
           {hasMovement && (
             <View style={styles.card}>
               <View style={styles.cardInner}>
-                <Text style={styles.placesCardTitle}>📍 Places that held your sunrise</Text>
-                <Text style={styles.placesSub}>
+                <Text style={[styles.cardTitle, styles.placesTitleSpacing]}>📍 Places that held your sunrise</Text>
+                <Text style={[styles.cardMeta, styles.placesMetaSpacing]}>
                   {uniqueVantageCount} unique vantage point{uniqueVantageCount === 1 ? '' : 's'}
                 </Text>
-                <Text style={styles.mostReturnedLabel}>Most returned to</Text>
+                <Text style={[styles.cardMeta, styles.placesFavouriteSpacing]}>{placesFavouriteLabel}</Text>
                 <View style={styles.mostReturnedRow}>
                   <Text style={styles.mostReturnedEmoji}>
                     {mostReturned && isHomeLikePlace(mostReturned.name) ? '🏠' : '📍'}
                   </Text>
                   <View>
-                    <Text style={styles.mostReturnedName}>{toTitleCase(mostReturned!.name)}</Text>
-                    <Text style={styles.mostReturnedCount}>
+                    <Text style={styles.cardPrimary}>{toTitleCase(mostReturned!.name)}</Text>
+                    <Text style={[styles.cardMeta, styles.placesSpotMetaSpacing]}>
                       {mostReturned!.count} morning{mostReturned!.count === 1 ? '' : 's'} here
                     </Text>
                   </View>
@@ -584,7 +566,7 @@ export default function MyProfileScreen() {
                 <View style={styles.markersCardHeader}>
                   <View style={styles.titleRow}>
                     <Text style={styles.titleEmoji}>✨</Text>
-                    <Text style={styles.markersCardTitle}>Ritual Markers</Text>
+                    <Text style={styles.cardTitle}>Ritual Markers</Text>
                   </View>
                   <Pressable
                     style={({ pressed }) => [styles.viewAllLink, pressed && { opacity: 0.72 }]}
@@ -597,8 +579,8 @@ export default function MyProfileScreen() {
                   <View key={badge.id} style={styles.markerPreviewRow}>
                     <Text style={styles.markerPreviewIcon}>{BADGE_ICONS[badge.id]}</Text>
                     <View style={styles.markerPreviewText}>
-                      <Text style={styles.markerPreviewTitle}>{badge.title}</Text>
-                      <Text style={styles.markerPreviewDescription}>{badge.description}</Text>
+                      <Text style={[styles.cardPrimary, styles.markerPreviewTitleSpacing]}>{badge.title}</Text>
+                      <Text style={styles.cardMeta}>{badge.description}</Text>
                     </View>
                   </View>
                 ))}
@@ -619,8 +601,8 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     gap: 8,
   },
   titleEmoji: {
-    fontSize: 17,
-    lineHeight: 20,
+    fontSize: 19,
+    lineHeight: 24,
   },
   container: {
     flex: 1,
@@ -694,10 +676,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     color: Dawn.text.secondary,
     marginBottom: 8,
   },
-  sinceText: {
-    fontSize: 14,
-    color: Dawn.text.secondary,
-    lineHeight: 20,
+  profileSinceSpacing: {
     marginTop: 4,
   },
   avatarColumn: {
@@ -739,54 +718,51 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     fontWeight: '600',
     color: Dawn.text.primary,
   },
-  ritualCardTitle: {
-    fontSize: 17,
+  // ----- Card typography system (fixed 3 tiers — use only these for card body copy) -----
+  /** Title — card headings */
+  cardTitle: {
+    fontSize: 19,
     fontWeight: '600',
     color: Dawn.text.primary,
-    marginBottom: 16,
   },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 18,
-    marginBottom: 16,
+  /** Primary line — key message in card */
+  cardPrimary: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: Dawn.text.primary,
+    lineHeight: 22,
   },
-  statColumn: {
-    flex: 1,
-    minHeight: 44,
-    justifyContent: 'space-between',
-  },
-  statLabel: {
-    fontSize: 12,
+  /** Secondary / metadata — supporting info */
+  cardMeta: {
+    fontSize: 13,
+    fontWeight: '400',
     color: Dawn.text.secondary,
-    marginBottom: 0,
+    lineHeight: 18,
+    opacity: 0.88,
   },
-  statValue: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Dawn.text.primary,
-  },
-  reflectiveLine: {
-    fontSize: 14,
-    color: Dawn.text.secondary,
-    fontStyle: 'italic',
-    lineHeight: 20,
-  },
-  placesCardTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: Dawn.text.primary,
+  streakHeadline: {
+    textAlign: 'center',
     marginBottom: 8,
   },
-  placesSub: {
-    fontSize: 14,
-    color: Dawn.text.secondary,
-    marginBottom: 12,
+  streakPrimaryLine: {
+    textAlign: 'center',
+    marginBottom: 10,
+    paddingHorizontal: 8,
   },
-  mostReturnedLabel: {
-    fontSize: 13,
-    color: Dawn.text.secondary,
+  streakMetaLine: {
+    textAlign: 'center',
+  },
+  placesTitleSpacing: {
+    marginBottom: 4,
+  },
+  placesMetaSpacing: {
+    marginBottom: 8,
+  },
+  placesFavouriteSpacing: {
     marginBottom: 6,
+  },
+  placesSpotMetaSpacing: {
+    marginTop: 2,
   },
   mostReturnedRow: {
     flexDirection: 'row',
@@ -796,26 +772,14 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   mostReturnedEmoji: {
     fontSize: 20,
   },
-  mostReturnedName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Dawn.text.primary,
-  },
-  mostReturnedCount: {
-    fontSize: 14,
-    color: Dawn.text.secondary,
-    marginTop: 2,
+  markerPreviewTitleSpacing: {
+    marginBottom: 2,
   },
   markersCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 14,
-  },
-  markersCardTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: Dawn.text.primary,
   },
   viewAllLink: {},
   viewAllLinkText: {
@@ -834,17 +798,6 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   },
   markerPreviewText: {
     flex: 1,
-  },
-  markerPreviewTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Dawn.text.primary,
-    marginBottom: 2,
-  },
-  markerPreviewDescription: {
-    fontSize: 14,
-    color: Dawn.text.secondary,
-    lineHeight: 20,
   },
   centered: {
     flex: 1,

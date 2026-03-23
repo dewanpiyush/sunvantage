@@ -1,12 +1,16 @@
+console.log("FUNCTION FILE LOADED")
 /// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.97.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+export const config = {
+  auth: false,
+};
 
 type Input = {
   path: string;
   type: "sunrise" | "avatar";
   logId?: number | string;
-  userId?: string;
 };
 
 type Likelihood =
@@ -46,6 +50,7 @@ function sanitizePath(p: string): string | null {
 }
 
 serve(async (req) => {
+  try {
   if (req.method !== "POST") {
     return json(405, { error: "Method not allowed" });
   }
@@ -89,28 +94,38 @@ serve(async (req) => {
     return json(400, { error: "Invalid or missing logId for sunrise moderation" });
   }
 
-  const userIdRaw = input?.userId ?? "";
-  const userId = sanitizePath(String(userIdRaw));
-  if (!userId) {
-    return json(400, { error: "Invalid userId" });
-  }
-  if (userId.includes("/")) {
-    return json(400, { error: "Invalid userId format" });
-  }
-
-  // Ownership check: staged path must be under "<userId>/..."
-  if (!path.startsWith(`${userId}/`)) {
-    return json(403, { error: "Not allowed for this path" });
-  }
+  // Use staged path as source of user partition for storage paths.
+  const ownerIdFromPath = path.split("/")[0] ?? "";
+  if (!ownerIdFromPath) return json(400, { error: "Invalid path owner prefix" });
 
   console.log("PATH:", path);
-  console.log("USER ID:", userId);
+  console.log("PATH OWNER:", ownerIdFromPath);
   console.log("LOG ID:", logId ?? null);
 
   // Service role client for Storage + DB writes.
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false },
   });
+
+  // For sunrise: fetch DB row and use DB user_id as source of truth.
+  let sunriseOwnerId: string | null = null;
+  if (input.type === "sunrise" && logId != null) {
+    const { data: existing, error: selErr } = await admin
+      .from("sunrise_logs")
+      .select("id, user_id")
+      .eq("id", logId as number)
+      .maybeSingle();
+    if (selErr) {
+      return json(500, { error: "Failed to read sunrise log", detail: selErr.message });
+    }
+    if (!existing) {
+      return json(404, { error: "Sunrise log not found", id: logId });
+    }
+    sunriseOwnerId = String(existing.user_id ?? "").trim() || null;
+    if (!sunriseOwnerId) {
+      return json(500, { error: "Sunrise log user_id missing", id: logId });
+    }
+  }
 
   // Download from private staging bucket.
   const { data: blob, error: dlErr } = await admin.storage
@@ -173,14 +188,30 @@ serve(async (req) => {
   const reject = isHigh(ann?.adult) || isHigh(ann?.racy) || isHigh(ann?.violence);
 
   if (reject) {
+    // Reject: update DB first (must succeed), then delete staging — same rule as approve.
+    if (input.type === "sunrise") {
+      const { data: rejectedRows, error: rejErr } = await admin
+        .from("sunrise_logs")
+        .update({ moderation_status: "rejected", photo_url: null })
+        .eq("id", logId as number)
+        .select("id");
+      console.log("DB REJECT UPDATE:", { rejErr, rows: rejectedRows?.length ?? 0 });
+      if (rejErr) {
+        return json(500, { error: "Failed to update log after rejection", detail: rejErr.message });
+      }
+      if (!rejectedRows?.length) {
+        return json(500, { error: "No sunrise_logs row updated on reject", id: logId });
+      }
+    }
     await admin.storage.from("uploads_pending").remove([path]);
     return json(200, { status: "rejected" as const });
   }
 
-  // Approved: upload to public bucket with UUID-based name, then delete staging.
+  // Approved: upload to public bucket → update DB → then delete staging (so DB failure leaves staged file for retry).
   const uuid = crypto.randomUUID();
   const destBucket = input.type === "sunrise" ? "sunrise_photos" : "avatars";
-  const destPath = `${userId}/${uuid}.jpg`;
+  const destUserId = input.type === "sunrise" ? (sunriseOwnerId as string) : ownerIdFromPath;
+  const destPath = `${destUserId}/${uuid}.jpg`;
 
   const { error: upErr } = await admin.storage.from(destBucket).upload(destPath, bytes, {
     contentType: "image/jpeg",
@@ -190,23 +221,66 @@ serve(async (req) => {
     return json(500, { error: "Unable to publish approved image" });
   }
 
-  await admin.storage.from("uploads_pending").remove([path]);
-
   const publicUrl = admin.storage.from(destBucket).getPublicUrl(destPath).data.publicUrl;
   console.log("PUBLIC URL:", publicUrl);
 
-  // Update DB record(s).
-  if (input.type === "avatar") {
-    await admin.from("profiles").update({ avatar_url: publicUrl }).eq("user_id", userId);
-  } else {
-    const result = await admin
-      .from("sunrise_logs")
-      .update({ photo_url: publicUrl })
-      .eq("id", logId as number)
-      .eq("user_id", userId);
-    console.log("DB UPDATE RESULT:", result);
+  // DB must succeed before we delete staging. If DB fails after public upload, roll back public object.
+  try {
+    if (input.type === "avatar") {
+      const { data: profileRows, error: profileErr } = await admin
+        .from("profiles")
+        .update({ avatar_url: publicUrl })
+        .eq("user_id", ownerIdFromPath)
+        .select("user_id");
+      if (profileErr) {
+        console.error("❌ PROFILE UPDATE FAILED", { userId: ownerIdFromPath, detail: profileErr.message });
+        throw new Error("DB update failed - aborting");
+      }
+      if (!profileRows?.length) {
+        console.error("❌ PROFILE UPDATE matched 0 rows", { userId: ownerIdFromPath });
+        throw new Error("DB update failed - aborting");
+      }
+    } else {
+      console.log("Updating row:", { logId, userId: sunriseOwnerId });
+      const { data, error: updateErr } = await admin
+        .from("sunrise_logs")
+        .update({
+          moderation_status: "approved",
+          photo_url: publicUrl,
+        })
+        .eq("id", logId as number)
+        .select("id");
+
+      if (updateErr || !data || data.length === 0) {
+        console.error("❌ UPDATE FAILED", { logId, userId });
+        throw new Error("DB update failed - aborting");
+      }
+    }
+  } catch (dbErr) {
+    const { error: rollbackErr } = await admin.storage.from(destBucket).remove([destPath]);
+    if (rollbackErr) {
+      console.error("ROLLBACK public upload failed (orphan may remain)", { destPath, detail: rollbackErr.message });
+    }
+    throw dbErr;
   }
 
+  await admin.storage.from("uploads_pending").remove([path]);
+
   return json(200, { status: "approved" as const, publicUrl });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("moderate-image error:", e);
+
+    return new Response(
+      JSON.stringify({
+        error: msg,
+        stack: e instanceof Error ? e.stack : null,
+      }),
+      {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  }
 });
 

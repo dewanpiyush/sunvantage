@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ScrollView,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import supabase from '../supabase';
@@ -30,16 +31,23 @@ type TodayLogDetails = {
 };
 
 const PHOTO_BUCKET = 'sunrise_photos';
+const PENDING_BUCKET = 'uploads_pending';
 const SIGNED_URL_EXPIRY = 60 * 60;
 
 async function resolvePhotoDisplayUrl(ref: string): Promise<string | null> {
   if (!ref?.trim()) return null;
   if (ref.startsWith('http://') || ref.startsWith('https://')) return ref;
-  const normalized = ref.replace(/^\/+/, '').replace(new RegExp(`^${PHOTO_BUCKET}/`), '');
+  const cleaned = ref.replace(/^\/+/, '');
+  const isPendingRef = cleaned.startsWith(`${PENDING_BUCKET}/`);
+  const bucket = isPendingRef ? PENDING_BUCKET : PHOTO_BUCKET;
+  const normalized = isPendingRef
+    ? cleaned.slice(`${PENDING_BUCKET}/`.length)
+    : cleaned.replace(new RegExp(`^${PHOTO_BUCKET}/`), '');
   const { data, error } = await supabase.storage
-    .from(PHOTO_BUCKET)
+    .from(bucket)
     .createSignedUrl(normalized, SIGNED_URL_EXPIRY);
   if (!error && data?.signedUrl) return data.signedUrl;
+  if (bucket === PENDING_BUCKET) return null;
   const publicUrl = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(normalized).data?.publicUrl;
   return publicUrl ?? null;
 }
@@ -217,9 +225,13 @@ export default function VantageWalkScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.gradientTop} pointerEvents="none" />
-      <View style={styles.gradientMid} pointerEvents="none" />
-      <View style={styles.gradientLowerWarm} pointerEvents="none" />
+      <LinearGradient
+        colors={isMorningLight ? ['#EAF3FB', '#DCEAF7', '#CFE2F3'] : ['#102A43', '#1B3554', '#243F63']}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={styles.backgroundGradient}
+        pointerEvents="none"
+      />
 
       <ScrollView
         style={styles.scroll}
@@ -264,10 +276,8 @@ export default function VantageWalkScreen() {
         {/* Sunrise card — compressed 3-row layout (Witness/Vantage) */}
         {sunriseToday != null && (
           <View style={styles.sunriseCard}>
-            <View style={styles.sunTitleRow}>
-              <Text style={styles.sunEmoji}>☀️</Text>
-              <Text style={styles.sunTitle}>Sunrise today</Text>
-            </View>
+            <Text style={styles.sunEmoji}>☀️</Text>
+            <Text style={styles.sunTitle}>Sunrise today</Text>
             <Text style={styles.sunriseCardCityTime}>
               {profileCity || 'your city'} · {formatSunriseTime(sunriseToday)}
             </Text>
@@ -405,26 +415,8 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     backgroundColor: Dawn.background.primary,
     paddingTop: 52,
   },
-  gradientTop: {
+  backgroundGradient: {
     ...StyleSheet.absoluteFillObject,
-    height: '50%',
-    backgroundColor: Dawn.background.primary,
-  },
-  gradientMid: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '35%',
-    height: '30%',
-    backgroundColor: 'rgba(148, 163, 184, 0.055)',
-  },
-  gradientLowerWarm: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '50%',
-    bottom: 0,
-    backgroundColor: 'rgba(255, 179, 71, 0.058)',
   },
   scroll: {
     flex: 1,
@@ -447,7 +439,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     borderRadius: 22,
     padding: 14,
     marginBottom: 18,
-    alignItems: 'stretch',
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: Dawn.border.sunriseCard,
     shadowColor: Dawn.accent.sunrise,
@@ -462,19 +454,16 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     justifyContent: 'center',
     gap: 8,
   },
-  sunTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-  },
   sunEmoji: {
     fontSize: 18,
+    marginBottom: 6,
   },
   sunTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: Dawn.text.primary,
+    textAlign: 'center',
+    marginBottom: 7,
   },
   titleRow: {
     flexDirection: 'row',
@@ -495,17 +484,19 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   sunriseCardCityTime: {
     fontSize: 14,
     color: Dawn.text.secondary,
-    marginBottom: 6,
+    marginBottom: 5,
+    textAlign: 'center',
   },
   sunriseCardTagline: {
     fontSize: 13,
     color: Dawn.text.secondary,
     opacity: 0.9,
+    textAlign: 'center',
   },
   messageBlock: {
     alignItems: 'center',
     marginTop: 0,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   messageLine: {
     fontSize: 17,
@@ -519,7 +510,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     fontWeight: '400',
     color: Dawn.text.secondary,
     textAlign: 'center',
-    marginTop: 4,
+    marginTop: 2,
     opacity: 0.9,
   },
   ctaButton: {

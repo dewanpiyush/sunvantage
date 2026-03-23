@@ -35,6 +35,8 @@ type Props = {
   screenTitle?: boolean;
   /** When set, header tap runs this (e.g. go home). When unset, header tap opens the nav drawer (Home only). */
   onHeaderPress?: () => void;
+  /** Hide the sunrise emoji next to “SunVantage” (e.g. My Mornings keeps 🌅 only in body copy). */
+  hideHeaderEmoji?: boolean;
 };
 
 export default function SunVantageHeader({
@@ -52,6 +54,7 @@ export default function SunVantageHeader({
   onBackPress,
   screenTitle = false,
   onHeaderPress,
+  hideHeaderEmoji = false,
 }: Props) {
   const router = useRouter();
   const Dawn = useDawn();
@@ -103,7 +106,9 @@ export default function SunVantageHeader({
               {displayBackLabel}
             </Text>
             <Text style={[styles.appName, { color: Dawn.text.primary }]}>SunVantage</Text>
-            <Text style={styles.headerEmoji}>{'\u{1F305}'}</Text>
+            {!hideHeaderEmoji ? (
+              <Text style={styles.headerEmoji}>{'\u{1F305}'}</Text>
+            ) : null}
           </Pressable>
         ) : (
           <>
@@ -123,7 +128,9 @@ export default function SunVantageHeader({
                 <View style={styles.headerRow}>
                   {!tagline ? <Text style={[styles.chevron, { color: Dawn.text.secondary }]}>‹</Text> : null}
                   <Text style={[styles.appName, { color: Dawn.text.primary }]}>SunVantage</Text>
-                  <Text style={styles.headerEmoji}>{'\u{1F305}'}</Text>
+                  {!hideHeaderEmoji ? (
+                    <Text style={styles.headerEmoji}>{'\u{1F305}'}</Text>
+                  ) : null}
                 </View>
                 {tagline ? (
                   <>

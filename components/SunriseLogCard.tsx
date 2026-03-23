@@ -31,6 +31,7 @@ import { normalizeVantageForStorage } from '../lib/vantageUtils';
 import { useDawn } from '@/hooks/use-dawn';
 import { useMorningContext } from '../hooks/useMorningContext';
 import { getMinutesToSunrise, getCoordinatesForCity } from '../services/weatherService';
+import { invokeModerateImage } from '../lib/moderateImageInvoke';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 const photoBucket = 'sunrise_photos';
@@ -82,7 +83,8 @@ async function fetchStreakFromRpc(): Promise<{ current: number; longest: number;
 export type SunriseLogCardProps = {
   visible: boolean;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (result?: { localPhotoUri?: string; pendingPhotoRef?: string }) => void;
+  onModerationComplete?: () => void;
   onPlanForTomorrow?: () => void;
   city?: string | null;
   sunriseTime?: string | null;
@@ -93,6 +95,7 @@ export default function SunriseLogCard({
   visible,
   onClose,
   onSaved,
+  onModerationComplete,
   onPlanForTomorrow,
   city = null,
   sunriseTime = null,
@@ -109,10 +112,13 @@ export default function SunriseLogCard({
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [photoMime, setPhotoMime] = useState<string>('image/jpeg');
   const [saving, setSaving] = useState(false);
+  const [saveStage, setSaveStage] = useState<'idle' | 'saved' | 'processing'>('idle');
   const [error, setError] = useState('');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const processingOpacity = useRef(new Animated.Value(0.85)).current;
   const processingLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const stageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [detectingVantageLocation, setDetectingVantageLocation] = useState(false);
   const [overrideCoords, setOverrideCoords] = useState<{ latitude: number; longitude: number } | null>(null);
 
@@ -146,6 +152,7 @@ export default function SunriseLogCard({
   useEffect(() => {
     if (visible) {
       setError('');
+      setSaveStage('idle');
       setShowMissedScreen(false);
       if (vantageName === '' && initialVantageName?.trim()) {
         setVantageName(initialVantageName.trim());
@@ -184,6 +191,13 @@ export default function SunriseLogCard({
     }
   }, [visible, initialVantageName, backdropOpacity, cardOpacity, cardScale, cardTranslateY]);
 
+  useEffect(() => {
+    return () => {
+      if (stageTimerRef.current) clearTimeout(stageTimerRef.current);
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    };
+  }, []);
+
   // Focus vantage input when moving to step 1.
   useEffect(() => {
     if (visible && step === 1) {
@@ -200,9 +214,9 @@ export default function SunriseLogCard({
     }
   }, [visible, step]);
 
-  // While saving: run a very subtle fade for the calm processing copy.
+  // While processing: run a subtle fade for the processing copy.
   useEffect(() => {
-    if (!saving) {
+    if (saveStage !== 'processing') {
       processingOpacity.setValue(0.85);
       processingLoopRef.current?.stop?.();
       processingLoopRef.current = null;
@@ -225,7 +239,7 @@ export default function SunriseLogCard({
     );
     processingLoopRef.current.start();
     return () => processingLoopRef.current?.stop?.();
-  }, [saving, processingOpacity]);
+  }, [saveStage, processingOpacity]);
 
   const handleClose = useCallback(() => {
     Keyboard.dismiss();
@@ -368,8 +382,11 @@ export default function SunriseLogCard({
 
   const handleSave = useCallback(async () => {
     setSaving(true);
+    setSaveStage('idle');
     setError('');
     let didSucceed = false;
+    let savedLocalPhotoUri: string | undefined;
+    let savedPendingPhotoRef: string | undefined;
     try {
       const {
         data: { session },
@@ -425,6 +442,7 @@ export default function SunriseLogCard({
         normalized_vantage?: string;
         vantage_category?: string;
         reflection_text?: string | null;
+        moderation_status?: 'pending';
       } = {
         user_id: userId,
         created_at: new Date().toISOString(),
@@ -446,6 +464,7 @@ export default function SunriseLogCard({
       }
       const reflectionTrim = reflectionText.trim();
       if (reflectionTrim) insertPayload.reflection_text = reflectionTrim;
+      // Do not set moderation_status here when a photo will be uploaded — it is set only after storage upload succeeds.
 
       const { data: insertData, error: insertError } = await supabase
         .from('sunrise_logs')
@@ -461,30 +480,69 @@ export default function SunriseLogCard({
       const logId = insertData?.[0]?.id as number | undefined;
       if (logId != null && photoBase64 && photoUri) {
         const stagedPath = `${userId}/${logId}-${Date.now()}.jpg`;
-        const binary = atob(photoBase64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        savedLocalPhotoUri = photoUri;
+        savedPendingPhotoRef = `uploads_pending/${stagedPath}`;
+        const photoB64 = photoBase64;
+        const mime = photoMime;
+        // Order matters: upload bytes first, then persist DB ref, then invoke Edge Function.
+        // Previously we updated the row before upload; if the background task was dropped, invoke never ran.
+        try {
+          const binary = atob(photoB64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
-        const { error: uploadError } = await supabase.storage
-          .from('uploads_pending')
-          .upload(stagedPath, bytes, { contentType: photoMime, upsert: true });
-        if (uploadError) {
-          throw new Error(uploadError.message || 'Upload failed.');
-        }
+          const { error: uploadError } = await supabase.storage
+            .from('uploads_pending')
+            .upload(stagedPath, bytes, { contentType: mime, upsert: true });
+          if (uploadError) {
+            console.warn('[SunVantage] pending upload failed', {
+              logId,
+              stagedPath,
+              message: uploadError.message,
+            });
+            setError(uploadError.message || 'Could not upload your photo. Try again.');
+            return;
+          }
 
-        const functions = supabase.functions;
-        const { data: modData, error: fnError } = await functions.invoke('moderate-image', {
-          body: { path: stagedPath, type: 'sunrise' as const, logId, userId },
-          // Auth is temporarily disabled in the function for pipeline validation.
-          // Ownership is enforced via `userId` + `path` prefix check.
-        });
+          const { error: dbErr } = await supabase
+            .from('sunrise_logs')
+            .update({ photo_url: savedPendingPhotoRef, moderation_status: 'pending' })
+            .eq('id', logId)
+            .eq('user_id', userId);
+          if (dbErr) {
+            console.warn('[SunVantage] could not save pending photo ref', dbErr);
+            setError(dbErr.message || 'Could not save your photo. Try again.');
+            return;
+          }
 
-        if (fnError) {
-          throw new Error(fnError.message || 'Moderation failed.');
-        }
-
-        if (!modData || modData.status !== 'approved') {
-          throw new Error('Photo rejected.');
+          void invokeModerateImage(supabase, {
+            path: stagedPath,
+            type: 'sunrise',
+            logId,
+          }).then(({ data, error: invokeError }) => {
+              if (invokeError) {
+                console.warn('[SunVantage] moderate-image invoke failed', {
+                  logId,
+                  stagedPath,
+                  message: invokeError.message,
+                });
+                return;
+              }
+              const status = (data as { status?: string } | null)?.status;
+              if (status !== 'approved' && status !== 'rejected') {
+                console.warn('[SunVantage] moderate-image unexpected response', {
+                  logId,
+                  stagedPath,
+                  data,
+                });
+                return;
+              }
+              onModerationComplete?.();
+            });
+        } catch (e) {
+          console.warn('[SunVantage] photo pipeline failed', e);
+          setError('Could not process your photo. Try again.');
+          return;
         }
       }
 
@@ -505,28 +563,41 @@ export default function SunriseLogCard({
       await setLastUsedReflectionPrompt(reflectionPrompt);
       resetFormAfterSave();
 
-      // Land the moment: softly shrink + fade, then close so the page card feels like the moment landed
+      // Show immediate acknowledgement, then processing copy, then close.
       didSucceed = true;
-      Animated.parallel([
-        Animated.timing(cardOpacity, {
-          toValue: 0,
-          duration: 280,
-          useNativeDriver: true,
-        }),
-        Animated.timing(cardScale, {
-          toValue: 0.92,
-          duration: 280,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
-        onSaved();
-        handleClose();
-      });
+      setSaving(false);
+      setSaveStage('saved');
+      if (stageTimerRef.current) clearTimeout(stageTimerRef.current);
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+      stageTimerRef.current = setTimeout(() => setSaveStage('processing'), 650);
+      closeTimerRef.current = setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(cardOpacity, {
+            toValue: 0,
+            duration: 280,
+            useNativeDriver: true,
+          }),
+          Animated.timing(cardScale, {
+            toValue: 0.92,
+            duration: 280,
+            useNativeDriver: true,
+          }),
+        ]).start(() => {
+          setSaveStage('idle');
+          onSaved({
+            localPhotoUri: savedLocalPhotoUri,
+            pendingPhotoRef: savedPendingPhotoRef,
+          });
+          handleClose();
+        });
+      }, 1850);
     } catch {
       setError('Something went wrong. Please try again.');
     } finally {
-      // Keep the processing UI visible until we close the modal.
-      if (!didSucceed) setSaving(false);
+      if (!didSucceed) {
+        setSaving(false);
+        setSaveStage('idle');
+      }
     }
   }, [vantageName, reflectionText, reflectionPrompt, photoBase64, photoUri, photoMime, onSaved, handleClose, resetFormAfterSave, cardOpacity, cardScale]);
 
@@ -652,10 +723,21 @@ export default function SunriseLogCard({
                   showsVerticalScrollIndicator={false}
                 >
                   <View style={styles.stepContent}>
-                    {saving ? (
+                    {saveStage !== 'idle' ? (
                       <Animated.View style={[styles.stepInner, styles.processingContent, { opacity: processingOpacity }]}>
-                        <Text style={styles.processingTitle}>Processing your sunrise… 🌅</Text>
-                        <Text style={styles.processingHelper}>Just a moment.</Text>
+                        {saveStage === 'saved' ? (
+                          <>
+                            <Text style={styles.processingSaved}>✓ Saved</Text>
+                            <Text style={styles.processingTitle}>Your morning is part of today</Text>
+                          </>
+                        ) : (
+                          <>
+                            <ActivityIndicator color={Dawn.text.secondary} size="small" />
+                            <Text style={styles.processingTitle}>
+                              Adding your morning to today{"'"}s global sunrise map
+                            </Text>
+                          </>
+                        )}
                       </Animated.View>
                     ) : (
                     <>
@@ -780,6 +862,7 @@ export default function SunriseLogCard({
                 </ScrollView>
 
                 {/* Fixed footer — same position for all steps */}
+                {saveStage === 'idle' ? (
                 <View style={[
                   styles.footer,
                   showMissedScreen && styles.footerMissed,
@@ -873,6 +956,7 @@ export default function SunriseLogCard({
                     </Pressable>
                   ) : null}
                 </View>
+                ) : null}
               </Animated.View>
             </Pressable>
           </KeyboardAvoidingView>
@@ -1164,15 +1248,23 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   processingContent: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 16,
-    paddingHorizontal: 16,
+    minHeight: 180,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
+    gap: 10,
+  },
+  processingSaved: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: 'rgba(74, 222, 128, 0.95)',
+    textAlign: 'center',
   },
   processingTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: Dawn.text.primary,
     textAlign: 'center',
-    marginBottom: 6,
+    marginBottom: 0,
   },
   processingHelper: {
     fontSize: 13,

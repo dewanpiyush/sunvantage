@@ -3,15 +3,16 @@
  * Reuses CitySunriseGallery (same grid + modal as "Morning light across {city}" in My Mornings).
  * Nav entry is conditional: only shown when count(other users' photos in city) > 1.
  */
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import supabase from '../supabase';
 import SunVantageHeader from '../components/SunVantageHeader';
 import CitySunriseGallery, { type CitySunriseGalleryRow } from '../components/CitySunriseGallery';
@@ -30,9 +31,12 @@ export default function MyCitySunrisesScreen() {
   const [cityName, setCityName] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [rows, setRows] = useState<CitySunriseGalleryRow[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const hasLoadedOnce = useRef(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
+    if (!silent) setLoading(true);
     setError('');
     try {
       const {
@@ -68,6 +72,7 @@ export default function MyCitySunrisesScreen() {
         .eq('city', city)
         .neq('user_id', userId)
         .not('photo_url', 'is', null)
+        .eq('moderation_status', 'approved')
         .order('created_at', { ascending: false })
         .limit(GALLERY_LIMIT);
 
@@ -81,12 +86,26 @@ export default function MyCitySunrisesScreen() {
       setError('Something went wrong.');
       setRows([]);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+        hasLoadedOnce.current = true;
+      }
     }
   }, []);
 
-  useEffect(() => {
-    load();
+  useFocusEffect(
+    useCallback(() => {
+      void load({ silent: hasLoadedOnce.current });
+    }, [load])
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await load({ silent: true });
+    } finally {
+      setRefreshing(false);
+    }
   }, [load]);
 
   if (loading) {
@@ -141,6 +160,9 @@ export default function MyCitySunrisesScreen() {
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Dawn.accent.sunrise} />
+          }
         >
           <CitySunriseGallery rows={rows} limit={GALLERY_LIMIT} cityFallback={cityName} currentUserId={currentUserId} />
           <Text style={styles.footerLine}>

@@ -36,6 +36,8 @@ type Row = {
 
 function getPublicUrl(ref: string): string {
   if (!ref) return '';
+  // `photo_url` may already be a fully-qualified public URL (edge function output).
+  if (ref.startsWith('http://') || ref.startsWith('https://')) return ref;
   const key = ref.replace(/^\/+/, '').replace(new RegExp(`^${BUCKET}\/`), '');
   return supabase.storage.from(BUCKET).getPublicUrl(key).data?.publicUrl ?? '';
 }
@@ -79,6 +81,7 @@ export default function SharedDawnPreview({ city, currentUserId, fromScreen }: P
         .eq('city', city.trim())
         .neq('user_id', currentUserId)
         .not('photo_url', 'is', null)
+        .eq('moderation_status', 'approved')
         .gte('created_at', start.toISOString())
         .lt('created_at', end.toISOString())
         .order('created_at', { ascending: false })
@@ -135,13 +138,16 @@ export default function SharedDawnPreview({ city, currentUserId, fromScreen }: P
     <>
       <View style={[styles.section, isEmpty && styles.sectionEmpty]}>
         <View style={styles.divider} />
-        <Text style={styles.title}>Shared dawn in {cityLabel}</Text>
         {isEmpty ? (
-          <View style={styles.placeholder}>
-            <Text style={styles.placeholderText}>Be the first to share the morning today.</Text>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptySparkles}>✨</Text>
+            <Text style={styles.emptyLine1}>
+              Be the first in {cityLabel} today.
+            </Text>
           </View>
         ) : (
           <>
+            <Text style={styles.title}>Shared dawn in {cityLabel}</Text>
             <View style={styles.row}>
               {rows.map((row, index) => {
                 const url = urls[index];
@@ -279,14 +285,14 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     minHeight: 180,
   },
   sectionEmpty: {
-    minHeight: 180,
+      minHeight: 200,
   },
   divider: {
     width: '100%',
     height: 1,
     backgroundColor: Dawn.border.subtle,
     marginBottom: 20,
-    opacity: 0.8,
+    opacity: 0.15,
   },
   title: {
     fontSize: 14,
@@ -295,20 +301,36 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     marginBottom: 10,
     textAlign: 'center',
   },
-  placeholder: {
-    flex: 1,
-    minHeight: 120,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  placeholderText: {
-    fontSize: 14,
-    color: Dawn.text.secondary,
-    textAlign: 'center',
-    lineHeight: 20,
-    opacity: 0.9,
-  },
+    emptyState: {
+      flex: 1,
+      minHeight: 150,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 24,
+      paddingVertical: 6,
+    },
+    emptySparkles: {
+      fontSize: 18,
+      marginBottom: 6,
+      textAlign: 'center',
+    },
+    emptyLine1: {
+      fontSize: 14,
+      lineHeight: 20,
+      color: Dawn.text.secondary,
+      textAlign: 'center',
+      opacity: 0.85,
+      marginBottom: 8,
+      maxWidth: 300,
+    },
+    emptyLine2: {
+      fontSize: 16,
+      fontWeight: '600',
+      lineHeight: 22,
+      color: Dawn.text.primary,
+      textAlign: 'center',
+      maxWidth: 300,
+    },
   row: {
     flexDirection: 'row',
     flexWrap: 'wrap',

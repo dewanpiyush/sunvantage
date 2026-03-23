@@ -2,25 +2,30 @@
  * Global Sunrise Gallery — gallery of recent sunrise photos from across SunVantage.
  * Reuses CitySunriseGallery grid + modal; pulls from global sunrise_logs (no city filter).
  */
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useState, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import supabase from '../supabase';
 import SunVantageHeader from '../components/SunVantageHeader';
 import CitySunriseGallery, { type CitySunriseGalleryRow } from '../components/CitySunriseGallery';
 import { Dawn } from '../constants/theme';
+import { useDawn } from '@/hooks/use-dawn';
 
 const GALLERY_LIMIT = 30;
 
 export default function WorldSunriseGalleryScreen() {
   const router = useRouter();
+  const DawnHook = useDawn();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [rows, setRows] = useState<CitySunriseGalleryRow[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const hasLoadedOnce = useRef(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
+    if (!silent) setLoading(true);
     setError('');
     try {
       const {
@@ -50,12 +55,26 @@ export default function WorldSunriseGalleryScreen() {
       setError('Something went wrong.');
       setRows([]);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+        hasLoadedOnce.current = true;
+      }
     }
   }, []);
 
-  useEffect(() => {
-    load();
+  useFocusEffect(
+    useCallback(() => {
+      void load({ silent: hasLoadedOnce.current });
+    }, [load])
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await load({ silent: true });
+    } finally {
+      setRefreshing(false);
+    }
   }, [load]);
 
   if (loading) {
@@ -105,6 +124,13 @@ export default function WorldSunriseGalleryScreen() {
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={DawnHook.accent.sunrise}
+            />
+          }
         >
           <CitySunriseGallery
             rows={rows}

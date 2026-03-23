@@ -25,6 +25,7 @@ as $$
     s.city
   from sunrise_logs as s
   where s.photo_url is not null
+    and s.moderation_status = 'approved'
   order by s.created_at desc
   limit limit_count;
 $$;

@@ -34,6 +34,8 @@ export type CitySunriseGalleryRow = {
 
 function getPublicUrl(ref: string): string {
   if (!ref) return '';
+  // `photo_url` may already be a fully-qualified public URL (written by the edge function).
+  if (ref.startsWith('http://') || ref.startsWith('https://')) return ref;
   const key = ref.replace(/^\/+/, '').replace(new RegExp(`^${BUCKET}\/`), '');
   return supabase.storage.from(BUCKET).getPublicUrl(key).data?.publicUrl ?? '';
 }
