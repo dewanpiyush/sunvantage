@@ -21,6 +21,9 @@ export default function Home() {
       <p style={{ marginTop: "2rem", fontSize: "0.9rem", opacity: 0.6 }}>
         Coming soon.
       </p>
+      <div style={{ marginTop: "40px", fontSize: "0.9rem", opacity: 0.6 }}>
+        <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
+      </div>
     </main>
   );
 }
