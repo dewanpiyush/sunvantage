@@ -372,6 +372,7 @@ export function SunriseLog({
 
   const { sunriseToday, sunriseTomorrow, sunriseCardTimeMessage, minutesToSunrise } = useMorningContext(profileCity ?? null);
   const sunrisePassed = minutesToSunrise != null && minutesToSunrise < 0;
+  const showFirstLightCard = Boolean(hasLogged && revealBadge);
   const [reflectionInvitationText, setReflectionInvitationText] = useState<string | null>(null);
   const reflectionBlockYRef = useRef(0);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -1156,7 +1157,6 @@ export function SunriseLog({
           style={styles.scroll}
           contentContainerStyle={[
             styles.scrollContent,
-            hasLogged && revealBadge && styles.scrollContentWithMarker,
             keyboardVisible && { paddingBottom: 320 },
           ]}
           bounces={false}
@@ -1164,8 +1164,8 @@ export function SunriseLog({
           keyboardShouldPersistTaps="handled"
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-            <View style={styles.centerContent} collapsable={false}>
-          {hasLogged && revealBadge ? (
+            <View style={styles.centerContent}>
+          {hasLogged && revealBadge && (
             <RitualRevealCard
               visible={true}
               onDismiss={async () => {
@@ -1180,9 +1180,9 @@ export function SunriseLog({
               description={revealBadge.earnedExplanation}
               ctaText="View markers"
             />
-          ) : null}
+          )}
           {sunriseToday != null ? (
-            <View style={styles.sunriseCardWrap}>
+            <View style={[styles.sunriseCardWrap, { marginTop: showFirstLightCard ? 24 : 8 }]}>
               <Animated.View
                 style={[
                   styles.sunriseCardGlow,

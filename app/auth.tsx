@@ -3,6 +3,7 @@ import {
   View,
   Text,
   TextInput,
+  Pressable,
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
@@ -13,9 +14,12 @@ import {
   ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import supabase from '../supabase';
 import { Dawn } from '../constants/theme';
 import { fetchProfileCompleteness } from '../lib/profileGuard';
+import PrivacyPolicyModal from '@/components/PrivacyPolicyModal';
+import TermsModal from '@/components/TermsModal';
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -28,6 +32,8 @@ export default function AuthScreen() {
   const [message, setMessage] = useState('');
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
 
   useEffect(() => {
     const checkSession = async () => {
@@ -123,16 +129,22 @@ export default function AuthScreen() {
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <View style={styles.flex}>
-          <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            <View style={styles.gradientTop} />
-            <View style={styles.gradientLowerWarm} />
-          </View>
+          <LinearGradient
+            colors={['#102A43', '#1B3554', '#243F63']}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={styles.backgroundGradient}
+            pointerEvents="none"
+          />
           <ScrollView
             contentContainerStyle={styles.inner}
             keyboardShouldPersistTaps="handled"
           >
             <View style={styles.header}>
-              <Text style={styles.appName}>SunVantage</Text>
+              <View style={styles.brandRow}>
+                <Text style={styles.brandEmoji}>🌅</Text>
+                <Text style={styles.appName}>SunVantage</Text>
+              </View>
               <Text style={styles.tagline}>See the day differently.</Text>
             </View>
 
@@ -183,6 +195,20 @@ export default function AuthScreen() {
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
               {message ? <Text style={styles.messageText}>{message}</Text> : null}
 
+              {!isSignIn ? (
+                <View style={styles.consentRow}>
+                  <Text style={styles.consentText}>By continuing, you agree to our </Text>
+                  <Pressable onPress={() => setShowTerms(true)} accessibilityRole="link">
+                    <Text style={styles.consentLink}>Terms</Text>
+                  </Pressable>
+                  <Text style={styles.consentText}> and </Text>
+                  <Pressable onPress={() => setShowPrivacy(true)} accessibilityRole="link">
+                    <Text style={styles.consentLink}>Privacy Policy</Text>
+                  </Pressable>
+                  <Text style={styles.consentText}>.</Text>
+                </View>
+              ) : null}
+
               <TouchableOpacity
                 style={[styles.button, loading && styles.buttonDisabled]}
                 onPress={handleAuth}
@@ -197,13 +223,17 @@ export default function AuthScreen() {
 
               <TouchableOpacity onPress={toggleMode} style={styles.linkWrapper}>
                 <Text style={styles.linkText}>
-                  {isSignIn ? "New here? Create an account" : 'Already have an account? Sign in'}
+                  {isSignIn ? 'New here? ' : 'Already have an account? '}
+                  <Text style={styles.linkTextAccent}>{isSignIn ? 'Create an account' : 'Sign in'}</Text>
                 </Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
         </View>
       </TouchableWithoutFeedback>
+
+      <TermsModal visible={showTerms} onClose={() => setShowTerms(false)} />
+      <PrivacyPolicyModal visible={showPrivacy} onClose={() => setShowPrivacy(false)} />
     </KeyboardAvoidingView>
   );
 }
@@ -213,21 +243,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Dawn.background.primary,
   },
-  gradientTop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    height: '55%',
-    backgroundColor: Dawn.background.primary,
-  },
-  gradientLowerWarm: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '55%',
-    bottom: 0,
-    backgroundColor: 'rgba(255, 179, 71, 0.058)',
+  backgroundGradient: {
+    ...StyleSheet.absoluteFillObject,
   },
   flex: {
     flex: 1,
@@ -237,10 +254,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 72,
     paddingBottom: 40,
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
   },
   header: {
-    marginBottom: 32,
+    // Keep a deliberate "breathing band" between identity (tagline) and the action card.
+    marginBottom: 30,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  brandEmoji: {
+    fontSize: 28, // ~93% of `appName` (30) for visual consistency.
+    lineHeight: 30,
+    marginRight: 9, // 8–10px spacing per design guidance
   },
   appName: {
     fontSize: 30,
@@ -249,7 +276,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
   },
   tagline: {
-    marginTop: 8,
+    marginTop: 10,
     fontSize: 16,
     lineHeight: 24,
     color: Dawn.text.secondary,
@@ -257,17 +284,19 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: Dawn.surface.card,
     borderRadius: 24,
-    padding: 28,
+    paddingHorizontal: 24,
+    paddingTop: 28, // Slightly more top space after pulling the card up.
+    paddingBottom: 24,
     borderWidth: 1,
-    borderColor: Dawn.border.subtle,
+    borderColor: 'rgba(42, 70, 107, 0.30)',
     ...Platform.select({
       ios: {
         shadowColor: Dawn.background.primary,
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.12,
+        shadowOpacity: 0.14,
         shadowRadius: 16,
       },
-      android: { elevation: 4 },
+      android: { elevation: 5 },
     }),
   },
   title: {
@@ -277,47 +306,48 @@ const styles = StyleSheet.create({
     lineHeight: 30,
   },
   subtitle: {
-    marginTop: 8,
+    marginTop: 6,
     fontSize: 14,
     lineHeight: 22,
     color: Dawn.text.secondary,
   },
   fieldGroup: {
-    marginTop: 20,
+    marginTop: 18,
   },
   label: {
     fontSize: 13,
     fontWeight: '400',
     color: Dawn.text.secondary,
-    marginBottom: 6,
+    marginBottom: 5,
   },
   input: {
     height: 46,
     borderRadius: 999,
     paddingHorizontal: 18,
     borderWidth: 1,
-    borderColor: Dawn.border.subtle,
+    borderColor: 'rgba(42, 70, 107, 0.55)',
     color: Dawn.text.primary,
     backgroundColor: Dawn.surface.card,
   },
   inputFocused: {
-    borderColor: Dawn.accent.sunrise,
+    borderColor: 'rgba(255, 179, 71, 0.95)',
   },
   errorText: {
-    marginTop: 12,
+    marginTop: 10,
     fontSize: 13,
     color: '#FCA5A5',
   },
   messageText: {
-    marginTop: 12,
+    marginTop: 10,
     fontSize: 13,
     color: Dawn.accent.sunrise,
   },
   button: {
-    marginTop: 24,
-    height: 44,
+    marginTop: 20,
+    height: 42,
     borderRadius: 999,
     backgroundColor: Dawn.accent.sunrise,
+    paddingHorizontal: 10,
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
@@ -345,6 +375,27 @@ const styles = StyleSheet.create({
   linkText: {
     fontSize: 13,
     lineHeight: 20,
-    color: Dawn.text.secondary,
+    color: 'rgba(175, 194, 218, 0.85)',
+  },
+  linkTextAccent: {
+    color: 'rgba(255, 179, 71, 0.95)',
+  },
+  consentRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  consentText: {
+    fontSize: 11,
+    lineHeight: 17,
+    color: 'rgba(175, 194, 218, 0.65)',
+  },
+  consentLink: {
+    fontSize: 11,
+    lineHeight: 17,
+    color: 'rgba(255, 179, 71, 0.85)',
+    textDecorationLine: 'underline',
   },
 });
