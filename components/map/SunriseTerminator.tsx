@@ -5,7 +5,7 @@
 
 import React, { useMemo } from 'react';
 import { View, useWindowDimensions, StyleSheet } from 'react-native';
-import Svg, { Path, Rect, G, Defs, ClipPath } from 'react-native-svg';
+import Svg, { Path, Rect, G, Defs, ClipPath, LinearGradient, Stop } from 'react-native-svg';
 import { getTerminatorGeometry } from '@/lib/sunTerminator';
 import { getMapProjection, getGeoPath } from '@/lib/mapProjection';
 
@@ -20,7 +20,7 @@ const CORE_STROKE_OPACITY = 0.9;
 const NIGHT_FILL = 'rgba(0,0,0,0.28)';
 const DAY_WARM_OVERLAY = 'rgba(244,201,93,0.07)';
 /** Inset so terminator stroke never touches viewport edge (no visible gold frame). */
-const VIEWPORT_INSET = 14;
+const VIEWPORT_INSET = 10;
 /**
  * Extra top inset to ensure no horizontal gold line is visible where the
  * terminator crosses the top edge of the map container. Slightly larger
@@ -66,6 +66,12 @@ export default function SunriseTerminator({ date, width: propWidth, height: prop
           <ClipPath id="terminatorClip">
             <Rect x={clipX} y={clipY} width={clipW} height={clipH} />
           </ClipPath>
+          {/* Brighter at center, softer at edges (same palette). */}
+          <LinearGradient id="sunriseStroke" x1="0" y1="0" x2={width} y2="0">
+            <Stop offset="0" stopColor={TERMINATOR_STROKE} stopOpacity="0.65" />
+            <Stop offset="0.5" stopColor={TERMINATOR_STROKE} stopOpacity="1" />
+            <Stop offset="1" stopColor={TERMINATOR_STROKE} stopOpacity="0.65" />
+          </LinearGradient>
         </Defs>
         {/* Subtle warm overlay on daylight side (rect under night circle so day shows through) */}
         <Rect
@@ -88,7 +94,7 @@ export default function SunriseTerminator({ date, width: propWidth, height: prop
           <Path
             d={terminatorPath ?? undefined}
             fill="none"
-            stroke={TERMINATOR_STROKE}
+            stroke="url(#sunriseStroke)"
             strokeWidth={OUTER_GLOW_WIDTH}
             strokeOpacity={OUTER_GLOW_OPACITY}
             strokeLinecap="round"
@@ -98,7 +104,7 @@ export default function SunriseTerminator({ date, width: propWidth, height: prop
           <Path
             d={terminatorPath ?? undefined}
             fill="none"
-            stroke={TERMINATOR_STROKE}
+            stroke="url(#sunriseStroke)"
             strokeWidth={MID_GLOW_WIDTH}
             strokeOpacity={MID_GLOW_OPACITY}
             strokeLinecap="round"
@@ -108,7 +114,7 @@ export default function SunriseTerminator({ date, width: propWidth, height: prop
           <Path
             d={terminatorPath ?? undefined}
             fill="none"
-            stroke={TERMINATOR_STROKE}
+            stroke="url(#sunriseStroke)"
             strokeWidth={CORE_STROKE_WIDTH}
             strokeOpacity={CORE_STROKE_OPACITY}
             strokeLinecap="round"

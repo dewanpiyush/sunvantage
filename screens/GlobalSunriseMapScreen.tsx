@@ -3,8 +3,8 @@
  * Fetches today's sunrise_logs aggregated by city and drives stats + map dots.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, useWindowDimensions, Animated, Easing } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SunVantageHeader from '@/components/SunVantageHeader';
@@ -13,6 +13,7 @@ import SunriseTerminator from '@/components/map/SunriseTerminator';
 import CityDot from '@/components/map/CityDot';
 import UserCityDot from '@/components/map/UserCityDot';
 import GlobalSunriseStats from '@/components/GlobalSunriseStats';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useDawn } from '@/hooks/use-dawn';
 import { useAppTheme } from '@/context/AppThemeContext';
 import { fetchGlobalSunriseLogs, type CityLogAggregate } from '@/lib/fetchGlobalSunriseLogs';
@@ -92,6 +93,34 @@ export default function GlobalSunriseMapScreen() {
 
   const mapHeight = height * 0.5;
 
+  // Extremely gentle “time passing” motion for the terminator arc.
+  const arcDrift = useRef(new Animated.Value(0)).current;
+  const arcPulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const drift = Animated.loop(
+      Animated.sequence([
+        Animated.timing(arcDrift, { toValue: 1, duration: 16000, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(arcDrift, { toValue: 0, duration: 16000, easing: Easing.linear, useNativeDriver: true }),
+      ])
+    );
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(arcPulse, { toValue: 1, duration: 9000, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(arcPulse, { toValue: 0, duration: 9000, easing: Easing.linear, useNativeDriver: true }),
+      ])
+    );
+    drift.start();
+    pulse.start();
+    return () => {
+      drift.stop();
+      pulse.stop();
+    };
+  }, [arcDrift, arcPulse]);
+
+  const arcTranslateX = arcDrift.interpolate({ inputRange: [0, 1], outputRange: [-8, 8] });
+  const arcOpacity = arcPulse.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] });
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <SunVantageHeader
@@ -107,7 +136,12 @@ export default function GlobalSunriseMapScreen() {
 
       <View style={[styles.mapContainer, { width, height: mapHeight }]}>
         <WorldMap width={width} height={mapHeight} />
-        <SunriseTerminator date={now} width={width} height={mapHeight} />
+        <Animated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { opacity: arcOpacity, transform: [{ translateX: arcTranslateX }] }]}
+        >
+          <SunriseTerminator date={now} width={width} height={mapHeight} />
+        </Animated.View>
         {aggregate.cities.map((city) => (
           <CityDot
             key={`${city.city}-${city.lat}-${city.lng}`}
@@ -118,6 +152,23 @@ export default function GlobalSunriseMapScreen() {
           />
         ))}
         <UserCityDot city={userCity} now={now} width={width} height={mapHeight} />
+
+        {/* Subtle vignette to blend arc/map into the atmosphere. */}
+        <LinearGradient
+          colors={['rgba(14,34,61,0.65)', 'rgba(14,34,61,0)']}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={styles.vignetteTop}
+          pointerEvents="none"
+        />
+        <LinearGradient
+          colors={['rgba(14,34,61,0)', 'rgba(14,34,61,0.55)']}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={styles.vignetteBottom}
+          pointerEvents="none"
+        />
+
         <View style={styles.terminatorLabelContainer} pointerEvents="none">
           <View style={styles.terminatorLegend} aria-hidden>
             <View style={styles.terminatorLegendOuter} />
@@ -162,15 +213,11 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   terminatorLabelContainer: {
     position: 'absolute',
     bottom: 10,
-    left: 16,
+    left: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: isMorningLight ? 'rgba(255,255,255,0.85)' : 'rgba(7, 16, 35, 0.78)',
-    borderWidth: isMorningLight ? 1 : 0,
-    borderColor: isMorningLight ? Dawn.border.subtle : 'transparent',
+    backgroundColor: 'transparent',
+    opacity: 0.88,
   },
   terminatorLegend: {
     width: 18,
@@ -206,6 +253,20 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   terminatorLabelText: {
     fontSize: 12,
     color: isMorningLight ? Dawn.text.primary : '#E9F0FF',
+  },
+  vignetteTop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 52,
+  },
+  vignetteBottom: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 64,
   },
   });
 }

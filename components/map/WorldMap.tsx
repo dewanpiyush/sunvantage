@@ -11,8 +11,6 @@ import { Dawn } from '@/constants/theme';
 
 const LAND_COLOR = '#243350';
 
-const WORLD_GEOJSON_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/land-110m.json';
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TopoLand = any;
 
@@ -35,8 +33,9 @@ export default function WorldMap({ width: propWidth, height: propHeight }: Props
 
     (async () => {
       try {
-        const res = await fetch(WORLD_GEOJSON_URL);
-        const topo = (await res.json()) as TopoLand;
+        // Load local topojson to avoid CDN/network dependency.
+        // `world-atlas/land-110m.json` is a TopoJSON topology with `objects.land`.
+        const topo = require('world-atlas/land-110m.json') as TopoLand;
         if (cancelled) return;
 
         // world-atlas land-110m is TopoJSON; we need to convert to GeoJSON and then to path strings.

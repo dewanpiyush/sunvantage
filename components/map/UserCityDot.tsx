@@ -16,6 +16,12 @@ const USER_DOT_RING_RADIUS = 4;
 const USER_DOT_RING_WIDTH = 2;
 const USER_DOT_FILL = '#FFFFFF';
 const USER_DOT_RING_COLOR = '#F4C95D';
+const USER_DOT_GLOW_COLOR = '#F4C95D';
+const USER_DOT_SCALE = 1.1;
+const USER_DOT_GLOW_RADIUS = 10;
+const USER_DOT_GLOW_OPACITY = 0.16;
+const USER_DOT_OUTER_RING_RADIUS = 8.5;
+const USER_DOT_OUTER_RING_OPACITY = 0.18;
 
 export type UserCity = {
   city: string;
@@ -63,13 +69,31 @@ export default function UserCityDot({ city, now, width: propWidth, height: propH
         onPress={() => setModalVisible(true)}
       />
       <Svg style={StyleSheet.absoluteFill} width={width} height={height} pointerEvents="none">
+        {/* Soft glow */}
+        <Circle
+          cx={xy[0]}
+          cy={xy[1]}
+          r={USER_DOT_GLOW_RADIUS}
+          fill={USER_DOT_GLOW_COLOR}
+          opacity={USER_DOT_GLOW_OPACITY}
+        />
+        {/* Faint outer ring */}
+        <Circle
+          cx={xy[0]}
+          cy={xy[1]}
+          r={USER_DOT_OUTER_RING_RADIUS}
+          fill="none"
+          stroke={USER_DOT_GLOW_COLOR}
+          strokeWidth={1}
+          opacity={USER_DOT_OUTER_RING_OPACITY}
+        />
         {/* White core */}
-        <Circle cx={xy[0]} cy={xy[1]} r={USER_DOT_INNER_RADIUS} fill={USER_DOT_FILL} />
+        <Circle cx={xy[0]} cy={xy[1]} r={USER_DOT_INNER_RADIUS * USER_DOT_SCALE} fill={USER_DOT_FILL} />
         {/* Gold ring */}
         <Circle
           cx={xy[0]}
           cy={xy[1]}
-          r={USER_DOT_RING_RADIUS}
+          r={USER_DOT_RING_RADIUS * USER_DOT_SCALE}
           fill="none"
           stroke={USER_DOT_RING_COLOR}
           strokeWidth={USER_DOT_RING_WIDTH}

@@ -307,7 +307,6 @@ export default function MyMorningsScreen() {
           subtitle="Your mornings, gathered over time."
           hasLoggedToday={hasLoggedToday(logs)}
           screenTitle
-          hideHeaderEmoji
           onHeaderPress={() => router.push('/home')}
         />
       </View>
@@ -361,7 +360,7 @@ export default function MyMorningsScreen() {
               return (
                 <>
                   <Text style={styles.welcomedLine}>
-                    🌅 {logs.length} morning{logs.length === 1 ? '' : 's'} welcomed
+                    {logs.length} quiet morning{logs.length === 1 ? '' : 's'}, kept
                   </Text>
                   {orderedAnchors.map((anchor, anchorIndex) => {
                     return (
@@ -500,9 +499,11 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     paddingBottom: 48,
   },
   welcomedLine: {
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: '500',
     color: Dawn.text.secondary,
-    marginBottom: 20,
+    opacity: 0.9,
+    marginBottom: 16,
   },
   anchorSection: {
     marginBottom: 8,
