@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, Text, Pressable, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, TextInput, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, Animated, Easing } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -281,6 +281,14 @@ export type SunriseLogProps = {
   initialVantageName?: string | null;
 };
 
+type TodayRenderLog = {
+  id: number | null;
+  photo_url: string | null;
+  created_at: string | null;
+  reflection_text: string | null;
+  vantage_name: string | null;
+};
+
 export function SunriseLog({
   context = 'witness',
   initialVantageName = null,
@@ -294,33 +302,42 @@ export function SunriseLog({
   const reflectionDebounceMs = 800;
   const signedUrlExpirySeconds = 60 * 60; // 1 hour
 
-  const resolvePhotoDisplayUrl = async (ref: string) => {
-    if (!ref) return null;
-    if (ref.startsWith('http://') || ref.startsWith('https://')) return ref;
-    const cleaned = ref.replace(/^\/+/, '');
+  const resolvePhotoDisplayUrl = async (
+    photo_url: string | null | undefined,
+    moderation_status?: string | null
+  ) => {
+    if (!photo_url || photo_url.startsWith('http://') || photo_url.startsWith('https://')) return photo_url ?? null;
+    if (
+      photo_url.startsWith('file://') ||
+      photo_url.startsWith('content://') ||
+      photo_url.startsWith('ph://') ||
+      photo_url.startsWith('asset://')
+    ) {
+      return null;
+    }
+    const cleaned = photo_url.replace(/^\/+/, '');
     const isPendingRef = cleaned.startsWith(`${pendingBucket}/`);
-    const bucket = isPendingRef ? pendingBucket : photoBucket;
     const key = isPendingRef
       ? cleaned.slice(`${pendingBucket}/`.length)
       : cleaned.startsWith(`${photoBucket}/`)
         ? cleaned.slice(`${photoBucket}/`.length)
         : cleaned;
 
+    const shouldSignPending = moderation_status === 'pending' || isPendingRef;
+    if (!shouldSignPending) {
+      const publicUrl = supabase.storage.from(photoBucket).getPublicUrl(key).data?.publicUrl;
+      return publicUrl ?? null;
+    }
+
     const { data, error } = await supabase.storage
-      .from(bucket)
+      .from(pendingBucket)
       .createSignedUrl(key, signedUrlExpirySeconds);
 
     if (error) {
-      console.warn('[SunVantage] createSignedUrl error', { path: key, bucket, message: error.message, name: error.name });
+      console.warn('[SunVantage] createSignedUrl error', { path: key, bucket: pendingBucket, message: error.message, name: error.name });
       return null;
     }
-    if (!data?.signedUrl) {
-      console.warn('[SunVantage] createSignedUrl no signedUrl', { path: key, bucket, dataKeys: data ? Object.keys(data) : [] });
-      return null;
-    }
-    const url = data.signedUrl;
-    console.log('[SunVantage] createSignedUrl ok', { path: ref, urlLength: url.length, urlStart: url.slice(0, 60) });
-    return url;
+    return data?.signedUrl ?? null;
   };
 
   const [logging, setLogging] = useState(false);
@@ -329,6 +346,7 @@ export function SunriseLog({
   const [initialLoading, setInitialLoading] = useState(true);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoPath, setPhotoPath] = useState<string | null>(null);
+  const [imageError, setImageError] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [moderatingPhoto, setModeratingPhoto] = useState(false);
   const [logId, setLogId] = useState<number | null>(null);
@@ -433,16 +451,12 @@ export function SunriseLog({
     return () => loop.stop();
   }, [breathPhase, hoursSinceSunrise]);
 
-  // Entrance animation when the moment just landed from the modal (set initial values before paint so card doesn't flash)
-  useLayoutEffect(() => {
-    if (hasLogged && justLanded) {
-      pageCardOpacity.setValue(0);
-      pageCardScale.setValue(0.98);
-    }
-  }, [hasLogged, justLanded, pageCardOpacity, pageCardScale]);
-
   useEffect(() => {
     if (hasLogged && justLanded) {
+      // Keep this atomic: set start values and animate in the same effect.
+      // On Android, splitting across effects can race and leave opacity at 0.
+      pageCardOpacity.setValue(0);
+      pageCardScale.setValue(0.98);
       Animated.parallel([
         Animated.timing(pageCardOpacity, {
           toValue: 1,
@@ -455,7 +469,11 @@ export function SunriseLog({
           useNativeDriver: true,
         }),
       ]).start(() => setJustLanded(false));
+      return;
     }
+    // Safety reset: ensure card is visible whenever we're not in entry animation.
+    pageCardOpacity.setValue(1);
+    pageCardScale.setValue(1);
   }, [hasLogged, justLanded, pageCardOpacity, pageCardScale]);
 
   useEffect(() => {
@@ -517,7 +535,7 @@ export function SunriseLog({
         const [todayResult, allLogsResult] = await Promise.all([
           supabase
             .from('sunrise_logs')
-            .select('id, photo_url, created_at, photo_replaced_once, reflection_text, vantage_name')
+            .select('id, photo_url, moderation_status, created_at, photo_replaced_once, reflection_text, vantage_name')
             .eq('user_id', userId)
             .gte('created_at', startOfDay.toISOString())
             .lte('created_at', endOfDay.toISOString())
@@ -612,7 +630,7 @@ export function SunriseLog({
         }
 
         if (data && data.length > 0) {
-          const todayLog = data[0] as { id: number; photo_url?: string | null; photo_replaced_once?: boolean; reflection_text?: string | null; vantage_name?: string | null };
+          const todayLog = data[0] as { id: number; photo_url?: string | null; moderation_status?: string | null; photo_replaced_once?: boolean; reflection_text?: string | null; vantage_name?: string | null };
           setHasLogged(true);
           setLogId(todayLog.id);
           setHasReplacedPhoto(!!todayLog.photo_replaced_once);
@@ -625,16 +643,13 @@ export function SunriseLog({
           setEditingVantage(false);
           const ref = todayLog.photo_url ?? null;
           setPhotoPath(ref);
+          setImageError(false);
 
           if (ref) {
-            const displayUrl = await resolvePhotoDisplayUrl(ref);
+            const displayUrl = await resolvePhotoDisplayUrl(ref, todayLog.moderation_status ?? null);
             if (displayUrl) setPhotoUrl(displayUrl);
           } else {
-            setPhotoUrl((prev) => {
-              if (!prev) return null;
-              if (prev.startsWith('file:') || prev.startsWith('content:')) return prev;
-              return null;
-            });
+            setPhotoUrl(null);
           }
 
           const norm = getNormalizedVantageFromRow(todayLog as { vantage_name?: string | null; normalized_vantage?: string | null; user_input_vantage?: string | null });
@@ -990,7 +1005,7 @@ export function SunriseLog({
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
+        allowsEditing: false,
         aspect: [4, 3],
         quality: 0.8,
         base64: true,
@@ -1063,7 +1078,9 @@ export function SunriseLog({
 
       // Keep UX non-blocking: show the picked photo immediately while moderation runs in background.
       setPhotoPath(pendingPhotoRef);
-      setPhotoUrl(asset.uri);
+      setImageError(false);
+      const pendingDisplayUrl = await resolvePhotoDisplayUrl(pendingPhotoRef, 'pending');
+      setPhotoUrl(pendingDisplayUrl);
       setPhotoMessage('Your morning is part of something larger.');
 
       // DB photo_url + moderation_status are finalized by the Edge Function asynchronously.
@@ -1109,7 +1126,24 @@ export function SunriseLog({
     }
   };
 
-  const canShowPhoto = hasLogged && typeof photoUrl === 'string' && photoUrl.length > 10;
+  const todayLog: TodayRenderLog | null =
+    hasLogged || logId != null || photoPath != null || reflectionText.trim().length > 0 || vantageName.trim().length > 0
+      ? {
+          id: logId,
+          photo_url: photoPath ?? null,
+          created_at: null,
+          reflection_text: reflectionText.trim() || null,
+          vantage_name: vantageName.trim() || null,
+        }
+      : null;
+  const activeLog: TodayRenderLog | null = todayLog;
+  const effectivePhotoUrl = photoUrl ?? activeLog?.photo_url ?? null;
+  const hasPhoto = typeof effectivePhotoUrl === 'string' && effectivePhotoUrl.trim().length > 0;
+  const hasActiveLog = Boolean(activeLog || hasLogged);
+  const showPhotoPlaceholder = hasPhoto && imageError;
+  useEffect(() => {
+    setImageError(false);
+  }, [effectivePhotoUrl]);
   const backgroundColors = isMorningLight
     ? (['#EAF3FB', '#DCEAF7', '#CFE2F3'] as const)
     : (['#102A43', '#1B3554', '#243F63'] as const);
@@ -1126,13 +1160,12 @@ export function SunriseLog({
         <SunVantageHeader
           title="Today's Sunrise"
           subtitle={getWitnessSubheading(currentStreak, totalSunrises)}
-          hasLoggedToday={hasLogged}
+          hasLoggedToday={hasActiveLog}
           wrapperMarginBottom={0}
           screenTitle
           onHeaderPress={() => router.push('/home')}
         >
-          {!initialLoading && (
-            currentStreak > 0 || longestStreak > 0 ? (
+          {currentStreak > 0 || longestStreak > 0 ? (
               <View style={styles.streakBlockWrap}>
                 <StreakBlock
                   currentStreak={currentStreak}
@@ -1142,8 +1175,7 @@ export function SunriseLog({
               </View>
             ) : (
               <Text style={styles.headerBeginHere}>The morning is still yours.</Text>
-            )
-          )}
+            )}
         </SunVantageHeader>
       </View>
 
@@ -1223,10 +1255,12 @@ export function SunriseLog({
               </Animated.View>
             </View>
           ) : null}
-          {initialLoading ? (
-            <ActivityIndicator color={Dawn.accent.sunrise} />
-          ) : (
             <>
+              {initialLoading ? (
+                <View style={styles.loadingInlineWrap}>
+                  <ActivityIndicator color={Dawn.accent.sunrise} />
+                </View>
+              ) : null}
               {!hasLogged && sunrisePassed && (
                 <View style={styles.reflectiveBlock}>
                   <Text style={styles.reflectiveLead}>Take a moment.</Text>
@@ -1247,13 +1281,13 @@ export function SunriseLog({
                 <Text style={styles.witnessFooter}>You don&apos;t have to capture it.{'\n'}Just mark the moment.</Text>
               )}
 
-              {hasLogged && globalCount !== null && globalCount >= 2 && (
+              {hasActiveLog && globalCount !== null && globalCount >= 2 && (
                 <Text style={styles.globalCountMuted}>
                   {globalCount} people greeted sunrise on SunVantage today.
                 </Text>
               )}
 
-              {hasLogged && (
+              {hasActiveLog && (
                 <Animated.View
                   style={[
                     styles.yourMorningCard,
@@ -1299,7 +1333,7 @@ export function SunriseLog({
                   </View>
 
                   <View style={styles.yourMorningPhotoSection}>
-                    {!photoUrl ? (
+                    {!hasPhoto ? (
                       <TouchableOpacity
                         style={styles.yourMorningAddPhoto}
                         onPress={handleAddPhoto}
@@ -1312,16 +1346,21 @@ export function SunriseLog({
                           <Text style={styles.secondaryButtonText}>+ Add photo</Text>
                         )}
                       </TouchableOpacity>
+                    ) : showPhotoPlaceholder ? (
+                      <View style={styles.yourMorningPhotoPlaceholder}>
+                        <Text style={styles.yourMorningPhotoPlaceholderText}>Photo is still processing...</Text>
+                      </View>
                     ) : (
                       <>
                         <View style={styles.yourMorningPhotoWrap}>
                           <Image
-                            source={{ uri: photoUrl }}
+                            source={{ uri: effectivePhotoUrl! }}
                             style={styles.yourMorningPhoto}
                             contentFit="cover"
+                            transition={200}
                             cachePolicy="none"
-                            onError={() => setError('Finalizing your morning...')}
-                            onLoad={() => {}}
+                            onError={() => setImageError(true)}
+                            onLoad={() => setImageError(false)}
                           />
                         </View>
                       </>
@@ -1398,7 +1437,7 @@ export function SunriseLog({
                               {reflectionText?.trim() ? 'Edit reflection' : 'Add reflection'}
                             </Text>
                           </TouchableOpacity>
-                          {photoUrl ? (
+                          {hasPhoto ? (
                             <TouchableOpacity
                               style={styles.actionLink}
                               onPress={handleAddPhoto}
@@ -1422,20 +1461,29 @@ export function SunriseLog({
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-              {!hasLogged && (
+              {!hasLogged ? (
                 <View style={styles.sharedDawnSectionWrap}>
                   <SharedDawnPreview city={profileCity} currentUserId={currentUserId} fromScreen="witness" />
                 </View>
-              )}
+              ) : null}
 
-              {hasLogged && (
-                <DawnInvitationSection
-                  city={profileCity}
-                  sunriseTomorrow={sunriseTomorrow}
-                />
-              )}
+              {hasLogged ? (
+                <>
+                  <DawnInvitationSection
+                    city={profileCity}
+                    sunriseTomorrow={sunriseTomorrow}
+                  />
+                  <View style={styles.sharedDawnSectionWrap}>
+                    <SharedDawnPreview
+                      city={profileCity}
+                      currentUserId={currentUserId}
+                      fromScreen="witness"
+                      showEmptyState={false}
+                    />
+                  </View>
+                </>
+              ) : null}
             </>
-          )}
           </View>
           </TouchableWithoutFeedback>
         </ScrollView>
@@ -1448,19 +1496,8 @@ export function SunriseLog({
           setShowLogCard(false);
           setJustLanded(true);
           justLandedRef.current = true;
-          // Show something immediately (best-effort), then overwrite with a signed URL
-          // for the pending upload so it always loads after the modal closes.
-          if (result?.localPhotoUri) setPhotoUrl(result.localPhotoUri);
           if (result?.pendingPhotoRef) {
             setPhotoPath(result.pendingPhotoRef);
-            void (async () => {
-              try {
-                const displayUrl = await resolvePhotoDisplayUrl(result.pendingPhotoRef!);
-                if (displayUrl) setPhotoUrl(displayUrl);
-              } catch {
-                // Best-effort only — DB reload will eventually populate approved photo.
-              }
-            })();
           }
           setRefreshTrigger((t) => t + 1);
         }}
@@ -1581,6 +1618,11 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     fontSize: 14,
     color: Dawn.text.secondary,
     fontStyle: 'italic',
+  },
+  loadingInlineWrap: {
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   globalCount: {
     marginTop: 14,
@@ -1891,6 +1933,20 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   yourMorningPhoto: {
     width: '100%',
     aspectRatio: 4 / 3,
+  },
+  yourMorningPhotoPlaceholder: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Dawn.border.subtle,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  yourMorningPhotoPlaceholderText: {
+    fontSize: 12,
+    color: Dawn.text.secondary,
   },
   yourMorningReflection: {
     marginBottom: 0,

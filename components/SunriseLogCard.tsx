@@ -191,6 +191,19 @@ export default function SunriseLogCard({
     }
   }, [visible, initialVantageName, backdropOpacity, cardOpacity, cardScale, cardTranslateY]);
 
+  // Android-safe visibility fallback: if entry animation is interrupted,
+  // ensure the modal content still renders in a visible state.
+  useEffect(() => {
+    if (!visible) return;
+    const t = setTimeout(() => {
+      backdropOpacity.setValue(1);
+      cardOpacity.setValue(1);
+      cardScale.setValue(1);
+      cardTranslateY.setValue(0);
+    }, 260);
+    return () => clearTimeout(t);
+  }, [visible, backdropOpacity, cardOpacity, cardScale, cardTranslateY]);
+
   useEffect(() => {
     return () => {
       if (stageTimerRef.current) clearTimeout(stageTimerRef.current);
@@ -353,7 +366,7 @@ export default function SunriseLogCard({
       }
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
+        allowsEditing: false,
         aspect: [4, 3],
         quality: 0.8,
         base64: true,
@@ -387,6 +400,7 @@ export default function SunriseLogCard({
     let didSucceed = false;
     let savedLocalPhotoUri: string | undefined;
     let savedPendingPhotoRef: string | undefined;
+    const createdAt = new Date().toISOString();
     try {
       const {
         data: { session },
@@ -401,7 +415,6 @@ export default function SunriseLogCard({
         setError('We could not find your account. Please sign in again.');
         return;
       }
-
       const displayVantage = vantageName.trim() || null;
       const vantageNorm = displayVantage ? normalizeVantageForStorage(displayVantage) : null;
 
@@ -445,7 +458,7 @@ export default function SunriseLogCard({
         moderation_status?: 'pending';
       } = {
         user_id: userId,
-        created_at: new Date().toISOString(),
+        created_at: createdAt,
         sunrise_day: getTodayLocalDateString(),
       };
       if (resolvedCity) insertPayload.city = resolvedCity;
@@ -544,6 +557,9 @@ export default function SunriseLogCard({
           setError('Could not process your photo. Try again.');
           return;
         }
+      }
+      if (logId != null && !savedPendingPhotoRef) {
+        // no-op: UI reloads from DB after save
       }
 
       await clearTomorrowPlan();
@@ -815,7 +831,7 @@ export default function SunriseLogCard({
                         ) : (
                           <>
                             <View style={styles.photoPreviewClip}>
-                              <Image source={{ uri: photoUri }} style={styles.photoPreviewImage} resizeMode="contain" />
+                              <Image source={{ uri: photoUri }} style={styles.photoPreviewImage} contentFit="cover" transition={200} />
                             </View>
                             <Pressable
                               style={({ pressed }) => [styles.retakeBtn, pressed && styles.retakeBtnPressed]}

@@ -1,9 +1,10 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import SunVantageHeader from '@/components/SunVantageHeader';
 import { useAppTheme } from '@/context/AppThemeContext';
 import { useDawn } from '@/hooks/use-dawn';
+import ScreenLayout from '@/components/ScreenLayout';
 
 type Option = {
   id: 'morning-light' | 'night-calm';
@@ -28,14 +29,17 @@ export default function SettingsScreen() {
       <View style={styles.gradientMid} pointerEvents="none" />
       <View style={styles.gradientLowerWarm} pointerEvents="none" />
 
-      <View style={styles.header}>
-        <SunVantageHeader title="Settings" screenTitle onHeaderPress={() => router.push('/home')} />
-        <Text style={styles.headerEmoji} accessibilityLabel="Settings">
-          ⚙️
-        </Text>
-      </View>
-
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScreenLayout
+        header={
+          <View style={styles.header}>
+            <SunVantageHeader title="Settings" screenTitle onHeaderPress={() => router.push('/home')} />
+            <Text style={styles.headerEmoji} accessibilityLabel="Settings">
+              ⚙️
+            </Text>
+          </View>
+        }
+        scrollContentContainerStyle={styles.scrollContent}
+      >
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Appearance</Text>
           <Text style={styles.sectionSub}>Choose how SunVantage looks.</Text>
@@ -65,7 +69,7 @@ export default function SettingsScreen() {
             })}
           </View>
         </View>
-      </ScrollView>
+      </ScreenLayout>
     </View>
   );
 }
@@ -75,7 +79,6 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     container: {
       flex: 1,
       backgroundColor: Dawn.background.primary,
-      paddingTop: 52,
     },
     gradientTop: {
       ...StyleSheet.absoluteFillObject,
@@ -98,11 +101,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
       bottom: 0,
       backgroundColor: 'rgba(255, 179, 71, 0.058)',
     },
-    header: {
-      paddingHorizontal: 24,
-      marginBottom: 20,
-      position: 'relative',
-    },
+    header: { marginBottom: 20, position: 'relative' },
     headerEmoji: {
       position: 'absolute',
       right: 24,
@@ -110,7 +109,6 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
       fontSize: 18,
       opacity: 0.9,
     },
-    scroll: { flex: 1 },
     scrollContent: {
       paddingHorizontal: 24,
       paddingBottom: 48,

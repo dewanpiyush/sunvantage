@@ -47,9 +47,16 @@ type Props = {
   currentUserId: string | null;
   /** When set (e.g. "witness"), navigates with ?from=... so the gallery can show "Back" and use router.back(). */
   fromScreen?: string;
+  /** When false, hides the preview entirely if there are no shared rows. */
+  showEmptyState?: boolean;
 };
 
-export default function SharedDawnPreview({ city, currentUserId, fromScreen }: Props) {
+export default function SharedDawnPreview({
+  city,
+  currentUserId,
+  fromScreen,
+  showEmptyState = true,
+}: Props) {
   const router = useRouter();
   const Dawn = useDawn();
   const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
@@ -117,22 +124,21 @@ export default function SharedDawnPreview({ city, currentUserId, fromScreen }: P
   useEffect(() => {
     if (modalIndex == null) {
       overlayOpacity.setValue(0);
+      modalScale.setValue(1);
       return;
     }
     overlayOpacity.setValue(0);
-    const t = setTimeout(() => {
-      Animated.timing(overlayOpacity, {
-        toValue: 0.88,
-        duration: 280,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }).start();
-    }, 300);
-    return () => clearTimeout(t);
-  }, [modalIndex, overlayOpacity]);
+    Animated.timing(overlayOpacity, {
+      toValue: 0.88,
+      duration: 280,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start();
+  }, [modalIndex, overlayOpacity, modalScale]);
 
   const cityLabel = city?.trim() || 'your city';
   const isEmpty = rows.length === 0;
+  if (isEmpty && !showEmptyState) return null;
 
   return (
     <>
@@ -165,7 +171,7 @@ export default function SharedDawnPreview({ city, currentUserId, fromScreen }: P
                     onPress={() => url && setModalIndex(index)}
                   >
                     {url ? (
-                      <Image source={{ uri: url }} style={styles.tileImage} contentFit="cover" />
+                      <Image source={{ uri: url }} style={styles.tileImage} contentFit="cover" transition={200} />
                     ) : null}
                   </Pressable>
                 );
@@ -254,7 +260,7 @@ export default function SharedDawnPreview({ city, currentUserId, fromScreen }: P
                           <Ionicons name="close" size={18} color="rgba(255,255,255,0.95)" />
                         </Pressable>
                         {url ? (
-                          <Image source={{ uri: url }} style={styles.fullScreenImage} contentFit="contain" />
+                          <Image source={{ uri: url }} style={styles.fullScreenImage} contentFit="cover" transition={200} />
                         ) : null}
                         {isActive && (line1 || line2) ? (
                           <Animated.View style={[styles.fullScreenOverlay, { opacity: overlayOpacity }]} pointerEvents="none">

@@ -4,7 +4,6 @@ import {
   Text,
   Pressable,
   StyleSheet,
-  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
@@ -23,31 +22,43 @@ import { dismissBadgeReveal } from '../lib/ritualReveal';
 import { BADGE_ICONS } from './ritual-markers';
 import { useDawn } from '@/hooks/use-dawn';
 import { useAppTheme } from '@/context/AppThemeContext';
+import ScreenLayout from '@/components/ScreenLayout';
 
 type TodayLogDetails = {
   vantage_name: string | null;
   reflection_text: string | null;
   photo_url: string | null;
+  moderation_status?: string | null;
 };
 
 const PHOTO_BUCKET = 'sunrise_photos';
 const PENDING_BUCKET = 'uploads_pending';
 const SIGNED_URL_EXPIRY = 60 * 60;
 
-async function resolvePhotoDisplayUrl(ref: string): Promise<string | null> {
-  if (!ref?.trim()) return null;
-  if (ref.startsWith('http://') || ref.startsWith('https://')) return ref;
-  const cleaned = ref.replace(/^\/+/, '');
+async function resolvePhotoDisplayUrl(photo_url: string | null | undefined, moderation_status?: string | null): Promise<string | null> {
+  if (!photo_url || photo_url.startsWith('http://') || photo_url.startsWith('https://')) return photo_url ?? null;
+  if (
+    photo_url.startsWith('file://') ||
+    photo_url.startsWith('content://') ||
+    photo_url.startsWith('ph://') ||
+    photo_url.startsWith('asset://')
+  ) {
+    return null;
+  }
+  const cleaned = photo_url.replace(/^\/+/, '');
   const isPendingRef = cleaned.startsWith(`${PENDING_BUCKET}/`);
-  const bucket = isPendingRef ? PENDING_BUCKET : PHOTO_BUCKET;
   const normalized = isPendingRef
     ? cleaned.slice(`${PENDING_BUCKET}/`.length)
     : cleaned.replace(new RegExp(`^${PHOTO_BUCKET}/`), '');
-  const { data, error } = await supabase.storage
-    .from(bucket)
-    .createSignedUrl(normalized, SIGNED_URL_EXPIRY);
-  if (!error && data?.signedUrl) return data.signedUrl;
-  if (bucket === PENDING_BUCKET) return null;
+
+  const shouldSignPending = moderation_status === 'pending' || isPendingRef;
+  if (shouldSignPending) {
+    const { data, error } = await supabase.storage
+      .from(PENDING_BUCKET)
+      .createSignedUrl(normalized, SIGNED_URL_EXPIRY);
+    if (!error && data?.signedUrl) return data.signedUrl;
+    return null;
+  }
   const publicUrl = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(normalized).data?.publicUrl;
   return publicUrl ?? null;
 }
@@ -73,9 +84,10 @@ export default function VantageWalkScreen() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [streak, setStreak] = useState<{ current: number; longest: number }>({ current: 0, longest: 0 });
   const [streakLoading, setStreakLoading] = useState(true);
-  const [logs, setLogs] = useState<{ created_at: string }[]>([]);
+  const [logs, setLogs] = useState<{ id: string | number; created_at: string }[]>([]);
   const [todayLog, setTodayLog] = useState<TodayLogDetails | null>(null);
   const [todayPhotoDisplayUrl, setTodayPhotoDisplayUrl] = useState<string | null>(null);
+  const [todayPhotoError, setTodayPhotoError] = useState(false);
   const [revealBadge, setRevealBadge] = useState<BadgeDef | null>(null);
   const [walkStarted, setWalkStarted] = useState(false);
   const [showLogCard, setShowLogCard] = useState(false);
@@ -129,18 +141,18 @@ export default function VantageWalkScreen() {
       }
       let result = await supabase
         .from('sunrise_logs')
-        .select('created_at, vantage_name, reflection_text, photo_url, city')
+        .select('created_at, vantage_name, reflection_text, photo_url, moderation_status, city')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
       if (result.error && /column.*does not exist|city/i.test(result.error.message ?? '')) {
         result = await supabase
           .from('sunrise_logs')
-          .select('created_at, vantage_name, reflection_text, photo_url')
+          .select('created_at, vantage_name, reflection_text, photo_url, moderation_status')
           .eq('user_id', userId)
           .order('created_at', { ascending: false });
       }
-      const rows = (result.data ?? []) as { created_at: string; vantage_name?: string | null; reflection_text?: string | null; photo_url?: string | null; city?: string | null }[];
-      setLogs(rows.map((r) => ({ created_at: r.created_at })));
+      const rows = (result.data ?? []) as { created_at: string; vantage_name?: string | null; reflection_text?: string | null; photo_url?: string | null; moderation_status?: string | null; city?: string | null }[];
+      setLogs(rows.map((r) => ({ id: r.created_at, created_at: r.created_at })));
       const todayRow = rows.find((r) => isTodayLocal(r.created_at));
       setTodayLog(
         todayRow
@@ -148,6 +160,7 @@ export default function VantageWalkScreen() {
               vantage_name: todayRow.vantage_name ?? null,
               reflection_text: todayRow.reflection_text ?? null,
               photo_url: todayRow.photo_url ?? null,
+              moderation_status: todayRow.moderation_status ?? null,
             }
           : null
       );
@@ -193,13 +206,14 @@ export default function VantageWalkScreen() {
       return;
     }
     let cancelled = false;
-    resolvePhotoDisplayUrl(ref).then((url) => {
+    setTodayPhotoError(false);
+    resolvePhotoDisplayUrl(ref, todayLog?.moderation_status).then((url) => {
       if (!cancelled) setTodayPhotoDisplayUrl(url);
     });
     return () => {
       cancelled = true;
     };
-  }, [todayLog?.photo_url]);
+  }, [todayLog?.photo_url, todayLog?.moderation_status]);
 
   useEffect(() => {
     loadProfile();
@@ -233,18 +247,18 @@ export default function VantageWalkScreen() {
         pointerEvents="none"
       />
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+      <ScreenLayout
+        header={
+          <SunVantageHeader
+            title="Vantage Hunt"
+            subtitle="Walk toward somewhere new."
+            hasLoggedToday={false}
+            screenTitle
+            onHeaderPress={() => router.push('/home')}
+          />
+        }
+        scrollContentContainerStyle={styles.scrollContent}
       >
-        <SunVantageHeader
-          title="Vantage Hunt"
-          subtitle="Walk toward somewhere new."
-          hasLoggedToday={false}
-          screenTitle
-          onHeaderPress={() => router.push('/home')}
-        />
 
         {/* Streak — same as Witness, Header → 12px → Streak → 16px → Card */}
         <View style={styles.streakWrap}>
@@ -298,13 +312,19 @@ export default function VantageWalkScreen() {
                 <Text style={styles.memoryCardVantage}>📍 {todayLog.vantage_name.trim()}</Text>
               ) : null}
             </View>
-            {todayPhotoDisplayUrl ? (
+            {todayPhotoDisplayUrl && !todayPhotoError ? (
               <View style={styles.memoryCardPhotoWrap}>
                 <Image
                   source={{ uri: todayPhotoDisplayUrl }}
                   style={styles.memoryCardPhoto}
                   contentFit="cover"
+                  transition={200}
+                  onError={() => setTodayPhotoError(true)}
                 />
+              </View>
+            ) : todayLog?.photo_url ? (
+              <View style={styles.memoryCardPhotoPlaceholder}>
+                <Text style={styles.memoryCardPhotoPlaceholderText}>Photo is still processing...</Text>
               </View>
             ) : null}
 
@@ -332,7 +352,7 @@ export default function VantageWalkScreen() {
                   onPress={() => router.push('/witness')}
                 >
                   <Text style={styles.actionLinkText}>
-                    {todayPhotoDisplayUrl ? 'Change photo' : 'Add photo'}
+                    {todayPhotoDisplayUrl && !todayPhotoError ? 'Change photo' : 'Add photo'}
                   </Text>
                 </Pressable>
               </View>
@@ -383,17 +403,22 @@ export default function VantageWalkScreen() {
           </>
         )}
 
-        {!loggedToday && (
+        {!loggedToday ? (
           <SharedDawnPreview city={profileCity} currentUserId={currentUserId} />
+        ) : (
+          <>
+            <DawnInvitationSection
+              city={profileCity}
+              sunriseTomorrow={sunriseTomorrow}
+            />
+            <SharedDawnPreview
+              city={profileCity}
+              currentUserId={currentUserId}
+              showEmptyState={false}
+            />
+          </>
         )}
-
-        {loggedToday && (
-          <DawnInvitationSection
-            city={profileCity}
-            sunriseTomorrow={sunriseTomorrow}
-          />
-        )}
-      </ScrollView>
+      </ScreenLayout>
 
       <SunriseLogCard
         visible={showLogCard}
@@ -413,7 +438,6 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   container: {
     flex: 1,
     backgroundColor: Dawn.background.primary,
-    paddingTop: 52,
   },
   backgroundGradient: {
     ...StyleSheet.absoluteFillObject,
@@ -573,6 +597,19 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   memoryCardPhoto: {
     width: '100%',
     aspectRatio: 4 / 3,
+  },
+  memoryCardPhotoPlaceholder: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  memoryCardPhotoPlaceholderText: {
+    fontSize: 12,
+    color: Dawn.text.secondary,
   },
   memoryCardVantage: {
     fontSize: 15,

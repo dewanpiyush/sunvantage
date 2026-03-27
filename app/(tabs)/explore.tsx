@@ -60,6 +60,8 @@ export default function TabTwoScreen() {
         <Image
           source={require('@/assets/images/react-logo.png')}
           style={{ width: 100, height: 100, alignSelf: 'center' }}
+          contentFit="cover"
+          transition={200}
         />
         <ExternalLink href="https://reactnative.dev/docs/images">
           <ThemedText type="link">Learn more</ThemedText>

@@ -13,6 +13,7 @@ import {
   StyleSheet,
   Animated,
   useWindowDimensions,
+  ScrollView,
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,11 +24,11 @@ const PANEL_PADDING_H = 24;
 /** Space between drawer header block and first section (target 24–28px) */
 const TAGLINE_TO_FIRST_SECTION = 26;
 /** Space between section groups — “islands” (target 32–36px) */
-const SECTION_SPACING = 34;
+const SECTION_SPACING = 30;
 const TITLE_TO_TAGLINE = 3;
-const SECTION_TITLE_TO_ITEMS = 10;
+const SECTION_TITLE_TO_ITEMS = 8;
 /** Vertical rhythm between nav rows (target 16–18px between items) */
-const ITEM_GAP_BELOW_ROW = 16;
+const ITEM_GAP_BELOW_ROW = 13;
 const ROW_MIN_HEIGHT = 40;
 const EMOJI_WIDTH = 26;
 const SIGN_OUT_DIVIDER_MARGIN_TOP = 24;
@@ -222,40 +223,49 @@ export default function NavigationOverlay({
           styles.panel,
           {
             width: panelWidth,
-            height: windowHeight,
             backgroundColor: Dawn.background.primary,
             transform: [{ translateX: panelTranslateX }],
           },
         ]}
       >
         <SafeAreaView style={[styles.panelInner, { paddingTop: panelTopPadding }]} edges={[]}>
-          <View style={styles.headerBlock}>
-            <View style={styles.headerRow}>
-              <Text style={[styles.panelTitle, { color: Dawn.text.primary }]}>SunVantage</Text>
+          <View style={styles.panelBody}>
+            <ScrollView
+              style={styles.menuScroll}
+              contentContainerStyle={styles.menuScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.headerBlock}>
+                <View style={styles.headerRow}>
+                  <Text style={[styles.panelTitle, { color: Dawn.text.primary }]}>SunVantage</Text>
+                  <Pressable
+                    style={({ pressed }) => [styles.closeButton, pressed && styles.navRowPressed]}
+                    onPress={handleClose}
+                    hitSlop={12}
+                  >
+                    <Text style={[styles.closeButtonText, { color: Dawn.text.secondary }]}>✕</Text>
+                  </Pressable>
+                </View>
+                <Text style={[styles.tagline, { color: Dawn.text.secondary }]}>
+                  Your quiet place to notice the morning.
+                </Text>
+              </View>
+
+              {renderSection('Morning', morningItems, true)}
+              {renderSection('Community', communityItems, false)}
+              {renderSection('You', youItems, false)}
+            </ScrollView>
+
+            <View style={styles.signOutDock}>
+              <View style={[styles.signOutDivider, { backgroundColor: Dawn.border.subtle }]} />
               <Pressable
-                style={({ pressed }) => [styles.closeButton, pressed && styles.navRowPressed]}
-                onPress={handleClose}
-                hitSlop={12}
+                style={({ pressed }) => [styles.signOutRow, pressed && styles.navRowPressed]}
+                onPress={handleSignOut}
               >
-                <Text style={[styles.closeButtonText, { color: Dawn.text.secondary }]}>✕</Text>
+                <Text style={[styles.signOutText, { color: Dawn.text.secondary }]}>Sign out</Text>
               </Pressable>
             </View>
-            <Text style={[styles.tagline, { color: Dawn.text.secondary }]}>
-              Your quiet place to notice the morning.
-            </Text>
           </View>
-
-          {renderSection('Morning', morningItems, true)}
-          {renderSection('Community', communityItems, false)}
-          {renderSection('You', youItems, false)}
-
-          <View style={[styles.signOutDivider, { backgroundColor: Dawn.border.subtle }]} />
-          <Pressable
-            style={({ pressed }) => [styles.signOutRow, pressed && styles.navRowPressed]}
-            onPress={handleSignOut}
-          >
-            <Text style={[styles.signOutText, { color: Dawn.text.secondary }]}>Sign out</Text>
-          </Pressable>
         </SafeAreaView>
       </Animated.View>
     </Modal>
@@ -271,11 +281,21 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     top: 0,
+    bottom: 0,
     // set dynamically in component style to avoid static token capture
   },
   panelInner: {
     flex: 1,
     paddingHorizontal: PANEL_PADDING_H,
+  },
+  panelBody: {
+    flex: 1,
+  },
+  menuScroll: {
+    flex: 1,
+  },
+  menuScrollContent: {
+    paddingBottom: 24,
   },
   headerBlock: {
     marginBottom: TAGLINE_TO_FIRST_SECTION,
@@ -361,12 +381,15 @@ const styles = StyleSheet.create({
   signOutDivider: {
     height: 1,
     // set dynamically in component style
-    marginTop: SIGN_OUT_DIVIDER_MARGIN_TOP,
+    marginTop: 8,
     marginBottom: SIGN_OUT_DIVIDER_MARGIN_BOTTOM,
+  },
+  signOutDock: {
+    paddingBottom: 24,
   },
   signOutRow: {
     paddingTop: 0,
-    paddingBottom: 14,
+    paddingBottom: 4,
     alignItems: 'center',
   },
   signOutText: {

@@ -7,6 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
@@ -17,11 +18,9 @@ import supabase from '../supabase';
 import { BADGE_REGISTRY, BADGE_ICONS, computeBadgeStats } from './ritual-markers';
 import SunVantageHeader from '../components/SunVantageHeader';
 import { hasLoggedToday } from '../lib/hasLoggedToday';
-import { invokeModerateImage } from '../lib/moderateImageInvoke';
 import { useDawn } from '@/hooks/use-dawn';
 
 const AVATAR_BUCKET = 'avatars';
-const PENDING_BUCKET = 'uploads_pending';
 const AVATAR_SIZE = 512;
 
 // ----- Streak computation (client-side) -----
@@ -164,6 +163,8 @@ export default function MyProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarViewerVisible, setAvatarViewerVisible] = useState(false);
+  const [avatarActionSheetVisible, setAvatarActionSheetVisible] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -250,8 +251,8 @@ export default function MyProfileScreen() {
       const buffer = await file.arrayBuffer();
       const bytes = new Uint8Array(buffer);
 
-      const stagedPath = `${userId}/${Date.now()}.jpg`;
-      const { error: uploadError } = await supabase.storage.from(PENDING_BUCKET).upload(stagedPath, bytes, {
+      const avatarPath = `${userId}/${Date.now()}.jpg`;
+      const { error: uploadError } = await supabase.storage.from(AVATAR_BUCKET).upload(avatarPath, bytes, {
         contentType: 'image/jpeg',
         upsert: true,
       });
@@ -260,49 +261,23 @@ export default function MyProfileScreen() {
         return;
       }
 
-      const invokePromise = invokeModerateImage(supabase, {
-        path: stagedPath,
-        type: 'avatar',
-      });
-      const timeoutMs = 25_000;
-      const timed = await Promise.race([
-        invokePromise,
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Processing timed out. Please try again.')), timeoutMs)),
-      ]);
-
-      const { data, error: fnError } = timed as unknown as {
-        data: { status: 'approved' | 'rejected'; publicUrl?: string } | null;
-        error: { message?: string; context?: unknown } | null;
-      };
-
-      if (fnError) {
-        const ctx = (fnError as any)?.context;
-        const ctxMsg =
-          typeof ctx?.body === 'string'
-            ? ctx.body
-            : typeof ctx === 'string'
-              ? ctx
-              : ctx
-                ? JSON.stringify(ctx)
-                : '';
-        setError((ctxMsg && `${fnError.message || 'Processing failed'}: ${ctxMsg}`) || fnError.message || 'Could not process photo.');
+      const avatarUrl = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(avatarPath).data?.publicUrl ?? null;
+      if (!avatarUrl) {
+        setError('Could not resolve avatar URL.');
         return;
       }
 
-      if (!data || (data.status !== 'approved' && data.status !== 'rejected')) {
-        setError('Could not process photo.');
-        return;
-      }
-
-      if (data.status === 'rejected') {
-        setError("This doesn’t seem like a sunrise moment 🌅 Please try another photo.");
-        return;
-      }
-
-      const avatarUrl = data.publicUrl ?? null;
-      // Cache-bust so the image component refetches
+      // Update UI immediately after upload; persist profile URL in parallel flow.
       const displayUrl = avatarUrl ? `${avatarUrl}?t=${Date.now()}` : null;
       setProfile((prev) => (prev ? { ...prev, avatar_url: displayUrl } : null));
+
+      const { error: profileUpdateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: avatarUrl })
+        .eq('user_id', userId);
+      if (profileUpdateError) {
+        setError(profileUpdateError.message || 'Could not update profile.');
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       __DEV__ && console.error('[Profile] avatar upload error', e);
@@ -334,66 +309,74 @@ export default function MyProfileScreen() {
     }
   }, []);
 
-  const handleAvatarPress = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const userId = session?.user?.id;
+  const getCurrentUserId = useCallback(async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    return session?.user?.id ?? null;
+  }, []);
+
+  const handleTakePhoto = useCallback(async () => {
+    const userId = await getCurrentUserId();
     if (!userId) return;
-    const hasAvatar = Boolean(profile?.avatar_url?.trim());
-    const options: { text: string; onPress?: () => void }[] = [
-      {
-        text: 'Take photo',
-        onPress: async () => {
-          const { status } = await ImagePicker.requestCameraPermissionsAsync();
-          if (status !== 'granted') {
-            setError('Camera access is needed to take a photo.');
-            return;
-          }
-          const result = await ImagePicker.launchCameraAsync({
-            mediaTypes: ['images'],
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.9,
-          });
-          if (result.canceled || !result.assets?.[0]?.uri) return;
-          await uploadAvatarFromUri(result.assets[0].uri, userId);
-        },
-      },
-      {
-        text: 'Choose from library',
-        onPress: async () => {
-          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-          if (status !== 'granted') {
-            setError('Photo library access is needed.');
-            return;
-          }
-          const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.9,
-          });
-          if (result.canceled || !result.assets?.[0]?.uri) return;
-          await uploadAvatarFromUri(result.assets[0].uri, userId);
-        },
-      },
-    ];
-    if (hasAvatar) {
-      options.push({
-        text: 'Remove photo',
-        onPress: () => removeAvatar(userId),
-      });
+    setAvatarActionSheetVisible(false);
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      setError('Camera access is needed to take a photo.');
+      return;
     }
-    options.push({ text: 'Cancel', onPress: () => {} });
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      aspect: [1, 1],
+      quality: 0.9,
+    });
+    if (result.canceled || !result.assets?.[0]?.uri) return;
+    await uploadAvatarFromUri(result.assets[0].uri, userId);
+  }, [getCurrentUserId, uploadAvatarFromUri]);
+
+  const handleChooseFromLibrary = useCallback(async () => {
+    const userId = await getCurrentUserId();
+    if (!userId) return;
+    setAvatarActionSheetVisible(false);
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      setError('Photo library access is needed.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      aspect: [1, 1],
+      quality: 0.9,
+    });
+    if (result.canceled || !result.assets?.[0]?.uri) return;
+    await uploadAvatarFromUri(result.assets[0].uri, userId);
+  }, [getCurrentUserId, uploadAvatarFromUri]);
+
+  const handleRemovePhoto = useCallback(async () => {
+    const userId = await getCurrentUserId();
+    if (!userId) return;
     Alert.alert(
-      'Profile photo',
-      undefined,
-      options.map((o) => ({
-        text: o.text,
-        onPress: o.onPress,
-        style: o.text === 'Cancel' ? 'cancel' : undefined,
-      }))
+      'Remove photo?',
+      'This will remove your profile photo.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setAvatarViewerVisible(false);
+            await removeAvatar(userId);
+          },
+        },
+      ]
     );
-  }, [profile?.avatar_url, uploadAvatarFromUri, removeAvatar]);
+  }, [getCurrentUserId, removeAvatar]);
+
+  const handleAvatarPress = useCallback(() => {
+    setAvatarViewerVisible(true);
+  }, []);
 
   useEffect(() => {
     load();
@@ -498,6 +481,7 @@ export default function MyProfileScreen() {
                         source={{ uri: profile.avatar_url }}
                         style={styles.avatarImage}
                         contentFit="cover"
+                        transition={200}
                       />
                     ) : (
                       <Text style={styles.avatarInitial}>
@@ -511,7 +495,7 @@ export default function MyProfileScreen() {
                     ) : null}
                   </Pressable>
                   <Text style={styles.avatarCaption}>
-                    {profile?.avatar_url ? 'Change photo' : 'Add photo'}
+                    {uploadingAvatar ? 'Updating photo...' : profile?.avatar_url ? 'Change photo' : 'Add photo'}
                   </Text>
                 </View>
               </View>
@@ -589,6 +573,88 @@ export default function MyProfileScreen() {
           )}
         </ScrollView>
       )}
+
+      <Modal
+        visible={avatarViewerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAvatarViewerVisible(false)}
+        statusBarTranslucent
+      >
+        <Pressable style={styles.avatarViewerBackdrop} onPress={() => setAvatarViewerVisible(false)}>
+          <Pressable style={styles.avatarViewerSurface} onPress={(e) => e.stopPropagation()}>
+            <Pressable
+              style={({ pressed }) => [styles.avatarViewerClose, pressed && styles.avatarViewerClosePressed]}
+              onPress={() => setAvatarViewerVisible(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
+              <Text style={styles.avatarViewerCloseText}>✕</Text>
+            </Pressable>
+
+            {profile?.avatar_url ? (
+              <Image source={{ uri: profile.avatar_url }} style={styles.avatarViewerImage} contentFit="cover" transition={200} />
+            ) : (
+              <View style={styles.avatarViewerPlaceholder}>
+                <Text style={styles.avatarViewerInitial}>
+                  {(profile?.first_name?.trim() || 'W').charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.avatarViewerActions}>
+              <Pressable
+                style={({ pressed }) => [styles.avatarViewerActionBtn, pressed && styles.avatarViewerActionPressed]}
+                onPress={() => setAvatarActionSheetVisible(true)}
+              >
+                <Text style={styles.avatarViewerActionText}>Change photo</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.avatarViewerActionBtn,
+                  !profile?.avatar_url && styles.avatarViewerActionDisabled,
+                  pressed && styles.avatarViewerActionPressed,
+                ]}
+                onPress={handleRemovePhoto}
+                disabled={!profile?.avatar_url}
+              >
+                <Text style={styles.avatarViewerActionText}>Remove photo</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={avatarActionSheetVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAvatarActionSheetVisible(false)}
+        statusBarTranslucent
+      >
+        <Pressable style={styles.avatarSheetBackdrop} onPress={() => setAvatarActionSheetVisible(false)}>
+          <Pressable style={styles.avatarSheet} onPress={(e) => e.stopPropagation()}>
+            <Pressable
+              style={({ pressed }) => [styles.avatarSheetRow, pressed && styles.avatarViewerActionPressed]}
+              onPress={handleTakePhoto}
+            >
+              <Text style={styles.avatarSheetText}>Take photo</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.avatarSheetRow, pressed && styles.avatarViewerActionPressed]}
+              onPress={handleChooseFromLibrary}
+            >
+              <Text style={styles.avatarSheetText}>Choose from library</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.avatarSheetRow, pressed && styles.avatarViewerActionPressed]}
+              onPress={() => setAvatarActionSheetVisible(false)}
+            >
+              <Text style={styles.avatarSheetText}>Cancel</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -690,9 +756,9 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     marginTop: 4,
   },
   avatarCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 72,
+    aspectRatio: 1,
+    borderRadius: 999,
     backgroundColor: Dawn.surfaceSecondary.subtle,
     justifyContent: 'center',
     alignItems: 'center',
@@ -702,16 +768,16 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     opacity: 0.9,
   },
   avatarImage: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: '100%',
+    height: '100%',
+    borderRadius: 999,
   },
   avatarOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 26,
+    borderRadius: 999,
   },
   avatarInitial: {
     fontSize: 22,
@@ -813,6 +879,111 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   errorText: {
     fontSize: 14,
     color: '#FCA5A5',
+    textAlign: 'center',
+  },
+  avatarViewerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  avatarViewerSurface: {
+    width: '100%',
+    maxWidth: 420,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarViewerClose: {
+    position: 'absolute',
+    top: -8,
+    right: 0,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(14,34,61,0.7)',
+    zIndex: 3,
+  },
+  avatarViewerClosePressed: {
+    opacity: 0.85,
+  },
+  avatarViewerCloseText: {
+    fontSize: 22,
+    color: Dawn.text.primary,
+    lineHeight: 24,
+  },
+  avatarViewerImage: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 20,
+    backgroundColor: Dawn.surface.card,
+  },
+  avatarViewerPlaceholder: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 20,
+    backgroundColor: Dawn.surfaceSecondary.subtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Dawn.border.subtle,
+  },
+  avatarViewerInitial: {
+    fontSize: 72,
+    fontWeight: '600',
+    color: Dawn.text.primary,
+  },
+  avatarViewerActions: {
+    width: '100%',
+    marginTop: 16,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  avatarViewerActionBtn: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Dawn.border.subtle,
+    backgroundColor: Dawn.surface.card,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarViewerActionPressed: {
+    opacity: 0.88,
+  },
+  avatarViewerActionDisabled: {
+    opacity: 0.5,
+  },
+  avatarViewerActionText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Dawn.text.primary,
+  },
+  avatarSheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    justifyContent: 'flex-end',
+    padding: 16,
+  },
+  avatarSheet: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Dawn.border.subtle,
+    backgroundColor: Dawn.surface.card,
+  },
+  avatarSheetRow: {
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: Dawn.border.subtle,
+  },
+  avatarSheetText: {
+    fontSize: 16,
+    color: Dawn.text.primary,
     textAlign: 'center',
   },
   });

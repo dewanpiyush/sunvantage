@@ -4,7 +4,6 @@ import {
   Text,
   Pressable,
   StyleSheet,
-  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -20,6 +19,8 @@ import { getDismissedBadgeIds, dismissBadgeReveal } from '../lib/ritualReveal';
 import { useDawn } from '@/hooks/use-dawn';
 import { useAppTheme } from '@/context/AppThemeContext';
 import { runPendingModerationRecoveryDebounced } from '@/lib/pendingModerationRecovery';
+import ScreenLayout from '@/components/ScreenLayout';
+import { prefetchMyMornings, prefetchWorldGallery } from '@/lib/screenDataCache';
 
 // ----- Streak (same logic as elsewhere) -----
 const YMD_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -267,6 +268,10 @@ export default function HomeScreen() {
       } else {
         setShowMyCitySunrises(false);
       }
+
+      // Warm key screens without blocking current UI.
+      void prefetchMyMornings(userId);
+      void prefetchWorldGallery(userId);
     } catch {
       setProfile(null);
       setLogs([]);
@@ -353,6 +358,43 @@ export default function HomeScreen() {
     router.push('/vantage-walk');
   };
 
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient
+          colors={isMorningLight ? ['#EAF3FB', '#DCEAF7', '#CFE2F3'] : ['#102A43', '#1B3554', '#243F63']}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={styles.backgroundGradient}
+          pointerEvents="none"
+        />
+        <ScreenLayout
+          header={
+            <SunVantageHeader
+              hasLoggedToday={false}
+              showMyCitySunrises={false}
+              tagline="Your quiet place to notice the morning."
+            />
+          }
+          scrollContentContainerStyle={styles.scrollContent}
+        >
+          <View style={styles.skeletonLineHomeWide} />
+          <View style={styles.skeletonLineHomeMid} />
+          <View style={styles.skeletonHomeCard}>
+            <View style={styles.skeletonLineHomeShort} />
+            <View style={styles.skeletonLineHomeWide} />
+            <View style={styles.skeletonLineHomeMid} />
+          </View>
+          <View style={styles.skeletonHomeCard}>
+            <View style={styles.skeletonLineHomeShort} />
+            <View style={styles.skeletonLineHomeWide} />
+            <View style={styles.skeletonLineHomeMid} />
+          </View>
+        </ScreenLayout>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <LinearGradient
@@ -363,16 +405,16 @@ export default function HomeScreen() {
         pointerEvents="none"
       />
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+      <ScreenLayout
+        header={
+          <SunVantageHeader
+            hasLoggedToday={loggedToday}
+            showMyCitySunrises={showMyCitySunrises}
+            tagline="Your quiet place to notice the morning."
+          />
+        }
+        scrollContentContainerStyle={styles.scrollContent}
       >
-        <SunVantageHeader
-          hasLoggedToday={loggedToday}
-          showMyCitySunrises={showMyCitySunrises}
-          tagline="Your quiet place to notice the morning."
-        />
 
         {/* New user (no sunrise logged): greeting, then ritual card (tagline is in header) */}
         {totalSunrises === 0 && (
@@ -730,7 +772,7 @@ export default function HomeScreen() {
             </View>
           </>
         )}
-      </ScrollView>
+      </ScreenLayout>
     </View>
   );
 }
@@ -767,7 +809,6 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   container: {
     flex: 1,
     backgroundColor: Dawn.background.primary,
-    paddingTop: 52,
   },
   backgroundGradient: {
     ...StyleSheet.absoluteFillObject,
@@ -1026,6 +1067,35 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     fontSize: 14,
     fontWeight: '500',
     color: Dawn.accent.sunriseOn,
+  },
+  skeletonHomeCard: {
+    backgroundColor: Dawn.surface.card,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: Dawn.border.subtle,
+  },
+  skeletonLineHomeWide: {
+    width: '88%',
+    height: 13,
+    borderRadius: 7,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 10,
+  },
+  skeletonLineHomeMid: {
+    width: '64%',
+    height: 12,
+    borderRadius: 7,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 14,
+  },
+  skeletonLineHomeShort: {
+    width: '38%',
+    height: 11,
+    borderRadius: 7,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 12,
   },
   });
 }

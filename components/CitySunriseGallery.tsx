@@ -93,19 +93,17 @@ export default function CitySunriseGallery({ rows, limit, cityFallback, currentU
   useEffect(() => {
     if (galleryIndex == null) {
       overlayOpacity.setValue(0);
+      modalScale.setValue(1);
       return;
     }
     overlayOpacity.setValue(0);
-    const t = setTimeout(() => {
-      Animated.timing(overlayOpacity, {
-        toValue: 0.88,
-        duration: 280,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }).start();
-    }, 300);
-    return () => clearTimeout(t);
-  }, [galleryIndex, overlayOpacity]);
+    Animated.timing(overlayOpacity, {
+      toValue: 0.88,
+      duration: 280,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start();
+  }, [galleryIndex, overlayOpacity, modalScale]);
 
   if (data.length === 0) return null;
 
@@ -132,8 +130,10 @@ export default function CitySunriseGallery({ rows, limit, cityFallback, currentU
               onPress={() => url && setGalleryIndex(index)}
             >
               {url ? (
-                <Image source={{ uri: url }} style={styles.galleryTileImage} contentFit="cover" />
-              ) : null}
+                <Image source={{ uri: url }} style={styles.galleryTileImage} contentFit="cover" transition={200} />
+              ) : (
+                <View style={styles.galleryTileSkeleton} />
+              )}
               {row.created_at ? (
                 <View style={styles.galleryTileDateChip}>
                   <Text style={styles.galleryTileDateText}>{formatShortMonthDay(row.created_at)}</Text>
@@ -240,7 +240,7 @@ export default function CitySunriseGallery({ rows, limit, cityFallback, currentU
                           <Ionicons name="close" size={18} color="rgba(255,255,255,0.95)" />
                         </Pressable>
                         {url ? (
-                          <Image source={{ uri: url }} style={styles.fullScreenImage} contentFit="contain" />
+                          <Image source={{ uri: url }} style={styles.fullScreenImage} contentFit="cover" transition={200} />
                         ) : null}
                         {isActive && (line1 || line2) ? (
                           <Animated.View style={[styles.fullScreenOverlay, { opacity: overlayOpacity }]} pointerEvents="none">
@@ -280,6 +280,11 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   galleryTileImage: {
     width: '100%',
     height: '100%',
+  },
+  galleryTileSkeleton: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
   galleryTileDateChip: {
     position: 'absolute',

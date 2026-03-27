@@ -3,13 +3,14 @@
  * Reuses CitySunriseGallery grid + modal; pulls from global sunrise_logs (no city filter).
  */
 import React, { useState, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import supabase from '../supabase';
 import SunVantageHeader from '../components/SunVantageHeader';
 import CitySunriseGallery, { type CitySunriseGalleryRow } from '../components/CitySunriseGallery';
 import { Dawn } from '../constants/theme';
 import { useDawn } from '@/hooks/use-dawn';
+import { getWorldGalleryCache, isWorldGalleryCacheFresh, prefetchWorldGallery } from '@/lib/screenDataCache';
 
 const GALLERY_LIMIT = 30;
 
@@ -40,17 +41,13 @@ export default function WorldSunriseGalleryScreen() {
         return;
       }
       setCurrentUserId(userId);
-
-      const { data, error: fetchError } = await supabase.rpc('get_global_sunrise_gallery', {
-        limit_count: GALLERY_LIMIT,
-      });
-
-      if (fetchError) {
-        setError(fetchError.message || 'Could not load photos.');
+      const cached = await prefetchWorldGallery(userId, { force: true });
+      if (!cached) {
+        setError('Could not load photos.');
         setRows([]);
         return;
       }
-      setRows((data ?? []) as CitySunriseGalleryRow[]);
+      setRows(cached.rows as CitySunriseGalleryRow[]);
     } catch {
       setError('Something went wrong.');
       setRows([]);
@@ -64,7 +61,27 @@ export default function WorldSunriseGalleryScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void load({ silent: hasLoadedOnce.current });
+      const bootstrap = async () => {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+        if (!userId) {
+          void load({ silent: hasLoadedOnce.current });
+          return;
+        }
+        const cached = getWorldGalleryCache(userId);
+        if (cached) {
+          setCurrentUserId(userId);
+          setRows(cached.rows as CitySunriseGalleryRow[]);
+          setLoading(false);
+          hasLoadedOnce.current = true;
+        }
+        if (!cached || !isWorldGalleryCacheFresh(userId)) {
+          void load({ silent: Boolean(cached) });
+        }
+      };
+      void bootstrap();
     }, [load])
   );
 
@@ -83,9 +100,29 @@ export default function WorldSunriseGalleryScreen() {
         <View style={styles.gradientTop} pointerEvents="none" />
         <View style={styles.gradientMid} pointerEvents="none" />
         <View style={styles.gradientLowerWarm} pointerEvents="none" />
-        <View style={styles.centered}>
-          <ActivityIndicator color={Dawn.accent.sunrise} />
-          <Text style={styles.loadingText}>Loading…</Text>
+        <View style={styles.header}>
+          <SunVantageHeader
+            showBack
+            hideMenu
+            showBranding
+            title="Global Sunrises Welcomed"
+            onBackPress={() => router.back()}
+            hasLoggedToday={false}
+            screenTitle={false}
+            onHeaderPress={() => router.push('/home')}
+          />
+          <Text style={styles.headerLine}>Some recent shared mornings on SunVantage.</Text>
+        </View>
+        <View style={styles.skeletonWrap}>
+          <View style={styles.skeletonGrid}>
+            <View style={styles.skeletonTile} />
+            <View style={styles.skeletonTile} />
+            <View style={styles.skeletonTile} />
+            <View style={styles.skeletonTile} />
+            <View style={styles.skeletonTile} />
+            <View style={styles.skeletonTile} />
+          </View>
+          <View style={styles.skeletonFooterLine} />
         </View>
       </View>
     );
@@ -200,10 +237,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
   },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: Dawn.text.secondary,
+  skeletonWrap: {
+    paddingHorizontal: 24,
+    paddingBottom: 48,
+  },
+  skeletonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+  },
+  skeletonTile: {
+    width: '31%',
+    aspectRatio: 1,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 10,
+  },
+  skeletonFooterLine: {
+    width: '72%',
+    height: 12,
+    borderRadius: 7,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignSelf: 'center',
   },
   errorText: {
     fontSize: 14,

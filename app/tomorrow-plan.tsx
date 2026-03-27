@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
@@ -307,18 +308,24 @@ export default function TomorrowPlanScreen() {
 
   return (
     <View style={styles.container} key={mode}>
-      <View style={styles.gradientTop} pointerEvents="none" />
-      <View style={styles.gradientMid} pointerEvents="none" />
-      <View style={styles.gradientLowerWarm} pointerEvents="none" />
-
-      <SunVantageHeader
-        title={isTodayMode ? 'Today morning' : 'Plan Tomorrow'}
-        subtitle={isTodayMode ? 'Dawn is approaching.' : 'The sun will rise again.'}
-        hasLoggedToday={false}
-        wrapperMarginBottom={0}
-        screenTitle
-        onHeaderPress={() => router.push('/home')}
+      <LinearGradient
+        colors={mode === 'morning-light' ? ['#EAF3FB', '#DCEAF7', '#CFE2F3'] : ['#102A43', '#1B3554', '#243F63']}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={styles.backgroundGradient}
+        pointerEvents="none"
       />
+
+      <View style={styles.header}>
+        <SunVantageHeader
+          title={isTodayMode ? 'Today morning' : 'Plan Tomorrow'}
+          subtitle={isTodayMode ? 'Dawn is approaching.' : 'The sun will rise again.'}
+          hasLoggedToday={false}
+          wrapperMarginBottom={0}
+          screenTitle
+          onHeaderPress={() => router.push('/home')}
+        />
+      </View>
 
       <KeyboardAvoidingView
         style={styles.keyboardView}
@@ -493,26 +500,11 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     backgroundColor: Dawn.background.primary,
     paddingTop: 52,
   },
-  gradientTop: {
+  backgroundGradient: {
     ...StyleSheet.absoluteFillObject,
-    height: '50%',
-    backgroundColor: Dawn.background.primary,
   },
-  gradientMid: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '35%',
-    height: '30%',
-    backgroundColor: 'rgba(148, 163, 184, 0.055)',
-  },
-  gradientLowerWarm: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '50%',
-    bottom: 0,
-    backgroundColor: 'rgba(255, 179, 71, 0.058)',
+  header: {
+    paddingHorizontal: 24,
   },
   keyboardView: {
     flex: 1,

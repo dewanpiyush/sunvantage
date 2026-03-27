@@ -5,7 +5,6 @@ import {
   Pressable,
   StyleSheet,
   ScrollView,
-  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,6 +15,7 @@ import CitySunriseGallery from '../components/CitySunriseGallery';
 import { hasLoggedToday } from '../lib/hasLoggedToday';
 import { useDawn } from '@/hooks/use-dawn';
 import { useAppTheme } from '@/context/AppThemeContext';
+import { getMyMorningsCache, isMyMorningsCacheFresh, prefetchMyMornings } from '@/lib/screenDataCache';
 
 // Local map: reflection_question_id → question text (align with prompts used when saving).
 // Extend this when you add more questions or persist question_id in sunrise_logs.
@@ -134,33 +134,6 @@ type CityGalleryRow = {
   user_id?: string | null;
 };
 
-const photoBucket = 'sunrise_photos';
-const pendingBucket = 'uploads_pending';
-const signedUrlExpirySeconds = 60 * 60;
-
-async function resolvePhotoDisplayUrl(ref: string): Promise<string | null> {
-  if (!ref) return null;
-  if (ref.startsWith('http://') || ref.startsWith('https://')) return ref;
-  const cleaned = ref.replace(/^\/+/, '');
-  const isPendingRef = cleaned.startsWith(`${pendingBucket}/`);
-  const bucket = isPendingRef ? pendingBucket : photoBucket;
-  const normalizedRef = isPendingRef
-    ? cleaned.slice(`${pendingBucket}/`.length)
-    : cleaned.replace(new RegExp(`^${photoBucket}\/`), '');
-
-  const { data, error } = await supabase.storage
-    .from(bucket)
-    .createSignedUrl(normalizedRef, signedUrlExpirySeconds);
-
-  if (!error && data?.signedUrl) return data.signedUrl;
-
-  if (bucket === pendingBucket) return null;
-
-  // Fallback: if bucket is public, this will render without signed URLs.
-  const publicUrl = supabase.storage.from(photoBucket).getPublicUrl(normalizedRef).data?.publicUrl;
-  return publicUrl ?? null;
-}
-
 const GALLERY_LIMIT = 10;
 
 export default function MyMorningsScreen() {
@@ -177,8 +150,9 @@ export default function MyMorningsScreen() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [galleryRows, setGalleryRows] = useState<CityGalleryRow[]>([]);
 
-  const loadLogs = useCallback(async () => {
-    setLoading(true);
+  const loadLogs = useCallback(async (opts?: { silent?: boolean; force?: boolean }) => {
+    const silent = opts?.silent === true;
+    if (!silent) setLoading(true);
     setError('');
     try {
       const {
@@ -194,47 +168,21 @@ export default function MyMorningsScreen() {
         return;
       }
       setCurrentUserId(userId);
-
-      const [logsRes, profileRes] = await Promise.all([
-        supabase
-          .from('sunrise_logs')
-          .select('id, created_at, vantage_name, reflection_text, reflection_question_id, photo_url')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false }),
-        supabase.from('profiles').select('city').eq('user_id', userId).maybeSingle(),
-      ]);
-
-      const profileData = profileRes.data as { city: string | null } | null;
-      setUserCity(profileData?.city?.trim() ?? null);
-
-      const { data, error: fetchError } = logsRes;
-      if (fetchError) {
-        setError(fetchError.message || 'Could not load your mornings.');
+      const cached = await prefetchMyMornings(userId, { force: opts?.force === true });
+      if (!cached) {
+        setError('Could not load your mornings.');
         setLogs([]);
         return;
       }
-
-      const rows = (data ?? []) as SunriseLogRow[];
-      setLogs(rows);
-
-      const urlMap: Record<number, string | null> = {};
-      await Promise.all(
-        rows.map(async (row) => {
-          const ref = row.photo_url ?? null;
-          if (!ref) {
-            urlMap[row.id] = null;
-            return;
-          }
-          const url = await resolvePhotoDisplayUrl(ref);
-          urlMap[row.id] = url ?? null;
-        })
-      );
-      setImageUrls((prev) => ({ ...prev, ...urlMap }));
+      setLogs(cached.logs as SunriseLogRow[]);
+      setUserCity(cached.userCity);
+      setGalleryRows(cached.galleryRows as CityGalleryRow[]);
+      setImageUrls(cached.imageUrls);
     } catch {
       setError('Something went wrong.');
       setLogs([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -262,16 +210,41 @@ export default function MyMorningsScreen() {
   }, []);
 
   useEffect(() => {
-    loadLogs();
+    const bootstrap = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      if (!userId) {
+        void loadLogs();
+        return;
+      }
+      const cached = getMyMorningsCache(userId);
+      if (cached) {
+        setCurrentUserId(userId);
+        setLogs(cached.logs as SunriseLogRow[]);
+        setUserCity(cached.userCity);
+        setGalleryRows(cached.galleryRows as CityGalleryRow[]);
+        setImageUrls(cached.imageUrls);
+        setLoading(false);
+      }
+      const shouldRefresh = !cached || !isMyMorningsCacheFresh(userId);
+      if (shouldRefresh) {
+        void loadLogs({ silent: Boolean(cached), force: true });
+      }
+    };
+    void bootstrap();
   }, [loadLogs]);
 
   useEffect(() => {
     if (logs.length === 0 && userCity) {
-      loadGallery(userCity);
-    } else {
+      if (galleryRows.length === 0) {
+        void loadGallery(userCity);
+      }
+    } else if (logs.length > 0 && galleryRows.length > 0) {
       setGalleryRows([]);
     }
-  }, [logs.length, userCity, loadGallery]);
+  }, [logs.length, userCity, loadGallery, galleryRows.length]);
 
   if (loading && logs.length === 0) {
     return (
@@ -283,9 +256,30 @@ export default function MyMorningsScreen() {
           style={styles.backgroundGradient}
           pointerEvents="none"
         />
-        <View style={styles.centered}>
-          <ActivityIndicator color={Dawn.accent.sunrise} />
-          <Text style={styles.loadingText}>Loading your mornings…</Text>
+        <View style={styles.header}>
+          <SunVantageHeader
+            title="My Mornings"
+            subtitle="Your mornings, gathered over time."
+            hasLoggedToday={false}
+            screenTitle
+            onHeaderPress={() => router.push('/home')}
+          />
+        </View>
+        <View style={styles.skeletonWrap}>
+          <View style={styles.skeletonLineWide} />
+          <View style={styles.skeletonAnchor} />
+          <View style={styles.skeletonCard}>
+            <View style={styles.skeletonLineShort} />
+            <View style={styles.skeletonImage} />
+            <View style={styles.skeletonLineWide} />
+            <View style={styles.skeletonLineMid} />
+          </View>
+          <View style={styles.skeletonCard}>
+            <View style={styles.skeletonLineShort} />
+            <View style={styles.skeletonImage} />
+            <View style={styles.skeletonLineWide} />
+            <View style={styles.skeletonLineMid} />
+          </View>
         </View>
       </View>
     );
@@ -389,6 +383,7 @@ export default function MyMorningsScreen() {
                                     source={{ uri: imageUrls[log.id]! }}
                                     style={styles.memoryCardPhoto}
                                     contentFit="cover"
+                                    transition={200}
                                   />
                                 </View>
                               ) : null}
@@ -593,10 +588,51 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     alignItems: 'center',
     paddingHorizontal: 24,
   },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: Dawn.text.secondary,
+  skeletonWrap: {
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+  },
+  skeletonAnchor: {
+    height: 14,
+    width: 170,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 16,
+  },
+  skeletonCard: {
+    borderRadius: 22,
+    padding: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: Dawn.border.subtle,
+    backgroundColor: Dawn.surface.card,
+  },
+  skeletonImage: {
+    width: '100%',
+    height: 180,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 14,
+  },
+  skeletonLineWide: {
+    width: '88%',
+    height: 13,
+    borderRadius: 7,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 10,
+  },
+  skeletonLineMid: {
+    width: '62%',
+    height: 12,
+    borderRadius: 7,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  skeletonLineShort: {
+    width: '34%',
+    height: 11,
+    borderRadius: 7,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 12,
   },
   errorText: {
     fontSize: 14,
