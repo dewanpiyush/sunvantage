@@ -12,7 +12,7 @@ import { useMorningContext } from '../hooks/useMorningContext';
 import { useDawn } from '@/hooks/use-dawn';
 import { useAppTheme } from '@/context/AppThemeContext';
 import SunVantageHeader from '../components/SunVantageHeader';
-import SunriseLogCard from '../components/SunriseLogCard';
+import SunriseLogCard, { type SunriseLogSaveResult } from '../components/SunriseLogCard';
 import StreakBlock from '../components/StreakBlock';
 import RitualRevealCard from '../components/RitualRevealCard';
 import SharedDawnPreview from '../components/SharedDawnPreview';
@@ -345,6 +345,8 @@ export function SunriseLog({
   const [error, setError] = useState('');
   const [initialLoading, setInitialLoading] = useState(true);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  /** Local file URI right after save; dropped when a remote/signed URL is ready. */
+  const [optimisticPhotoUri, setOptimisticPhotoUri] = useState<string | null>(null);
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [imageError, setImageError] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -381,6 +383,7 @@ export function SunriseLog({
   const [revealBadge, setRevealBadge] = useState<BadgeDef | null>(null);
   const router = useRouter();
   const scrollRef = useRef<ScrollView>(null);
+  const deferredRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousEarnedBadgeIdsRef = useRef<string[]>([]);
   const justLandedRef = useRef(false);
   const pageCardOpacity = useRef(new Animated.Value(1)).current;
@@ -412,6 +415,12 @@ export function SunriseLog({
 
   useEffect(() => {
     getReflectionInvitationAsync().then(setReflectionInvitationText);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (deferredRefreshRef.current) clearTimeout(deferredRefreshRef.current);
+    };
   }, []);
 
   // Time-aware radial glow: smooth transition when intensity changes
@@ -661,9 +670,13 @@ export function SunriseLog({
 
         if (ref) {
           const displayUrl = await resolvePhotoDisplayUrl(ref, todayLog.moderation_status ?? null);
-          if (displayUrl) setPhotoUrl(displayUrl);
+          if (displayUrl) {
+            setPhotoUrl(displayUrl);
+            setOptimisticPhotoUri(null);
+          }
         } else {
           setPhotoUrl(null);
+          setOptimisticPhotoUri(null);
         }
 
         const norm = getNormalizedVantageFromRow(todayLog as { vantage_name?: string | null; normalized_vantage?: string | null; user_input_vantage?: string | null });
@@ -1100,6 +1113,7 @@ export function SunriseLog({
       // Keep UX non-blocking: show the picked photo immediately while moderation runs in background.
       setPhotoPath(pendingPhotoRef);
       setImageError(false);
+      setOptimisticPhotoUri(null);
       const pendingDisplayUrl = await resolvePhotoDisplayUrl(pendingPhotoRef, 'pending');
       setPhotoUrl(pendingDisplayUrl);
       setPhotoMessage('Your morning is part of something larger.');
@@ -1158,7 +1172,8 @@ export function SunriseLog({
         }
       : null;
   const activeLog: TodayRenderLog | null = todayLog;
-  const effectivePhotoUrl = photoUrl ?? activeLog?.photo_url ?? null;
+  const effectivePhotoUrl =
+    optimisticPhotoUri ?? photoUrl ?? (activeLog?.photo_url?.startsWith('http') ? activeLog.photo_url : null) ?? null;
   const hasPhoto = typeof effectivePhotoUrl === 'string' && effectivePhotoUrl.trim().length > 0;
   const hasActiveLog = Boolean(
     activeLog?.photo_url ||
@@ -1518,14 +1533,30 @@ export function SunriseLog({
       <SunriseLogCard
         visible={showLogCard}
         onClose={() => setShowLogCard(false)}
-        onSaved={(result) => {
-          setShowLogCard(false);
+        onSaved={(result: SunriseLogSaveResult) => {
+          setHasLogged(true);
+          setLogId(result.logId);
+          setReflectionText(result.reflectionText);
+          setReflectionAck(result.reflectionText.trim().length > 0);
+          setVantageName(result.vantageName);
+          setVantageInputValue(result.vantageName);
+          setEditingVantage(false);
+          setPhotoPath(null);
+          setImageError(false);
+          if (result.localPhotoUri) {
+            setOptimisticPhotoUri(result.localPhotoUri);
+            setPhotoUrl(null);
+          } else {
+            setOptimisticPhotoUri(null);
+            setPhotoUrl(null);
+          }
           setJustLanded(true);
           justLandedRef.current = true;
-          if (result?.pendingPhotoRef) {
-            setPhotoPath(result.pendingPhotoRef);
-          }
-          setRefreshTrigger((t) => t + 1);
+          if (deferredRefreshRef.current) clearTimeout(deferredRefreshRef.current);
+          deferredRefreshRef.current = setTimeout(() => {
+            deferredRefreshRef.current = null;
+            setRefreshTrigger((t) => t + 1);
+          }, 2500);
         }}
         onModerationComplete={() => setRefreshTrigger((t) => t + 1)}
         onPlanForTomorrow={() => router.push('/tomorrow-plan')}

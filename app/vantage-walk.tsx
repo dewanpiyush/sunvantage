@@ -12,7 +12,7 @@ import { useRouter } from 'expo-router';
 import supabase from '../supabase';
 import SunVantageHeader from '../components/SunVantageHeader';
 import StreakBlock from '../components/StreakBlock';
-import SunriseLogCard from '../components/SunriseLogCard';
+import SunriseLogCard, { type SunriseLogSaveResult } from '../components/SunriseLogCard';
 import RitualRevealCard from '../components/RitualRevealCard';
 import SharedDawnPreview from '../components/SharedDawnPreview';
 import DawnInvitationSection from '../components/DawnInvitationSection';
@@ -232,8 +232,7 @@ export default function VantageWalkScreen() {
     setShowLogCard(true);
   };
 
-  const handleLogCardSaved = useCallback(() => {
-    setShowLogCard(false);
+  const handleLogCardSaved = useCallback((_result: SunriseLogSaveResult) => {
     justSavedRef.current = true;
     loadLogs();
   }, [loadLogs]);

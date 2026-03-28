@@ -80,10 +80,18 @@ async function fetchStreakFromRpc(): Promise<{ current: number; longest: number;
   };
 }
 
+/** Emitted as soon as the sunrise_logs row exists; heavy work continues in the background. */
+export type SunriseLogSaveResult = {
+  logId: number;
+  reflectionText: string;
+  vantageName: string;
+  localPhotoUri?: string;
+};
+
 export type SunriseLogCardProps = {
   visible: boolean;
   onClose: () => void;
-  onSaved: (result?: { localPhotoUri?: string; pendingPhotoRef?: string }) => void;
+  onSaved: (result: SunriseLogSaveResult) => void;
   onModerationComplete?: () => void;
   onPlanForTomorrow?: () => void;
   city?: string | null;
@@ -117,8 +125,6 @@ export default function SunriseLogCard({
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const processingOpacity = useRef(new Animated.Value(0.85)).current;
   const processingLoopRef = useRef<Animated.CompositeAnimation | null>(null);
-  const stageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [detectingVantageLocation, setDetectingVantageLocation] = useState(false);
   const [overrideCoords, setOverrideCoords] = useState<{ latitude: number; longitude: number } | null>(null);
 
@@ -203,13 +209,6 @@ export default function SunriseLogCard({
     }, 260);
     return () => clearTimeout(t);
   }, [visible, backdropOpacity, cardOpacity, cardScale, cardTranslateY]);
-
-  useEffect(() => {
-    return () => {
-      if (stageTimerRef.current) clearTimeout(stageTimerRef.current);
-      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-    };
-  }, []);
 
   // Focus vantage input when moving to step 1.
   useEffect(() => {
@@ -398,8 +397,6 @@ export default function SunriseLogCard({
     setSaveStage('idle');
     setError('');
     let didSucceed = false;
-    let savedLocalPhotoUri: string | undefined;
-    let savedPendingPhotoRef: string | undefined;
     const createdAt = new Date().toISOString();
     try {
       const {
@@ -491,48 +488,67 @@ export default function SunriseLogCard({
       }
 
       const logId = insertData?.[0]?.id as number | undefined;
-      if (logId != null && photoBase64 && photoUri) {
-        const stagedPath = `${userId}/${logId}-${Date.now()}.jpg`;
-        savedLocalPhotoUri = photoUri;
-        savedPendingPhotoRef = `uploads_pending/${stagedPath}`;
-        const photoB64 = photoBase64;
-        const mime = photoMime;
-        // Order matters: upload bytes first, then persist DB ref, then invoke Edge Function.
-        // Previously we updated the row before upload; if the background task was dropped, invoke never ran.
+      if (logId == null) {
+        setError("We couldn't save this morning. Please try again.");
+        return;
+      }
+
+      const capturedPhotoBase64 = photoBase64;
+      const capturedPhotoUri = photoUri;
+      const capturedMime = photoMime;
+      const capturedReflectionPrompt = reflectionPrompt;
+      const capturedVantage = vantageName.trim();
+      const capturedReflection = reflectionTrim;
+
+      didSucceed = true;
+      setSaving(false);
+      setSaveStage('idle');
+      resetFormAfterSave();
+
+      onClose();
+      onSaved({
+        logId,
+        reflectionText: capturedReflection,
+        vantageName: capturedVantage,
+        localPhotoUri: capturedPhotoUri ?? undefined,
+      });
+
+      void (async () => {
         try {
-          const binary = atob(photoB64);
-          const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          if (capturedPhotoBase64 && capturedPhotoUri) {
+            const stagedPath = `${userId}/${logId}-${Date.now()}.jpg`;
+            const savedPendingPhotoRef = `uploads_pending/${stagedPath}`;
+            const binary = atob(capturedPhotoBase64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
-          const { error: uploadError } = await supabase.storage
-            .from('uploads_pending')
-            .upload(stagedPath, bytes, { contentType: mime, upsert: true });
-          if (uploadError) {
-            console.warn('[SunVantage] pending upload failed', {
+            const { error: uploadError } = await supabase.storage
+              .from('uploads_pending')
+              .upload(stagedPath, bytes, { contentType: capturedMime, upsert: true });
+            if (uploadError) {
+              console.warn('[SunVantage] pending upload failed (background)', {
+                logId,
+                stagedPath,
+                message: uploadError.message,
+              });
+              return;
+            }
+
+            const { error: dbErr } = await supabase
+              .from('sunrise_logs')
+              .update({ photo_url: savedPendingPhotoRef, moderation_status: 'pending' })
+              .eq('id', logId)
+              .eq('user_id', userId);
+            if (dbErr) {
+              console.warn('[SunVantage] could not save pending photo ref (background)', dbErr);
+              return;
+            }
+
+            void invokeModerateImage(supabase, {
+              path: stagedPath,
+              type: 'sunrise',
               logId,
-              stagedPath,
-              message: uploadError.message,
-            });
-            setError(uploadError.message || 'Could not upload your photo. Try again.');
-            return;
-          }
-
-          const { error: dbErr } = await supabase
-            .from('sunrise_logs')
-            .update({ photo_url: savedPendingPhotoRef, moderation_status: 'pending' })
-            .eq('id', logId)
-            .eq('user_id', userId);
-          if (dbErr) {
-            console.warn('[SunVantage] could not save pending photo ref', dbErr);
-            setError(dbErr.message || 'Could not save your photo. Try again.');
-            return;
-          }
-
-          void invokeModerateImage(supabase, {
-            path: stagedPath,
-            type: 'sunrise',
-            logId,
-          }).then(({ data, error: invokeError }) => {
+            }).then(({ data, error: invokeError }) => {
               if (invokeError) {
                 console.warn('[SunVantage] moderate-image invoke failed', {
                   logId,
@@ -552,61 +568,27 @@ export default function SunriseLogCard({
               }
               onModerationComplete?.();
             });
+          }
+
+          await clearTomorrowPlan();
+          const fromRpc = await fetchStreakFromRpc();
+          const newCurrent = fromRpc?.current ?? 0;
+          const newLongest = fromRpc?.longest ?? 0;
+          const lastDate = fromRpc?.lastDate ?? getTodayLocalDateString();
+          await supabase
+            .from('profiles')
+            .update({
+              current_streak: newCurrent,
+              longest_streak: newLongest,
+              last_witness_date: lastDate,
+            })
+            .eq('user_id', userId);
+
+          await setLastUsedReflectionPrompt(capturedReflectionPrompt);
         } catch (e) {
-          console.warn('[SunVantage] photo pipeline failed', e);
-          setError('Could not process your photo. Try again.');
-          return;
+          console.warn('[SunVantage] save background pipeline', e);
         }
-      }
-      if (logId != null && !savedPendingPhotoRef) {
-        // no-op: UI reloads from DB after save
-      }
-
-      await clearTomorrowPlan();
-      const fromRpc = await fetchStreakFromRpc();
-      const newCurrent = fromRpc?.current ?? 0;
-      const newLongest = fromRpc?.longest ?? 0;
-      const lastDate = fromRpc?.lastDate ?? getTodayLocalDateString();
-      await supabase
-        .from('profiles')
-        .update({
-          current_streak: newCurrent,
-          longest_streak: newLongest,
-          last_witness_date: lastDate,
-        })
-        .eq('user_id', userId);
-
-      await setLastUsedReflectionPrompt(reflectionPrompt);
-      resetFormAfterSave();
-
-      // Show immediate acknowledgement, then processing copy, then close.
-      didSucceed = true;
-      setSaving(false);
-      setSaveStage('saved');
-      if (stageTimerRef.current) clearTimeout(stageTimerRef.current);
-      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-      stageTimerRef.current = setTimeout(() => setSaveStage('processing'), 650);
-      closeTimerRef.current = setTimeout(() => {
-        Animated.parallel([
-          Animated.timing(cardOpacity, {
-            toValue: 0,
-            duration: 280,
-            useNativeDriver: true,
-          }),
-          Animated.timing(cardScale, {
-            toValue: 0.92,
-            duration: 280,
-            useNativeDriver: true,
-          }),
-        ]).start(() => {
-          setSaveStage('idle');
-          onSaved({
-            localPhotoUri: savedLocalPhotoUri,
-            pendingPhotoRef: savedPendingPhotoRef,
-          });
-          handleClose();
-        });
-      }, 1850);
+      })();
     } catch {
       setError('Something went wrong. Please try again.');
     } finally {
@@ -615,7 +597,7 @@ export default function SunriseLogCard({
         setSaveStage('idle');
       }
     }
-  }, [vantageName, reflectionText, reflectionPrompt, photoBase64, photoUri, photoMime, onSaved, handleClose, resetFormAfterSave, cardOpacity, cardScale]);
+  }, [vantageName, reflectionText, reflectionPrompt, photoBase64, photoUri, photoMime, onSaved, onClose, resetFormAfterSave, onModerationComplete, city, overrideCoords]);
 
   if (!visible) return null;
 
