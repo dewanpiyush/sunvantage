@@ -14,6 +14,7 @@ import {
   Modal,
   Animated,
   Easing,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
@@ -346,6 +347,8 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: Dawn.surface.card,
+    borderWidth: Platform.OS === 'android' ? 1 : 0,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
   tileImage: {
     width: '100%',
@@ -423,7 +426,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     right: 0,
     bottom: 0,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: Platform.OS === 'android' ? 9 : 10,
     paddingBottom: 14,
   },
   fullScreenOverlayVantage: {

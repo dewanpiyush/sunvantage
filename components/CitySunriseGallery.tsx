@@ -14,6 +14,7 @@ import {
   Modal,
   Animated,
   Easing,
+  Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -275,7 +276,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     overflow: 'hidden',
     backgroundColor: Dawn.surface.card,
     borderWidth: 1,
-    borderColor: Dawn.border.subtle,
+    borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.subtle,
   },
   galleryTileImage: {
     width: '100%',
@@ -304,7 +305,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     left: 0,
     right: 0,
     bottom: 0,
-    paddingVertical: 6,
+    paddingVertical: Platform.OS === 'android' ? 5 : 6,
     paddingHorizontal: 8,
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
@@ -375,7 +376,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     right: 0,
     bottom: 0,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: Platform.OS === 'android' ? 9 : 10,
     paddingBottom: 14,
   },
   fullScreenOverlayVantage: {

@@ -452,9 +452,14 @@ export function SunriseLog({
   }, [breathPhase, hoursSinceSunrise]);
 
   useEffect(() => {
+    // Entry fade caused blank "Your morning" cards on Android when justLanded stayed true
+    // (e.g. allLogs empty but today's row present). Skip native-driver opacity ramp on Android.
+    if (Platform.OS === 'android') {
+      pageCardOpacity.setValue(1);
+      pageCardScale.setValue(1);
+      return;
+    }
     if (hasLogged && justLanded) {
-      // Keep this atomic: set start values and animate in the same effect.
-      // On Android, splitting across effects can race and leave opacity at 0.
       pageCardOpacity.setValue(0);
       pageCardScale.setValue(0.98);
       Animated.parallel([
@@ -471,7 +476,6 @@ export function SunriseLog({
       ]).start(() => setJustLanded(false));
       return;
     }
-    // Safety reset: ensure card is visible whenever we're not in entry animation.
     pageCardOpacity.setValue(1);
     pageCardScale.setValue(1);
   }, [hasLogged, justLanded, pageCardOpacity, pageCardScale]);
@@ -626,39 +630,56 @@ export function SunriseLog({
             previousEarnedBadgeIdsRef.current = earned.map((b) => b.id);
           } catch {
             setRevealBadge(null);
+            if (justLandedRef.current) {
+              justLandedRef.current = false;
+              setJustLanded(false);
+            }
           }
         }
 
-        if (data && data.length > 0) {
-          const todayLog = data[0] as { id: number; photo_url?: string | null; moderation_status?: string | null; photo_replaced_once?: boolean; reflection_text?: string | null; vantage_name?: string | null };
-          setHasLogged(true);
-          setLogId(todayLog.id);
-          setHasReplacedPhoto(!!todayLog.photo_replaced_once);
-          const savedReflection = todayLog.reflection_text ?? '';
-          setReflectionText(savedReflection);
-          setReflectionAck(savedReflection.length > 0);
-          const savedVantage = todayLog.vantage_name ?? '';
-          setVantageName(savedVantage);
-          setVantageInputValue(savedVantage);
-          setEditingVantage(false);
-          const ref = todayLog.photo_url ?? null;
-          setPhotoPath(ref);
-          setImageError(false);
+        // Today row can be briefly missing right after insert (~200–500ms). Do not clear hasLogged / logId;
+        // keep showing the previous UI until a later refresh returns the row.
+        if (!data || data.length === 0) {
+          setInitialLoading(false);
+          return;
+        }
 
-          if (ref) {
-            const displayUrl = await resolvePhotoDisplayUrl(ref, todayLog.moderation_status ?? null);
-            if (displayUrl) setPhotoUrl(displayUrl);
-          } else {
-            setPhotoUrl(null);
-          }
+        const todayLog = data[0] as { id: number; photo_url?: string | null; moderation_status?: string | null; photo_replaced_once?: boolean; reflection_text?: string | null; vantage_name?: string | null };
+        setHasLogged(true);
+        setLogId(todayLog.id);
+        setHasReplacedPhoto(!!todayLog.photo_replaced_once);
+        const savedReflection = todayLog.reflection_text ?? '';
+        setReflectionText(savedReflection);
+        setReflectionAck(savedReflection.length > 0);
+        const savedVantage = todayLog.vantage_name ?? '';
+        setVantageName(savedVantage);
+        setVantageInputValue(savedVantage);
+        setEditingVantage(false);
+        const ref = todayLog.photo_url ?? null;
+        setPhotoPath(ref);
+        setImageError(false);
 
-          const norm = getNormalizedVantageFromRow(todayLog as { vantage_name?: string | null; normalized_vantage?: string | null; user_input_vantage?: string | null });
-          if (norm && userId) {
-            const count = await fetchVantageMorningsCount(userId, norm);
-            setVantageMorningsCount(count);
-          } else {
-            setVantageMorningsCount(null);
-          }
+        if (ref) {
+          const displayUrl = await resolvePhotoDisplayUrl(ref, todayLog.moderation_status ?? null);
+          if (displayUrl) setPhotoUrl(displayUrl);
+        } else {
+          setPhotoUrl(null);
+        }
+
+        const norm = getNormalizedVantageFromRow(todayLog as { vantage_name?: string | null; normalized_vantage?: string | null; user_input_vantage?: string | null });
+        if (norm && userId) {
+          const count = await fetchVantageMorningsCount(userId, norm);
+          setVantageMorningsCount(count);
+        } else {
+          setVantageMorningsCount(null);
+        }
+
+        // Badge logic only runs when allLogs.length > 0. If that query is empty (RLS/column mismatch)
+        // but today's row exists, justLanded would stay true → hasLogged && justLanded forces opacity 0
+        // and the card can stay invisible on Android.
+        if (justLandedRef.current) {
+          justLandedRef.current = false;
+          setJustLanded(false);
         }
       } catch (e) {
         setError('Something went wrong. Please try again later.');
@@ -1139,7 +1160,12 @@ export function SunriseLog({
   const activeLog: TodayRenderLog | null = todayLog;
   const effectivePhotoUrl = photoUrl ?? activeLog?.photo_url ?? null;
   const hasPhoto = typeof effectivePhotoUrl === 'string' && effectivePhotoUrl.trim().length > 0;
-  const hasActiveLog = Boolean(activeLog || hasLogged);
+  const hasActiveLog = Boolean(
+    activeLog?.photo_url ||
+      activeLog?.reflection_text ||
+      activeLog?.vantage_name ||
+      hasLogged
+  );
   const showPhotoPlaceholder = hasPhoto && imageError;
   useEffect(() => {
     setImageError(false);
@@ -1256,7 +1282,7 @@ export function SunriseLog({
             </View>
           ) : null}
             <>
-              {initialLoading ? (
+              {initialLoading && !hasActiveLog ? (
                 <View style={styles.loadingInlineWrap}>
                   <ActivityIndicator color={Dawn.accent.sunrise} />
                 </View>
@@ -1550,7 +1576,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     paddingHorizontal: 24,
     paddingTop: 52,
     paddingBottom: 40,
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
   },
   backgroundGradient: {
     ...StyleSheet.absoluteFillObject,
@@ -1662,7 +1688,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     padding: 14,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Dawn.border.sunriseCard,
+    borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.sunriseCard,
     elevation: 2,
     alignSelf: 'stretch',
   },
@@ -1819,7 +1845,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   logThisMorningBtn: {
     marginTop: 20,
     alignSelf: 'center',
-    paddingVertical: 12,
+    paddingVertical: Platform.OS === 'android' ? 10 : 12,
     paddingHorizontal: 28,
     borderRadius: 999,
     backgroundColor: 'rgba(255, 179, 71, 0.86)',
@@ -1870,7 +1896,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     borderRadius: 24,
     padding: 20,
     borderWidth: 1,
-    borderColor: Dawn.border.subtle,
+    borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.subtle,
   },
   yourMorningHeader: {
     flexDirection: 'row',
@@ -1914,7 +1940,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     alignItems: 'center',
   },
   yourMorningAddPhoto: {
-    paddingVertical: 14,
+    paddingVertical: Platform.OS === 'android' ? 12 : 14,
     paddingHorizontal: 20,
     borderRadius: 12,
     borderWidth: 1,

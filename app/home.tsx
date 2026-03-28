@@ -4,6 +4,7 @@ import {
   Text,
   Pressable,
   StyleSheet,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -374,6 +375,7 @@ export default function HomeScreen() {
               hasLoggedToday={false}
               showMyCitySunrises={false}
               tagline="Your quiet place to notice the morning."
+              wrapperMarginBottom={9}
             />
           }
           scrollContentContainerStyle={styles.scrollContent}
@@ -411,6 +413,7 @@ export default function HomeScreen() {
             hasLoggedToday={loggedToday}
             showMyCitySunrises={showMyCitySunrises}
             tagline="Your quiet place to notice the morning."
+            wrapperMarginBottom={9}
           />
         }
         scrollContentContainerStyle={styles.scrollContent}
@@ -819,7 +822,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   scrollContent: {
     paddingHorizontal: 24,
     paddingBottom: 40,
-    paddingTop: 12,
+    paddingTop: 4,
   },
   tagline: {
     marginTop: 12,
@@ -835,7 +838,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     marginBottom: 20,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Dawn.border.soft,
+    borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.soft,
   },
   ritualIntroCardTitleRow: {
     flexDirection: 'row',
@@ -891,7 +894,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     marginBottom: 24,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Dawn.border.subtle,
+    borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.subtle,
     shadowColor: Dawn.accent.sunrise,
     shadowOpacity: 0.04,
     shadowRadius: 4,
@@ -899,14 +902,14 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     elevation: 1,
   },
   sunriseContextCardPostSunrise: {
-    borderColor: Dawn.border.subtle,
+    borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.subtle,
     shadowOpacity: 0,
     elevation: 0,
   },
   /** Logged-in home: “today” card — softer, no glow (Plan holds primary focus) */
   sunriseContextCardSettled: {
     backgroundColor: Dawn.surface.cardSecondary,
-    borderColor: Dawn.border.subtle,
+    borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.subtle,
     shadowOpacity: 0,
     shadowRadius: 0,
     shadowOffset: { width: 0, height: 0 },
@@ -1013,7 +1016,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     marginBottom: 24,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Dawn.border.subtle,
+    borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.subtle,
   },
   modeCardSecondary: {
     backgroundColor: Dawn.surface.cardSecondary,
@@ -1021,7 +1024,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   /** After logging: “Plan for tomorrow” is the primary card (glow + contrast) */
   modeCardPrimary: {
     backgroundColor: Dawn.surface.cardPrimary,
-    borderColor: Dawn.border.sunriseCard,
+    borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.sunriseCard,
     shadowColor: Dawn.accent.sunrise,
     shadowOpacity: 0.1,
     shadowRadius: 10,

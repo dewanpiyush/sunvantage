@@ -4,6 +4,7 @@ import {
   Text,
   Pressable,
   StyleSheet,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
@@ -465,7 +466,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     marginBottom: 18,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Dawn.border.sunriseCard,
+    borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.sunriseCard,
     shadowColor: Dawn.accent.sunrise,
     shadowOpacity: 0.08,
     shadowRadius: 6,
@@ -539,7 +540,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   },
   ctaButton: {
     alignSelf: 'center',
-    paddingVertical: 14,
+    paddingVertical: Platform.OS === 'android' ? 12 : 14,
     paddingHorizontal: 28,
     borderRadius: 999,
     backgroundColor: Dawn.accent.sunrise,
@@ -573,7 +574,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     padding: 20,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: Dawn.border.subtle,
+    borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.subtle,
     alignItems: 'center',
   },
   memoryCardTop: {
