@@ -13,6 +13,10 @@ const FALLBACK_CARD: DawnCard = {
   text: 'The sun does not carry yesterday.\nNeither do you have to.',
 };
 
+let cachedDawnCard: DawnCard | null = null;
+
+export const getCachedDawnCard = (): DawnCard | null => cachedDawnCard;
+
 async function ensureFirstOpenDateIso(): Promise<string> {
   try {
     const existing = await AsyncStorage.getItem(FIRST_OPEN_KEY);
@@ -39,9 +43,15 @@ export const getTodayDawnCard = async (): Promise<DawnCard> => {
     const daysSinceFirstOpen = await getDaysSinceFirstOpen();
     const index = DAWN_CARD_SET.length === 0 ? 0 : daysSinceFirstOpen % DAWN_CARD_SET.length;
     const card: DawnCardCopy | undefined = DAWN_CARD_SET[index];
-    if (!card) return FALLBACK_CARD;
-    return { verb: card.verb, text: card.prompt };
+    if (!card) {
+      cachedDawnCard = FALLBACK_CARD;
+      return FALLBACK_CARD;
+    }
+    const resolved = { verb: card.verb, text: card.prompt };
+    cachedDawnCard = resolved;
+    return resolved;
   } catch {
+    cachedDawnCard = FALLBACK_CARD;
     return FALLBACK_CARD;
   }
 };

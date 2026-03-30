@@ -14,6 +14,7 @@ import { hasLoggedToday } from '../lib/hasLoggedToday';
 import SunVantageHeader from '../components/SunVantageHeader';
 import StreakBlock from '../components/StreakBlock';
 import RitualRevealCard from '../components/RitualRevealCard';
+import RitualIntroCarousel from '../components/RitualIntroCarousel';
 import { useMorningContext } from '../hooks/useMorningContext';
 import { computeBadgeStats, getEarnedBadges, computeEarnedAtByBadge, BADGE_ICONS, type BadgeDef } from './ritual-markers';
 import { getDismissedBadgeIds, dismissBadgeReveal } from '../lib/ritualReveal';
@@ -25,6 +26,7 @@ import { prefetchMyMornings, prefetchWorldGallery } from '@/lib/screenDataCache'
 import DawnCardBottomSheet from '../components/DawnCardBottomSheet';
 import { useDawnCardBottomSheet } from '../hooks/useDawnCardBottomSheet';
 import { getTodayDawnCard, type DawnCard } from '../data/dawnCards';
+import { useUIState } from '@/store/uiState';
 
 // ----- Streak (same logic as elsewhere) -----
 const YMD_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -156,6 +158,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const Dawn = useDawn();
   const { mode } = useAppTheme();
+  const { setBackgroundMode } = useUIState();
   const isMorningLight = mode === 'morning-light';
   const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   const [profile, setProfile] = useState<{ first_name: string | null; city: string | null } | null>(null);
@@ -315,6 +318,10 @@ export default function HomeScreen() {
   }, [loadData]);
 
   useEffect(() => {
+    setBackgroundMode(loggedToday ? 'postLog' : 'default');
+  }, [loggedToday, setBackgroundMode]);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
@@ -455,16 +462,7 @@ export default function HomeScreen() {
                   : (firstName ? `${greeting} ${firstName}.` : `${greeting}.`)}
               </Text>
             </View>
-            <View style={styles.ritualIntroCard}>
-              <View style={styles.ritualIntroCardTitleRow}>
-                <Text style={styles.ritualIntroCardEmoji}>🌅</Text>
-                <Text style={styles.ritualIntroCardTitle}>A simple morning ritual</Text>
-              </View>
-              <Text style={styles.ritualIntroCardBody}>Step outside.</Text>
-              <Text style={styles.ritualIntroCardBody}>Notice the sunrise.</Text>
-              <Text style={styles.ritualIntroCardBody}>Mark the moment.</Text>
-              <Text style={styles.ritualIntroCardSupport}>Showing up counts.</Text>
-            </View>
+            <RitualIntroCarousel />
           </>
         )}
 
@@ -524,32 +522,31 @@ export default function HomeScreen() {
             </View>
             {minutesToSunrise != null && minutesToSunrise > 10 ? (
               <>
-                <Text style={styles.sunriseContextCardBody}>
+                <Text style={styles.cardBodyLine}>
                   Sunrise in {cityName || 'your city'} will be at {formatSunriseTime(sunriseToday)}.
                 </Text>
-                <Text style={styles.sunriseContextCardSub}>
+                <Text style={[styles.cardBodyLine, styles.cardBodyLineSecond]}>
                   {sunriseCardTimeMessage ?? 'The morning is on its way.'}
                 </Text>
               </>
             ) : minutesToSunrise != null && minutesToSunrise >= -10 && minutesToSunrise <= 10 ? (
               <>
-                <Text style={styles.sunriseContextCardBody}>
+                <Text style={styles.cardBodyLine}>
                   Sunrise in {cityName || 'your city'} will be at {formatSunriseTime(sunriseToday)}.
                 </Text>
-                <Text style={styles.sunriseContextCardSub}>The show is on. Step outside.</Text>
+                <Text style={[styles.cardBodyLine, styles.cardBodyLineSecond]}>The show is on. Step outside.</Text>
               </>
             ) : sunrisePassed ? (
               <>
-                <Text style={styles.sunriseContextCardBody}>
-                  Sunrise in {cityName || 'your city'} was at {formatSunriseTime(sunriseToday)}. You can still mark the moment.
-                </Text>
+                <Text style={styles.cardBodyLine}>Sunrise in {cityName || 'your city'} was at {formatSunriseTime(sunriseToday)}.</Text>
+                <Text style={[styles.cardBodyLine, styles.cardBodyLineSecond]}>It{"’"}s still part of your day.</Text>
               </>
             ) : (
               <>
-                <Text style={styles.sunriseContextCardBody}>
+                <Text style={styles.cardBodyLine}>
                   Sunrise in {cityName || 'your city'} will be at {formatSunriseTime(sunriseToday)}.
                 </Text>
-                <Text style={styles.sunriseContextCardSub}>
+                <Text style={[styles.cardBodyLine, styles.cardBodyLineSecond]}>
                   {sunriseCardTimeMessage ?? 'The morning is on its way.'}
                 </Text>
               </>
@@ -571,7 +568,7 @@ export default function HomeScreen() {
                 onPress={() => router.push('/tomorrow-plan')}
               >
                 <Text style={styles.modeCardTitle}>
-                  {tomorrowPlan.exists ? "Tomorrow's plan is set" : 'Moving at dawn could be beautiful.'}
+                  {tomorrowPlan.exists ? "Tomorrow's plan is set" : 'Dawn is always beautiful.'}
                 </Text>
                 {tomorrowPlan.exists && tomorrowPlan.alarmTime != null ? (
                   <>
@@ -584,7 +581,7 @@ export default function HomeScreen() {
                   <Text style={styles.modeCardDesc}>
                     {tomorrowPlan.exists
                       ? getTomorrowPlanSubtext(tomorrowPlan.place, tomorrowPlan.alarmSet)
-                      : 'The same sunrise reveals differently from different vantages.'}
+                      : 'It reveals differently from different vantages.'}
                   </Text>
                 )}
                 {!tomorrowPlan.exists && tomorrowSunriseLine ? (
@@ -717,14 +714,16 @@ export default function HomeScreen() {
         ) : newUserReturningPostSunrise || newUserPostSunrise ? (
           /* First-time user, post-sunrise: single merged card — Log for today + plan for tomorrow link */
           <>
-            <Text style={[styles.centerQuestion, styles.centerQuestionHeadline]}>Your first sunrise moment is waiting.</Text>
+            <Text style={[styles.centerQuestion, styles.centerQuestionHeadline, { marginTop: 0, marginBottom: 12 }]}>
+              Your first sunrise moment awaits.
+            </Text>
             <View style={styles.cardsBlockBeforeAction}>
               <Pressable
                 style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
                 onPress={handleOpenWitness}
               >
                 <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>Ready to log it?</Text>
-                <Text style={styles.modeCardDesc}>If you welcomed the day today.</Text>
+                <Text style={styles.modeCardDesc}>You can still mark it.</Text>
                 <View style={styles.modeCardButton}>
                   <Text style={styles.modeCardButtonText}>Log for today</Text>
                 </View>
@@ -850,9 +849,9 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
     paddingBottom: 40,
-    paddingTop: 4,
+    paddingTop: 12,
   },
   tagline: {
     marginTop: 12,
@@ -865,7 +864,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     borderRadius: 16,
     paddingVertical: 16,
     paddingHorizontal: 22,
-    marginBottom: 20,
+    marginBottom: 16,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.soft,
@@ -887,23 +886,18 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     color: Dawn.text.primary,
     textAlign: 'center',
   },
-  ritualIntroCardBody: {
+  cardBodyLine: {
     fontSize: 14,
     lineHeight: 20,
+    fontWeight: '400',
     color: Dawn.text.secondary,
     textAlign: 'center',
-    marginTop: 4,
-    marginBottom: 0,
   },
-  ritualIntroCardSupport: {
-    fontSize: 12,
-    color: Dawn.text.secondary,
-    textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 18,
+  cardBodyLineSecond: {
+    marginTop: 6,
   },
   anchorBlock: {
-    marginBottom: 16,
+    marginBottom: 24,
   },
   anchorLine1: {
     fontSize: 15,
@@ -921,7 +915,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     borderRadius: 22,
     padding: 16,
     marginTop: 0,
-    marginBottom: 24,
+    marginBottom: 16,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.subtle,
@@ -987,11 +981,11 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     fontSize: 21,
     fontWeight: '600',
     color: Dawn.text.primary,
-    marginTop: 20,
-    marginBottom: 12,
+    marginTop: 24,
+    marginBottom: 16,
   },
   cardsBlockBeforeAction: {
-    marginTop: 20,
+    marginTop: 16,
   },
   cardsBlockFirstSunriseLogged: {
     marginTop: 0,
@@ -1000,7 +994,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     marginBottom: 24,
   },
   modeCardLinkWrap: {
-    marginTop: 24,
+    marginTop: 12,
     paddingVertical: 10,
     minHeight: 40,
     justifyContent: 'center',
@@ -1042,8 +1036,8 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   modeCard: {
     backgroundColor: Dawn.surface.card,
     borderRadius: 16,
-    padding: 16,
-    marginBottom: 24,
+    padding: 18,
+    marginBottom: 16,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.subtle,
@@ -1072,7 +1066,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     lineHeight: 22,
     fontWeight: '600',
     color: Dawn.text.primary,
-    marginBottom: 8,
+    marginBottom: 6,
     textAlign: 'center',
   },
   modeCardTitleSecondary: {
@@ -1085,11 +1079,11 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     fontSize: 14,
     color: Dawn.text.secondary,
     lineHeight: 22,
-    marginBottom: 2,
+    marginBottom: 4,
     textAlign: 'center',
   },
   modeCardButton: {
-    marginTop: 14,
+    marginTop: 12,
     alignSelf: 'center',
     paddingVertical: 10,
     paddingHorizontal: 18,

@@ -23,6 +23,10 @@ import { BADGE_ICONS } from './ritual-markers';
 import { normalizeVantageForStorage, getNormalizedVantageFromRow } from '../lib/vantageUtils';
 import { getCoordinatesForCity } from '../services/weatherService';
 import { invokeModerateImage } from '../lib/moderateImageInvoke';
+import DawnCardBottomSheet from '../components/DawnCardBottomSheet';
+import { getEchoVariant } from '@/lib/echoDawnCard';
+import { getCachedDawnCard } from '@/lib/dawnCards';
+import { useUIState } from '@/store/uiState';
 
 const REFLECTION_PROMPTS = [
   'What are you grateful for this morning?',
@@ -295,12 +299,20 @@ export function SunriseLog({
 }: SunriseLogProps) {
   const Dawn = useDawn();
   const { mode } = useAppTheme();
+  const { setBackgroundMode } = useUIState();
   const isMorningLight = mode === 'morning-light';
   const styles = React.useMemo(() => makeStyles(Dawn, isMorningLight), [Dawn, isMorningLight]);
   const photoBucket = 'sunrise_photos';
   const pendingBucket = 'uploads_pending';
   const reflectionDebounceMs = 800;
   const signedUrlExpirySeconds = 60 * 60; // 1 hour
+
+  const [showEchoCard, setShowEchoCard] = useState(false);
+  const [echoCard, setEchoCard] = useState<{ verb: string; text: string } | null>(null);
+
+  useEffect(() => {
+    setBackgroundMode(hasLogged ? 'postLog' : 'default');
+  }, [hasLogged, setBackgroundMode]);
 
   const resolvePhotoDisplayUrl = async (
     photo_url: string | null | undefined,
@@ -1557,6 +1569,17 @@ export function SunriseLog({
             deferredRefreshRef.current = null;
             setRefreshTrigger((t) => t + 1);
           }, 2500);
+
+          // Echo Dawn Card (non-blocking, auto-fade). Uses cached "today" verb (no recompute).
+          const verb = getCachedDawnCard()?.verb ?? 'RESET';
+          const echoText = getEchoVariant(verb);
+          if (echoText) {
+            setEchoCard({ verb, text: echoText });
+            setShowEchoCard(true);
+          }
+
+          // Subtle global lift after logging.
+          setTimeout(() => setBackgroundMode('postLog'), 300);
         }}
         onModerationComplete={() => setRefreshTrigger((t) => t + 1)}
         onPlanForTomorrow={() => router.push('/tomorrow-plan')}
@@ -1564,6 +1587,19 @@ export function SunriseLog({
         sunriseTime={sunriseToday}
         initialVantageName={initialVantageName}
       />
+
+      {showEchoCard && echoCard ? (
+        <DawnCardBottomSheet
+          verb={echoCard.verb}
+          text={echoCard.text}
+          autoDismiss
+          duration={3400}
+          onDismissed={() => {
+            setShowEchoCard(false);
+            setEchoCard(null);
+          }}
+        />
+      ) : null}
     </View>
   );
 }

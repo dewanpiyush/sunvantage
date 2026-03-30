@@ -24,6 +24,10 @@ import { BADGE_ICONS } from './ritual-markers';
 import { useDawn } from '@/hooks/use-dawn';
 import { useAppTheme } from '@/context/AppThemeContext';
 import ScreenLayout from '@/components/ScreenLayout';
+import DawnCardBottomSheet from '../components/DawnCardBottomSheet';
+import { getEchoVariant } from '@/lib/echoDawnCard';
+import { getCachedDawnCard } from '@/lib/dawnCards';
+import { useUIState } from '@/store/uiState';
 
 type TodayLogDetails = {
   vantage_name: string | null;
@@ -79,6 +83,7 @@ function formatSunriseTime(hhmm: string | null): string {
 export default function VantageWalkScreen() {
   const Dawn = useDawn();
   const { mode } = useAppTheme();
+  const { setBackgroundMode } = useUIState();
   const isMorningLight = mode === 'morning-light';
   const styles = React.useMemo(() => makeStyles(Dawn, isMorningLight), [Dawn, isMorningLight]);
   const [profileCity, setProfileCity] = useState<string | null>(null);
@@ -96,9 +101,16 @@ export default function VantageWalkScreen() {
   const previousEarnedBadgeIdsRef = useRef<string[]>([]);
   const justSavedRef = useRef(false);
 
+  const [showEchoCard, setShowEchoCard] = useState(false);
+  const [echoCard, setEchoCard] = useState<{ verb: string; text: string } | null>(null);
+
   const { sunriseToday, sunriseTomorrow, sunriseCardTimeMessage, sunrisePassed } = useMorningContext(profileCity ?? null);
   const loggedToday = hasLoggedToday(logs);
   const isPostSunriseRetrospective = sunrisePassed === true && !loggedToday;
+
+  useEffect(() => {
+    setBackgroundMode(loggedToday ? 'postLog' : 'default');
+  }, [loggedToday, setBackgroundMode]);
 
   const loadProfile = useCallback(async () => {
     setStreakLoading(true);
@@ -222,7 +234,7 @@ export default function VantageWalkScreen() {
 
   useEffect(() => {
     loadLogs();
-  }, [loadLogs]);
+  }, [loadLogs, setBackgroundMode]);
 
   const handleStartWalk = () => {
     setWalkStarted(true);
@@ -235,7 +247,17 @@ export default function VantageWalkScreen() {
   const handleLogCardSaved = useCallback((_result: SunriseLogSaveResult) => {
     justSavedRef.current = true;
     loadLogs();
-  }, [loadLogs]);
+
+    // Echo Dawn Card (non-blocking, auto-fade). Uses cached "today" verb (no recompute).
+    const verb = getCachedDawnCard()?.verb ?? 'RESET';
+    const echoText = getEchoVariant(verb);
+    if (echoText) {
+      setEchoCard({ verb, text: echoText });
+      setShowEchoCard(true);
+    }
+
+    setTimeout(() => setBackgroundMode('postLog'), 300);
+  }, [loadLogs, setBackgroundMode]);
 
   return (
     <View style={styles.container}>
@@ -429,6 +451,19 @@ export default function VantageWalkScreen() {
         sunriseTime={sunriseToday}
         initialVantageName={null}
       />
+
+      {showEchoCard && echoCard ? (
+        <DawnCardBottomSheet
+          verb={echoCard.verb}
+          text={echoCard.text}
+          autoDismiss
+          duration={3400}
+          onDismissed={() => {
+            setShowEchoCard(false);
+            setEchoCard(null);
+          }}
+        />
+      ) : null}
     </View>
   );
 }

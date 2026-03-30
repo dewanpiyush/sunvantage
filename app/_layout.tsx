@@ -11,6 +11,8 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { fetchProfileCompleteness } from '@/lib/profileGuard';
 import { Dawn } from '@/constants/theme';
 import { AppThemeProvider, useAppTheme } from '@/context/AppThemeContext';
+import { UIStateProvider } from '@/store/uiState';
+import AppBackground from '@/components/AppBackground';
 
 const PUBLIC_PATHS = new Set(['', '/', 'auth', 'onboarding']);
 
@@ -80,7 +82,9 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   return (
     <AppThemeProvider>
-      <RootLayoutInner />
+      <UIStateProvider>
+        <RootLayoutInner />
+      </UIStateProvider>
     </AppThemeProvider>
   );
 }
@@ -95,12 +99,14 @@ function RootLayoutInner() {
 
   return (
     <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <OnboardingGuard>
-        <Stack screenOptions={{ headerShown: false }}>
-          {/* All routes in the `app` folder (index, auth, onboarding, tabs, etc.)
-              are automatically registered by expo-router. */}
-        </Stack>
-      </OnboardingGuard>
+      <AppBackground>
+        <OnboardingGuard>
+          <Stack screenOptions={{ headerShown: false }}>
+            {/* All routes in the `app` folder (index, auth, onboarding, tabs, etc.)
+                are automatically registered by expo-router. */}
+          </Stack>
+        </OnboardingGuard>
+      </AppBackground>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
     </ThemeProvider>
   );
