@@ -53,3 +53,13 @@ export function getTerminatorGeometry(date: Date): GeoPermissibleObjects {
   return circle();
 }
 
+/**
+ * Same spherical disk as the terminator (night hemisphere): antipode of subsolar, 90° radius.
+ * Higher precision for a smoother dark fill than the stroke path.
+ */
+export function getNightHemisphereGeometry(date: Date): GeoPermissibleObjects {
+  const subsolar = getSubsolarPoint(date);
+  const nightCenter = antipode(subsolar);
+  return geoCircle().center(nightCenter).radius(90).precision(0.5)();
+}
+

@@ -22,6 +22,9 @@ import { useAppTheme } from '@/context/AppThemeContext';
 import { runPendingModerationRecoveryDebounced } from '@/lib/pendingModerationRecovery';
 import ScreenLayout from '@/components/ScreenLayout';
 import { prefetchMyMornings, prefetchWorldGallery } from '@/lib/screenDataCache';
+import DawnCardBottomSheet from '../components/DawnCardBottomSheet';
+import { useDawnCardBottomSheet } from '../hooks/useDawnCardBottomSheet';
+import { getTodayDawnCard, type DawnCard } from '../data/dawnCards';
 
 // ----- Streak (same logic as elsewhere) -----
 const YMD_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -285,6 +288,14 @@ export default function HomeScreen() {
   }, []);
 
   const loggedToday = hasLoggedToday(logs);
+  const { shouldShow: showDawnCard, dismiss: dismissDawnCard } = useDawnCardBottomSheet({
+    enabled: !loading,
+    hasLoggedToday: loggedToday,
+  });
+  const [dawnCard, setDawnCard] = useState<DawnCard>({
+    verb: 'RESET',
+    text: 'The sun does not carry yesterday.\nNeither do you have to.',
+  });
   const firstName = profile?.first_name ?? null;
   const cityName = profile?.city ?? null;
   const totalSunrises = logs.length;
@@ -302,6 +313,21 @@ export default function HomeScreen() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const c = await getTodayDawnCard();
+        if (!cancelled) setDawnCard(c);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadTomorrowPlan = useCallback(async () => {
     try {
@@ -776,6 +802,10 @@ export default function HomeScreen() {
           </>
         )}
       </ScreenLayout>
+
+      {showDawnCard ? (
+        <DawnCardBottomSheet verb={dawnCard.verb} text={dawnCard.text} onDismissed={dismissDawnCard} />
+      ) : null}
     </View>
   );
 }
