@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, Text, Pressable, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, TextInput, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, Animated, Easing } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -392,6 +392,7 @@ export function SunriseLog({
   const [showLogCard, setShowLogCard] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [justLanded, setJustLanded] = useState(false);
+  const [showSaved, setShowSaved] = useState(false);
   const [revealBadge, setRevealBadge] = useState<BadgeDef | null>(null);
   const router = useRouter();
   const scrollRef = useRef<ScrollView>(null);
@@ -400,6 +401,9 @@ export function SunriseLog({
   const justLandedRef = useRef(false);
   const pageCardOpacity = useRef(new Animated.Value(1)).current;
   const pageCardScale = useRef(new Animated.Value(1)).current;
+  const savedOpacity = useRef(new Animated.Value(1)).current;
+  const memorySettleY = useRef(new Animated.Value(0)).current;
+  const savedFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sunriseCardGlow = useRef(new Animated.Value(0)).current;
   const breathPhase = useRef(new Animated.Value(0)).current;
 
@@ -432,8 +436,34 @@ export function SunriseLog({
   useEffect(() => {
     return () => {
       if (deferredRefreshRef.current) clearTimeout(deferredRefreshRef.current);
+      if (savedFadeTimerRef.current) clearTimeout(savedFadeTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!showSaved) return;
+    if (savedFadeTimerRef.current) clearTimeout(savedFadeTimerRef.current);
+
+    savedFadeTimerRef.current = setTimeout(() => {
+      Animated.timing(savedOpacity, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => {
+        setShowSaved(false);
+        Animated.timing(memorySettleY, {
+          toValue: -6,
+          duration: 280,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.quad),
+        }).start();
+      });
+    }, 1800);
+
+    return () => {
+      if (savedFadeTimerRef.current) clearTimeout(savedFadeTimerRef.current);
+    };
+  }, [memorySettleY, savedOpacity, showSaved]);
 
   // Time-aware radial glow: smooth transition when intensity changes
   useEffect(() => {
@@ -715,6 +745,13 @@ export function SunriseLog({
 
     loadTodayLog();
   }, [refreshTrigger]);
+
+  useFocusEffect(
+    useCallback(() => {
+      // Always refresh from source-of-truth when returning to Today.
+      setRefreshTrigger((t) => t + 1);
+    }, [])
+  );
 
   const handleVantageBlurRef = useRef<() => void>(() => {});
   useEffect(() => {
@@ -1281,6 +1318,7 @@ export function SunriseLog({
               <Animated.View
                 style={[
                   styles.sunriseContextCard,
+                  hasActiveLog ? styles.sunriseContextCardPostLog : null,
                   {
                     shadowColor: 'rgb(255,180,80)',
                     shadowOffset: { width: 0, height: 0 },
@@ -1344,9 +1382,11 @@ export function SunriseLog({
                 <Animated.View
                   style={[
                     styles.yourMorningCard,
+                    hasActiveLog ? styles.yourMorningCardPostLog : null,
+                    !showSaved ? styles.yourMorningCardCompact : null,
                     {
                       opacity: pageCardOpacity,
-                      transform: [{ scale: pageCardScale }],
+                      transform: [{ translateY: memorySettleY }, { scale: pageCardScale }],
                     },
                   ]}
                 >
@@ -1505,10 +1545,12 @@ export function SunriseLog({
                     )}
                   </View>
 
-                  <View style={styles.yourMorningSaved}>
-                    <Text style={styles.yourMorningSavedCheck}>✓ Saved</Text>
-                    <Text style={styles.yourMorningSavedCopy}>Just between you and the moment.</Text>
-                  </View>
+                  {showSaved ? (
+                    <Animated.View style={[styles.yourMorningSaved, { opacity: savedOpacity }]}>
+                      <Text style={styles.yourMorningSavedCheck}>✓ Saved</Text>
+                      <Text style={styles.yourMorningSavedCopy}>Just between you and the moment.</Text>
+                    </Animated.View>
+                  ) : null}
                 </Animated.View>
               )}
 
@@ -1564,6 +1606,9 @@ export function SunriseLog({
           }
           setJustLanded(true);
           justLandedRef.current = true;
+          setShowSaved(true);
+          savedOpacity.setValue(1);
+          memorySettleY.setValue(0);
           if (deferredRefreshRef.current) clearTimeout(deferredRefreshRef.current);
           deferredRefreshRef.current = setTimeout(() => {
             deferredRefreshRef.current = null;
@@ -1758,6 +1803,10 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.sunriseCard,
     elevation: 2,
     alignSelf: 'stretch',
+  },
+  sunriseContextCardPostLog: {
+    borderColor: Dawn.border.subtle,
+    shadowOpacity: 0.04,
   },
   sunriseContextCardCityTime: {
     fontSize: 14,
@@ -1964,6 +2013,14 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     padding: 20,
     borderWidth: 1,
     borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.subtle,
+  },
+  yourMorningCardPostLog: {
+    borderColor: Dawn.border.sunriseCard,
+    borderWidth: 1.2,
+  },
+  yourMorningCardCompact: {
+    paddingBottom: 16,
+    marginBottom: 12,
   },
   yourMorningHeader: {
     flexDirection: 'row',

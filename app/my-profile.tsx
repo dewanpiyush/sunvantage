@@ -19,6 +19,7 @@ import { BADGE_REGISTRY, BADGE_ICONS, computeBadgeStats } from './ritual-markers
 import SunVantageHeader from '../components/SunVantageHeader';
 import { hasLoggedToday } from '../lib/hasLoggedToday';
 import { useDawn } from '@/hooks/use-dawn';
+import { useUIState } from '@/store/uiState';
 
 const AVATAR_BUCKET = 'avatars';
 const AVATAR_SIZE = 512;
@@ -158,6 +159,7 @@ export default function MyProfileScreen() {
   const router = useRouter();
   const Dawn = useDawn();
   const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
+  const { setBackgroundMode } = useUIState();
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -382,6 +384,10 @@ export default function MyProfileScreen() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    setBackgroundMode(hasLoggedToday(logs) ? 'postLog' : 'default');
+  }, [logs, setBackgroundMode]);
+
   const createdAts = logs.map((r) => r.created_at);
   const streak = computeStreakFromLogDates(createdAts);
   const totalMornings = logs.length;
@@ -417,9 +423,6 @@ export default function MyProfileScreen() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <View style={styles.gradientTop} pointerEvents="none" />
-        <View style={styles.gradientMid} pointerEvents="none" />
-        <View style={styles.gradientLowerWarm} pointerEvents="none" />
         <View style={styles.centered}>
           <ActivityIndicator color={Dawn.accent.sunrise} />
           <Text style={styles.loadingText}>Loading…</Text>
@@ -430,10 +433,6 @@ export default function MyProfileScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.gradientTop} pointerEvents="none" />
-      <View style={styles.gradientMid} pointerEvents="none" />
-      <View style={styles.gradientLowerWarm} pointerEvents="none" />
-
       <View style={styles.header}>
         <SunVantageHeader
           title="Profile"
@@ -495,7 +494,7 @@ export default function MyProfileScreen() {
                     ) : null}
                   </Pressable>
                   <Text style={styles.avatarCaption}>
-                    {uploadingAvatar ? 'Updating photo...' : profile?.avatar_url ? 'Change photo' : 'Add photo'}
+                    {uploadingAvatar ? 'Updating photo...' : profile?.avatar_url ? 'Change photo' : 'Add a photo'}
                   </Text>
                 </View>
               </View>
@@ -513,11 +512,23 @@ export default function MyProfileScreen() {
               <Text style={[styles.cardPrimary, styles.streakPrimaryLine]}>
                 {getStreakContextMessage(streak.current, streak.longest)}
               </Text>
-              <Text style={[styles.cardMeta, styles.streakMetaLine]}>
-                Longest: {streak.longest} · {totalMornings} morning{totalMornings === 1 ? '' : 's'}
-              </Text>
+              {totalMornings > 0 ? (
+                <Text style={[styles.cardMeta, styles.streakMetaLine]}>
+                  Longest: {streak.longest} · {totalMornings} morning{totalMornings === 1 ? '' : 's'}
+                </Text>
+              ) : null}
             </View>
           </View>
+
+          {/* 3. New-user journey card */}
+          {totalMornings === 0 ? (
+            <View style={styles.card}>
+              <View style={styles.cardInner}>
+                <Text style={[styles.cardTitle, styles.journeyTitle]}>🌄 Your mornings will take shape here</Text>
+                <Text style={[styles.cardMeta, styles.journeyMeta]}>Each sunrise adds to your journey</Text>
+              </View>
+            </View>
+          ) : null}
 
           {/* 3. Places of sunrise card */}
           {hasMovement && (
@@ -675,27 +686,6 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     backgroundColor: Dawn.background.primary,
     paddingTop: 52,
   },
-  gradientTop: {
-    ...StyleSheet.absoluteFillObject,
-    height: '50%',
-    backgroundColor: Dawn.background.primary,
-  },
-  gradientMid: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '35%',
-    height: '30%',
-    backgroundColor: 'rgba(148, 163, 184, 0.055)',
-  },
-  gradientLowerWarm: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '50%',
-    bottom: 0,
-    backgroundColor: 'rgba(255, 179, 71, 0.058)',
-  },
   header: {
     paddingHorizontal: 24,
     marginBottom: 20,
@@ -816,6 +806,13 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     paddingHorizontal: 8,
   },
   streakMetaLine: {
+    textAlign: 'center',
+  },
+  journeyTitle: {
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  journeyMeta: {
     textAlign: 'center',
   },
   placesTitleSpacing: {

@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import supabase from '../supabase';
 import { Dawn } from '../constants/theme';
 import { fetchProfileCompleteness } from '../lib/profileGuard';
@@ -32,6 +33,7 @@ export default function AuthScreen() {
   const [message, setMessage] = useState('');
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
 
@@ -178,18 +180,33 @@ export default function AuthScreen() {
 
               <View style={styles.fieldGroup}>
                 <Text style={styles.label}>Password</Text>
-                <TextInput
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="Minimum 6 characters"
-                  placeholderTextColor="rgba(220, 218, 212, 0.6)"
-                  secureTextEntry
-                  onFocus={() => setPasswordFocused(true)}
-                  onBlur={() => setPasswordFocused(false)}
-                  style={[styles.input, passwordFocused && styles.inputFocused]}
-                  returnKeyType="done"
-                  onSubmitEditing={handleAuth}
-                />
+                <View style={styles.inputWrap}>
+                  <TextInput
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Minimum 6 characters"
+                    placeholderTextColor="rgba(220, 218, 212, 0.6)"
+                    secureTextEntry={!passwordVisible}
+                    onFocus={() => setPasswordFocused(true)}
+                    onBlur={() => setPasswordFocused(false)}
+                    style={[styles.input, styles.inputWithRightIcon, passwordFocused && styles.inputFocused]}
+                    returnKeyType="done"
+                    onSubmitEditing={handleAuth}
+                  />
+                  <Pressable
+                    onPress={() => setPasswordVisible((v) => !v)}
+                    hitSlop={10}
+                    style={({ pressed }) => [styles.inputRightIcon, pressed && { opacity: 0.65 }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'}
+                  >
+                    <Ionicons
+                      name={passwordVisible ? 'eye-off-outline' : 'eye-outline'}
+                      size={18}
+                      color="rgba(220, 218, 212, 0.62)"
+                    />
+                  </Pressable>
+                </View>
               </View>
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -328,6 +345,22 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(42, 70, 107, 0.55)',
     color: Dawn.text.primary,
     backgroundColor: Dawn.surface.card,
+  },
+  inputWrap: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  inputWithRightIcon: {
+    paddingRight: 46,
+  },
+  inputRightIcon: {
+    position: 'absolute',
+    right: 16,
+    height: 46,
+    width: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.9,
   },
   inputFocused: {
     borderColor: 'rgba(255, 179, 71, 0.95)',

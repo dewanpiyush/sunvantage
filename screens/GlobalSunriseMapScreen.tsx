@@ -15,7 +15,6 @@ import UserCityDot from '@/components/map/UserCityDot';
 import GlobalSunriseStats from '@/components/GlobalSunriseStats';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useDawn } from '@/hooks/use-dawn';
-import { useAppTheme } from '@/context/AppThemeContext';
 import { fetchGlobalSunriseLogs, type CityLogAggregate } from '@/lib/fetchGlobalSunriseLogs';
 import supabase from '@/supabase';
 
@@ -26,9 +25,7 @@ const DEFAULT_USER_CITY = { city: 'Delhi', lat: 28.6139, lng: 77.209 };
 export default function GlobalSunriseMapScreen() {
   const router = useRouter();
   const Dawn = useDawn();
-  const { mode } = useAppTheme();
-  const isMorningLight = mode === 'morning-light';
-  const styles = React.useMemo(() => makeStyles(Dawn, isMorningLight), [Dawn, isMorningLight]);
+  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   const [now, setNow] = useState(() => new Date());
   const { width, height } = useWindowDimensions();
   const [aggregate, setAggregate] = useState<{
@@ -119,7 +116,7 @@ export default function GlobalSunriseMapScreen() {
   }, [arcDrift, arcPulse]);
 
   const arcTranslateX = arcDrift.interpolate({ inputRange: [0, 1], outputRange: [-8, 8] });
-  const arcOpacity = arcPulse.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] });
+  const arcOpacity = arcPulse.interpolate({ inputRange: [0, 1], outputRange: [0.62, 0.75] });
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -155,14 +152,14 @@ export default function GlobalSunriseMapScreen() {
 
         {/* Subtle vignette to blend arc/map into the atmosphere. */}
         <LinearGradient
-          colors={['rgba(14,34,61,0.65)', 'rgba(14,34,61,0)']}
+          colors={['rgba(14,34,61,0.45)', 'rgba(14,34,61,0)']}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
           style={styles.vignetteTop}
           pointerEvents="none"
         />
         <LinearGradient
-          colors={['rgba(14,34,61,0)', 'rgba(14,34,61,0.55)']}
+          colors={['rgba(14,34,61,0)', 'rgba(14,34,61,0.35)']}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
           style={styles.vignetteBottom}
@@ -190,7 +187,7 @@ export default function GlobalSunriseMapScreen() {
   );
 }
 
-function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
+function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   return StyleSheet.create({
   safe: {
     flex: 1,
@@ -252,7 +249,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   },
   terminatorLabelText: {
     fontSize: 12,
-    color: isMorningLight ? Dawn.text.primary : '#E9F0FF',
+    color: '#E9F0FF',
   },
   vignetteTop: {
     position: 'absolute',

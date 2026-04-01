@@ -1,7 +1,10 @@
 /**
- * Gold sunrise terminator (instantaneous dawn line) plus dark fill for the night hemisphere.
- * Night side = geoCircle centered on subsolar antipode, radius 90° (same boundary as the stroke).
- * Uses same projection as WorldMap so it must receive matching width/height.
+ * Solar terminator overlay:
+ * - Base: soft warm tint (day / “revealed” feel).
+ * - Night hemisphere: dimmed fill from real geometry (antipode of subsolar, 90° radius).
+ * - Terminator arc: outer / mid / core stroke — “sunrise now” boundary (animated by parent).
+ *
+ * Uses the same Mercator projection as WorldMap via getMapProjection / getGeoPath.
  */
 
 import React, { useMemo } from 'react';
@@ -11,22 +14,18 @@ import { getTerminatorGeometry, getNightHemisphereGeometry } from '@/lib/sunTerm
 import { getMapProjection, getGeoPath } from '@/lib/mapProjection';
 
 const TERMINATOR_STROKE = '#F4C95D';
-// Layered glow band: outer → mid → core
 const OUTER_GLOW_WIDTH = 14;
 const OUTER_GLOW_OPACITY = 0.08;
 const MID_GLOW_WIDTH = 8;
 const MID_GLOW_OPACITY = 0.18;
 const CORE_STROKE_WIDTH = 2;
 const CORE_STROKE_OPACITY = 0.9;
-const NIGHT_HEMISPHERE_FILL = 'rgba(0,0,0,0.28)';
-const DAY_WARM_OVERLAY = 'rgba(244,201,93,0.07)';
+const DAY_BASE_FILL = 'rgba(244, 201, 93, 0.06)';
+const NIGHT_HEMISPHERE_FILL = 'rgba(0, 0, 0, 0.32)';
+
 /** Inset so terminator stroke never touches viewport edge (no visible gold frame). */
 const VIEWPORT_INSET = 10;
-/**
- * Extra top inset to ensure no horizontal gold line is visible where the
- * terminator crosses the top edge of the map container. Slightly larger
- * than before so the stroke is fully clipped off-screen.
- */
+/** Extra top inset so horizontal terminator segments at top are clipped. */
 const TOP_INSET_EXTRA = 32;
 
 type Props = {
@@ -67,28 +66,20 @@ export default function SunriseTerminator({ date, width: propWidth, height: prop
           <ClipPath id="terminatorClip">
             <Rect x={clipX} y={clipY} width={clipW} height={clipH} />
           </ClipPath>
-          {/* Brighter at center, softer at edges (same palette). */}
           <LinearGradient id="sunriseStroke" x1="0" y1="0" x2={width} y2="0">
             <Stop offset="0" stopColor={TERMINATOR_STROKE} stopOpacity="0.65" />
             <Stop offset="0.5" stopColor={TERMINATOR_STROKE} stopOpacity="1" />
             <Stop offset="1" stopColor={TERMINATOR_STROKE} stopOpacity="0.65" />
           </LinearGradient>
         </Defs>
-        {/* Day side: warm base (revealed); night hemisphere darkens on top */}
-        <Rect
-          x={0}
-          y={0}
-          width={width}
-          height={height}
-          fill={DAY_WARM_OVERLAY}
-          stroke="none"
-        />
-        {nightHemispherePath ? (
-          <Path d={nightHemispherePath} fill={NIGHT_HEMISPHERE_FILL} stroke="none" />
-        ) : null}
-        {/* Terminator strokes clipped so they never touch viewport edge (no gold frame) */}
+
+        {/* Base: soft day warmth (full map). */}
+        <Rect x={0} y={0} width={width} height={height} fill={DAY_BASE_FILL} stroke="none" />
+        {/* Night hemisphere: real spherical geometry. */}
+        {nightHemispherePath ? <Path d={nightHemispherePath} fill={NIGHT_HEMISPHERE_FILL} stroke="none" /> : null}
+
+        {/* Terminator glow + core (curved sunrise line). */}
         <G clipPath="url(#terminatorClip)">
-          {/* Outer glow */}
           <Path
             d={terminatorPath ?? undefined}
             fill="none"
@@ -98,7 +89,6 @@ export default function SunriseTerminator({ date, width: propWidth, height: prop
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-          {/* Mid glow */}
           <Path
             d={terminatorPath ?? undefined}
             fill="none"
@@ -108,7 +98,6 @@ export default function SunriseTerminator({ date, width: propWidth, height: prop
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-          {/* Core sunrise line */}
           <Path
             d={terminatorPath ?? undefined}
             fill="none"

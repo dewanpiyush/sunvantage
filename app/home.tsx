@@ -120,6 +120,50 @@ function getTomorrowSunriseLine(city: string | null, sunriseTomorrow: string | n
   return `${place} · Sunrise tomorrow: ${formatSunriseTime(sunriseTomorrow)}`;
 }
 
+function getNewUserLogCtaCopy(minutesToSunrise: number | null): { title: string; subtext: string; cta: string } {
+  if (minutesToSunrise == null) {
+    return {
+      title: 'Were you up at sunrise today?',
+      subtext: 'You can still mark it.',
+      cta: 'Log for today',
+    };
+  }
+
+  // A) Before sunrise (minutesToSunrise > 10)
+  if (minutesToSunrise > 10) {
+    return {
+      title: 'Will you be there today?',
+      subtext: 'You can plan to catch it.',
+      cta: 'Plan for sunrise',
+    };
+  }
+
+  // B) Live sunrise window (-10 to +10)
+  if (minutesToSunrise >= -10 && minutesToSunrise <= 10) {
+    return {
+      title: 'Are you watching the sunrise?',
+      subtext: 'This moment is happening now.',
+      cta: 'Log this moment',
+    };
+  }
+
+  // C) Dawn mode (outside live, within [-60, +30])
+  if (minutesToSunrise >= -60 && minutesToSunrise <= 30) {
+    return {
+      title: 'Are you out this morning?',
+      subtext: 'You can still mark the moment.',
+      cta: 'Log for today',
+    };
+  }
+
+  // D) Post sunrise (minutesToSunrise < -60)
+  return {
+    title: 'Were you up at sunrise today?',
+    subtext: 'You can still mark it.',
+    cta: 'Log for today',
+  };
+}
+
 function computeStreakFromLogDates(
   createdAts: string[]
 ): { current: number; longest: number } {
@@ -288,7 +332,7 @@ export default function HomeScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [router]);
 
   const loggedToday = hasLoggedToday(logs);
   const { shouldShow: showDawnCard, dismiss: dismissDawnCard } = useDawnCardBottomSheet({
@@ -302,8 +346,8 @@ export default function HomeScreen() {
   const firstName = profile?.first_name ?? null;
   const cityName = profile?.city ?? null;
   const totalSunrises = logs.length;
-  const isFirstSunrise = totalSunrises === 0;
   const showSunriseContextCard = sunrisePassed && !loggedToday;
+  const newUserCtaCopy = React.useMemo(() => getNewUserLogCtaCopy(minutesToSunrise), [minutesToSunrise]);
 
   const newUserPreSunrise = totalSunrises === 0 && minutesToSunrise != null && minutesToSunrise > 0;
   const newUserPostSunrise = totalSunrises === 0 && (minutesToSunrise == null || minutesToSunrise <= 0);
@@ -534,7 +578,7 @@ export default function HomeScreen() {
                 <Text style={styles.cardBodyLine}>
                   Sunrise in {cityName || 'your city'} will be at {formatSunriseTime(sunriseToday)}.
                 </Text>
-                <Text style={[styles.cardBodyLine, styles.cardBodyLineSecond]}>The show is on. Step outside.</Text>
+                <Text style={[styles.cardBodyLine, styles.cardBodyLineSecond]}>The light is arriving now.</Text>
               </>
             ) : sunrisePassed ? (
               <>
@@ -722,10 +766,10 @@ export default function HomeScreen() {
                 style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
                 onPress={handleOpenWitness}
               >
-                <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>Ready to log it?</Text>
-                <Text style={styles.modeCardDesc}>You can still mark it.</Text>
+                <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>{newUserCtaCopy.title}</Text>
+                <Text style={styles.modeCardDesc}>{newUserCtaCopy.subtext}</Text>
                 <View style={styles.modeCardButton}>
-                  <Text style={styles.modeCardButtonText}>Log for today</Text>
+                  <Text style={styles.modeCardButtonText}>{newUserCtaCopy.cta}</Text>
                 </View>
                 <Pressable
                   style={({ pressed }) => [styles.modeCardLinkWrap, pressed && styles.modeCardPressed]}

@@ -34,6 +34,9 @@ const ANIM_OUT_MS = 320;
 const ECHO_FADE_IN_MS = 250;
 const ECHO_FADE_OUT_MS = 900;
 const ECHO_TAP_FADE_OUT_MS = 260;
+/** Echo card: compact “moment” — max ~30% screen, min for readability. */
+const ECHO_HEIGHT_RATIO_CAP = 0.3;
+const ECHO_MIN_HEIGHT = 240;
 const DISMISS_DRAG_THRESHOLD_PX_FLOOR = 90;
 const TAP_DY_TOLERANCE_PX = 6;
 const TAP_VELOCITY_TOLERANCE = 0.55;
@@ -48,11 +51,15 @@ export default function DawnCardBottomSheet({
   onDismissed,
 }: DawnCardBottomSheetProps) {
   const insets = useSafeAreaInsets();
-  const sheetHeight = useMemo(() => Math.round(Dimensions.get('window').height * heightRatio), [heightRatio]);
+  const windowH = Dimensions.get('window').height;
+  const sheetHeight = useMemo(() => Math.round(windowH * heightRatio), [heightRatio]);
+  const echoMaxHeight = Math.round(windowH * ECHO_HEIGHT_RATIO_CAP);
 
   const isIOS = Platform.OS === 'ios';
   const translateY = useSharedValue(sheetHeight);
   const sheetOpacity = useSharedValue(autoDismiss ? 0 : 1);
+  /** Echo only: gentle scale-in (0.96 → 1); unused in modal path. */
+  const echoScale = useSharedValue(0.96);
   // iOS only: fade the dim overlay in/out.
   // On Android, dim overlay remains constant (no opacity animation).
   const overlayOpacity = useSharedValue(isIOS ? 0 : 1);
@@ -92,10 +99,16 @@ export default function DawnCardBottomSheet({
       translateY.value = 0;
       if (reduceMotionEnabled) {
         sheetOpacity.value = 1;
+        echoScale.value = 1;
         return;
       }
       sheetOpacity.value = 0;
+      echoScale.value = 0.96;
       sheetOpacity.value = withTiming(1, {
+        duration: ECHO_FADE_IN_MS,
+        easing: Easing.out(Easing.quad),
+      });
+      echoScale.value = withTiming(1, {
         duration: ECHO_FADE_IN_MS,
         easing: Easing.out(Easing.quad),
       });
@@ -121,7 +134,7 @@ export default function DawnCardBottomSheet({
         easing: Easing.out(Easing.quad),
       });
     }
-  }, [autoDismiss, isIOS, overlayOpacity, reduceMotionEnabled, sheetHeight, sheetOpacity, translateY]);
+  }, [autoDismiss, echoScale, isIOS, overlayOpacity, reduceMotionEnabled, sheetHeight, sheetOpacity, translateY]);
 
   // Start animations on mount once reduce-motion preference is known.
   useEffect(() => {
@@ -144,6 +157,10 @@ export default function DawnCardBottomSheet({
         void Promise.resolve(onDismissed());
         return;
       }
+      echoScale.value = withTiming(0.96, {
+        duration: ECHO_FADE_OUT_MS,
+        easing: Easing.out(Easing.quad),
+      });
       sheetOpacity.value = withTiming(0, {
         duration: ECHO_FADE_OUT_MS,
         easing: Easing.out(Easing.quad),
@@ -155,7 +172,7 @@ export default function DawnCardBottomSheet({
     return () => {
       if (echoTimerRef.current) clearTimeout(echoTimerRef.current);
     };
-  }, [autoDismiss, duration, onDismissed, reduceMotionEnabled, reduceMotionReady, sheetOpacity]);
+  }, [autoDismiss, duration, echoScale, onDismissed, reduceMotionEnabled, reduceMotionReady, sheetOpacity]);
 
   const closeWithAnimation = useCallback(() => {
     if (autoDismiss) return;
@@ -233,6 +250,11 @@ export default function DawnCardBottomSheet({
     };
   }, [sheetOpacity, translateY]);
 
+  const echoAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: sheetOpacity.value,
+    transform: [{ scale: echoScale.value }],
+  }));
+
   const overlayAnimatedStyle = useAnimatedStyle(() => {
     return {
       opacity: overlayOpacity.value,
@@ -256,12 +278,16 @@ export default function DawnCardBottomSheet({
       return;
     }
 
+    echoScale.value = withTiming(0.96, {
+      duration: ECHO_TAP_FADE_OUT_MS,
+      easing: Easing.out(Easing.quad),
+    });
     sheetOpacity.value = withTiming(0, {
       duration: ECHO_TAP_FADE_OUT_MS,
       easing: Easing.out(Easing.quad),
     });
     dismissTimerRef.current = setTimeout(() => void Promise.resolve(onDismissed()), ECHO_TAP_FADE_OUT_MS + 20);
-  }, [autoDismiss, onDismissed, reduceMotionEnabled, sheetOpacity]);
+  }, [autoDismiss, onDismissed, reduceMotionEnabled, echoScale, sheetOpacity]);
 
   if (autoDismiss) {
     // Echo mode: auto-dismiss with tap-anywhere fallback.
@@ -270,42 +296,36 @@ export default function DawnCardBottomSheet({
         <Pressable style={StyleSheet.absoluteFill} onPress={dismissEchoFast} />
         <Animated.View
           style={[
-            styles.sheet,
+            styles.echoSheet,
             {
-              height: sheetHeight,
-              paddingBottom: Math.max(16, insets.bottom),
+              maxHeight: echoMaxHeight,
+              minHeight: ECHO_MIN_HEIGHT,
+              marginBottom: Math.max(16, insets.bottom + 8),
             },
-            sheetAnimatedStyle,
+            echoAnimatedStyle,
           ]}
         >
           <LinearGradient
-            // Same styling as the Dawn Card; copy differs.
+            // Halo, not a full sheet: softer stops, lighter anchor.
             colors={[
-              'rgba(28, 42, 74, 0.0)', // top clear
-              'rgba(52, 54, 118, 0.50)', // brighter indigo
-              'rgba(96, 72, 128, 0.70)', // lifted purple
-              'rgba(110, 78, 92, 0.78)', // subtle warm infusion
-              'rgba(28, 36, 60, 0.95)', // lifted base anchor
+              'rgba(28, 42, 74, 0.0)',
+              'rgba(52, 54, 118, 0.22)',
+              'rgba(96, 72, 128, 0.32)',
+              'rgba(110, 78, 92, 0.36)',
+              'rgba(28, 36, 60, 0.52)',
             ]}
-            locations={[0, 0.3, 0.52, 0.78, 1]}
+            locations={[0, 0.28, 0.5, 0.72, 1]}
             start={{ x: 0.5, y: 0 }}
             end={{ x: 0.5, y: 1 }}
             style={styles.sheetGradient}
           />
 
-          <View
-            style={[
-              styles.content,
-              {
-                paddingBottom: Math.min(110, Math.max(60, Math.round(sheetHeight * 0.275))),
-              },
-            ]}
-          >
-            <View style={styles.textBlock}>
-              <Text style={styles.verb} accessibilityRole="text">
+          <View style={styles.echoContent}>
+            <View style={styles.echoTextBlock}>
+              <Text style={styles.echoVerb} accessibilityRole="text">
                 {verb.toUpperCase()}
               </Text>
-              <Text style={styles.promptText} accessibilityRole="text">
+              <Text style={styles.echoPromptText} accessibilityRole="text">
                 {text}
               </Text>
             </View>
@@ -334,15 +354,16 @@ export default function DawnCardBottomSheet({
           ]}
         >
           <LinearGradient
-            // Final gradient: clear top → indigo → purple bridge → deep blue → bottom anchor.
+            // Top: strong dim (recedes header / cards behind sheet). Mid: indigo → purple identity.
+            // Bottom: slightly lighter anchor so copy zone breathes — atmospheric, not a flat scrim.
             colors={[
-              'rgba(28, 42, 74, 0.0)', // top clear
-              'rgba(44, 47, 106, 0.45)', // soft indigo
-              'rgba(72, 58, 120, 0.65)', // purple bridge
-              'rgba(28, 42, 74, 0.85)', // deep blue
-              'rgba(20, 28, 50, 0.95)', // bottom anchor
+              'rgba(20, 28, 50, 0.80)', // top: strong dim
+              'rgba(36, 42, 92, 0.72)', // deeper indigo
+              'rgba(72, 58, 120, 0.68)', // purple bridge (softened)
+              'rgba(28, 42, 74, 0.78)', // lifted deep blue
+              'rgba(20, 28, 50, 0.88)', // bottom anchor
             ]}
-            locations={[0, 0.35, 0.55, 0.75, 1]}
+            locations={[0, 0.25, 0.5, 0.75, 1]}
             start={{ x: 0.5, y: 0 }}
             end={{ x: 0.5, y: 1 }}
             style={styles.sheetGradient}
@@ -384,6 +405,47 @@ const styles = StyleSheet.create({
   echoRoot: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'flex-end',
+    alignItems: 'stretch',
+  },
+  echoSheet: {
+    marginHorizontal: 20,
+    alignSelf: 'stretch',
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(20, 28, 50, 0.22)',
+  },
+  echoContent: {
+    paddingVertical: 26,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  echoTextBlock: {
+    width: '80%',
+    alignItems: 'center',
+  },
+  echoVerb: {
+    fontSize: 17.5,
+    lineHeight: 21,
+    letterSpacing: 0.6,
+    color: 'rgba(255,255,255,0.78)',
+    fontWeight: '600',
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    textShadowColor: 'rgba(0,0,0,0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  echoPromptText: {
+    marginTop: 14,
+    fontSize: 14.5,
+    lineHeight: 22,
+    color: 'rgba(255,255,255,0.9)',
+    textAlign: 'center',
+    fontWeight: '400',
+    textShadowColor: 'rgba(0,0,0,0.22)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   root: {
     flex: 1,
@@ -391,7 +453,8 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    // Tinted dim only (no pure black) — matches dawn palette, softens detail behind sheet.
+    backgroundColor: 'rgba(20, 28, 50, 0.58)',
   },
   sheet: {
     width: '100%',

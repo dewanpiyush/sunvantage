@@ -5,10 +5,11 @@ import {
   Pressable,
   StyleSheet,
   Platform,
+  Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import supabase from '../supabase';
 import SunVantageHeader from '../components/SunVantageHeader';
 import StreakBlock from '../components/StreakBlock';
@@ -103,6 +104,10 @@ export default function VantageWalkScreen() {
 
   const [showEchoCard, setShowEchoCard] = useState(false);
   const [echoCard, setEchoCard] = useState<{ verb: string; text: string } | null>(null);
+  const [showSaved, setShowSaved] = useState(false);
+  const savedOpacity = useRef(new Animated.Value(1)).current;
+  const memorySettleY = useRef(new Animated.Value(0)).current;
+  const savedFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { sunriseToday, sunriseTomorrow, sunriseCardTimeMessage, sunrisePassed } = useMorningContext(profileCity ?? null);
   const loggedToday = hasLoggedToday(logs);
@@ -236,6 +241,39 @@ export default function VantageWalkScreen() {
     loadLogs();
   }, [loadLogs, setBackgroundMode]);
 
+  useFocusEffect(
+    useCallback(() => {
+      const refresh = async () => {
+        await loadLogs();
+      };
+      void refresh();
+    }, [loadLogs])
+  );
+
+  useEffect(() => {
+    if (!showSaved) return;
+    if (savedFadeTimerRef.current) clearTimeout(savedFadeTimerRef.current);
+
+    savedFadeTimerRef.current = setTimeout(() => {
+      Animated.timing(savedOpacity, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => {
+        setShowSaved(false);
+        Animated.timing(memorySettleY, {
+          toValue: -6,
+          duration: 280,
+          useNativeDriver: true,
+        }).start();
+      });
+    }, 1800);
+
+    return () => {
+      if (savedFadeTimerRef.current) clearTimeout(savedFadeTimerRef.current);
+    };
+  }, [memorySettleY, savedOpacity, showSaved]);
+
   const handleStartWalk = () => {
     setWalkStarted(true);
   };
@@ -246,6 +284,9 @@ export default function VantageWalkScreen() {
 
   const handleLogCardSaved = useCallback((_result: SunriseLogSaveResult) => {
     justSavedRef.current = true;
+    setShowSaved(true);
+    savedOpacity.setValue(1);
+    memorySettleY.setValue(0);
     loadLogs();
 
     // Echo Dawn Card (non-blocking, auto-fade). Uses cached "today" verb (no recompute).
@@ -257,7 +298,7 @@ export default function VantageWalkScreen() {
     }
 
     setTimeout(() => setBackgroundMode('postLog'), 300);
-  }, [loadLogs, setBackgroundMode]);
+  }, [loadLogs, memorySettleY, savedOpacity, setBackgroundMode]);
 
   return (
     <View style={styles.container}>
@@ -311,7 +352,7 @@ export default function VantageWalkScreen() {
 
         {/* Sunrise card — compressed 3-row layout (Witness/Vantage) */}
         {sunriseToday != null && (
-          <View style={styles.sunriseCard}>
+          <View style={[styles.sunriseCard, loggedToday ? styles.sunriseCardPostLog : null]}>
             <Text style={styles.sunEmoji}>☀️</Text>
             <Text style={styles.sunTitle}>Sunrise today</Text>
             <Text style={styles.sunriseCardCityTime}>
@@ -324,7 +365,14 @@ export default function VantageWalkScreen() {
         )}
 
         {loggedToday ? (
-          <View style={styles.memoryCard}>
+          <Animated.View
+            style={[
+              styles.memoryCard,
+              styles.memoryCardPostLog,
+              !showSaved ? styles.memoryCardCompact : null,
+              { transform: [{ translateY: memorySettleY }] },
+            ]}
+          >
             <View style={styles.memoryCardTop}>
               <View style={styles.titleRow}>
                 <Text style={styles.titleEmoji}>🌅</Text>
@@ -379,7 +427,13 @@ export default function VantageWalkScreen() {
                 </Pressable>
               </View>
             </View>
-          </View>
+            {showSaved ? (
+              <Animated.View style={[styles.memorySaved, { opacity: savedOpacity }]}>
+                <Text style={styles.memorySavedCheck}>✓ Saved</Text>
+                <Text style={styles.memorySavedCopy}>Just between you and the moment.</Text>
+              </Animated.View>
+            ) : null}
+          </Animated.View>
         ) : isPostSunriseRetrospective ? (
           <>
             <View style={styles.messageBlock}>
@@ -507,6 +561,10 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
+  sunriseCardPostLog: {
+    borderColor: Dawn.border.subtle,
+    shadowOpacity: 0.04,
+  },
   titleRowCentered: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -611,6 +669,14 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.subtle,
     alignItems: 'center',
   },
+  memoryCardPostLog: {
+    borderColor: Dawn.border.sunriseCard,
+    borderWidth: 1.2,
+  },
+  memoryCardCompact: {
+    paddingBottom: 16,
+    marginBottom: 12,
+  },
   memoryCardTop: {
     alignItems: 'center',
     marginBottom: 12,
@@ -678,6 +744,28 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     justifyContent: 'center',
     gap: 18,
     flexWrap: 'wrap',
+  },
+  memorySaved: {
+    marginTop: 8,
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: Dawn.border.subtle,
+    paddingTop: 8,
+    paddingBottom: 2,
+  },
+  memorySavedCheck: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(74, 222, 128, 0.95)',
+  },
+  memorySavedCopy: {
+    fontSize: 12,
+    color: Dawn.text.secondary,
+    textAlign: 'right',
+    flexShrink: 1,
   },
   actionLink: {
     paddingVertical: 4,
