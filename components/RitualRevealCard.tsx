@@ -18,6 +18,8 @@ export type RitualRevealCardProps = {
   visible: boolean;
   onDismiss: () => void;
   onViewMarkers?: () => void;
+  /** CTA should appear only in just-earned context, not on later revisit. */
+  showCta?: boolean;
   icon?: React.ReactNode;
   title: string;
   /** Concrete explanation, e.g. "You logged two reflections." */
@@ -33,6 +35,7 @@ export default function RitualRevealCard({
   visible,
   onDismiss,
   onViewMarkers,
+  showCta = true,
   icon,
   title,
   description,
@@ -82,6 +85,8 @@ export default function RitualRevealCard({
     });
   };
 
+  const resolvedDescription = description.replace(/^You welcomed/i, "You've welcomed");
+
   if (!visible) return null;
 
   return (
@@ -98,9 +103,8 @@ export default function RitualRevealCard({
         style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
         onPress={handleDismiss}
         accessibilityRole="button"
-        accessibilityLabel={`${title}. ${description}. ${ctaText}. Tap to dismiss.`}
+        accessibilityLabel={`${title}. ${resolvedDescription}.${showCta && onViewMarkers ? ` ${ctaText}.` : ''} Tap to dismiss.`}
       >
-        <View style={styles.glow} pointerEvents="none" />
         <View style={styles.inner}>
           <View style={styles.topRow}>
             <View style={styles.titleBlock}>
@@ -123,8 +127,8 @@ export default function RitualRevealCard({
               <Ionicons name="close" size={16} color={Dawn.text.secondary} />
             </Pressable>
           </View>
-          <Text style={styles.description}>{description}</Text>
-          {onViewMarkers ? (
+          <Text style={styles.description}>{resolvedDescription}</Text>
+          {showCta && onViewMarkers ? (
             <Pressable style={({ pressed }) => [styles.ctaLink, pressed && styles.ctaLinkPressed]} onPress={onViewMarkers}>
               <Text style={styles.ctaLinkText}>{ctaText} →</Text>
             </Pressable>
@@ -146,26 +150,18 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: Dawn.border.sunriseCard,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   cardPressed: {
     opacity: 0.98,
-  },
-  glow: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,180,80,0.06)',
-    borderTopLeftRadius: 80,
-    borderTopRightRadius: 80,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
   },
   inner: {
     backgroundColor: Dawn.surface.card,
     borderRadius: 15,
     margin: 1,
-    paddingTop: 14,
+    paddingTop: 12,
     paddingHorizontal: 16,
-    paddingBottom: 14,
+    paddingBottom: 12,
   },
   topRow: {
     flexDirection: 'row',
@@ -192,10 +188,11 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   iconWrap: {},
   iconEmoji: {
     fontSize: 18,
+    opacity: 0.8,
   },
   title: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '500',
     color: Dawn.text.primary,
     flex: 1,
   },
@@ -204,7 +201,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     color: Dawn.text.secondary,
     lineHeight: 19,
     marginTop: 6,
-    marginBottom: 10,
+    marginBottom: 0,
   },
   ctaLink: {
     alignSelf: 'flex-start',

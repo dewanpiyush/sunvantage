@@ -23,10 +23,9 @@ import { useAppTheme } from '@/context/AppThemeContext';
 import { runPendingModerationRecoveryDebounced } from '@/lib/pendingModerationRecovery';
 import ScreenLayout from '@/components/ScreenLayout';
 import { prefetchMyMornings, prefetchWorldGallery } from '@/lib/screenDataCache';
-import DawnCardBottomSheet from '../components/DawnCardBottomSheet';
-import { useDawnCardBottomSheet } from '../hooks/useDawnCardBottomSheet';
 import { getTodayDawnCard, type DawnCard } from '../data/dawnCards';
 import { useUIState } from '@/store/uiState';
+import SunriseStateCard from '@/components/SunriseStateCard';
 
 // ----- Streak (same logic as elsewhere) -----
 const YMD_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -224,7 +223,6 @@ export default function HomeScreen() {
     sunriseToday,
     sunriseTomorrow,
     isDawnMode,
-    sunriseCardTimeMessage,
   } = useMorningContext(profile?.city ?? null);
   const sunrisePassed = minutesToSunrise != null && minutesToSunrise < 0;
   const isPreSunrise = minutesToSunrise != null && minutesToSunrise > 0;
@@ -335,13 +333,10 @@ export default function HomeScreen() {
   }, [router]);
 
   const loggedToday = hasLoggedToday(logs);
-  const { shouldShow: showDawnCard, dismiss: dismissDawnCard } = useDawnCardBottomSheet({
-    enabled: !loading,
-    hasLoggedToday: loggedToday,
-  });
   const [dawnCard, setDawnCard] = useState<DawnCard>({
-    verb: 'RESET',
+    verb: 'WITNESS',
     text: 'The sun does not carry yesterday.\nNeither do you have to.',
+    completion: 'You were here.',
   });
   const firstName = profile?.first_name ?? null;
   const cityName = profile?.city ?? null;
@@ -529,6 +524,7 @@ export default function HomeScreen() {
                   }
                 }}
                 onViewMarkers={() => router.push('/ritual-markers')}
+                showCta={false}
                 icon={BADGE_ICONS[revealBadge.id]}
                 title={revealBadge.title}
                 description={revealBadge.earnedExplanation}
@@ -554,48 +550,12 @@ export default function HomeScreen() {
 
         {/* Sunrise card — when not logged yet; after logging, “today” moves below Plan (settled state) */}
         {!loggedToday ? (
-          <View
-            style={[
-              styles.sunriseContextCard,
-              minutesToSunrise != null && minutesToSunrise < -45 && styles.sunriseContextCardPostSunrise,
-            ]}
-          >
-            <View style={styles.sunriseCardHeadlineRow}>
-              <Text style={styles.sunEmoji}>☀️</Text>
-              <Text style={styles.sunTitle}>Sunrise today</Text>
-            </View>
-            {minutesToSunrise != null && minutesToSunrise > 10 ? (
-              <>
-                <Text style={styles.cardBodyLine}>
-                  Sunrise in {cityName || 'your city'} will be at {formatSunriseTime(sunriseToday)}.
-                </Text>
-                <Text style={[styles.cardBodyLine, styles.cardBodyLineSecond]}>
-                  {sunriseCardTimeMessage ?? 'The morning is on its way.'}
-                </Text>
-              </>
-            ) : minutesToSunrise != null && minutesToSunrise >= -10 && minutesToSunrise <= 10 ? (
-              <>
-                <Text style={styles.cardBodyLine}>
-                  Sunrise in {cityName || 'your city'} will be at {formatSunriseTime(sunriseToday)}.
-                </Text>
-                <Text style={[styles.cardBodyLine, styles.cardBodyLineSecond]}>The light is arriving now.</Text>
-              </>
-            ) : sunrisePassed ? (
-              <>
-                <Text style={styles.cardBodyLine}>Sunrise in {cityName || 'your city'} was at {formatSunriseTime(sunriseToday)}.</Text>
-                <Text style={[styles.cardBodyLine, styles.cardBodyLineSecond]}>It{"’"}s still part of your day.</Text>
-              </>
-            ) : (
-              <>
-                <Text style={styles.cardBodyLine}>
-                  Sunrise in {cityName || 'your city'} will be at {formatSunriseTime(sunriseToday)}.
-                </Text>
-                <Text style={[styles.cardBodyLine, styles.cardBodyLineSecond]}>
-                  {sunriseCardTimeMessage ?? 'The morning is on its way.'}
-                </Text>
-              </>
-            )}
-          </View>
+          <SunriseStateCard
+            dawnCard={dawnCard}
+            hasLoggedToday={false}
+            city={cityName}
+            time={formatSunriseTime(sunriseToday)}
+          />
         ) : null}
 
         {loggedToday ? (
@@ -638,24 +598,12 @@ export default function HomeScreen() {
                 </View>
               </Pressable>
 
-              <View style={[styles.sunriseContextCard, styles.sunriseContextCardSettled]}>
-                <View style={styles.sunriseCardHeadlineRow}>
-                  <Text style={styles.sunEmoji}>☀️</Text>
-                  <Text style={styles.sunTitle}>Sunrise today</Text>
-                </View>
-                <Text style={styles.sunriseContextCardBody}>
-                  {cityName || 'Your city'} · {formatSunriseTime(sunriseToday)}
-                </Text>
-                <Text style={styles.sunriseContextCardSub}>You welcomed the morning.</Text>
-                <Pressable
-                  style={({ pressed }) => [styles.sunriseContextCardButton, pressed && styles.modeCardPressed]}
-                  onPress={handleOpenWitness}
-                >
-                  <Text style={styles.sunriseContextCardButtonText}>
-                    Today{"'"}s sunrise
-                  </Text>
-                </Pressable>
-              </View>
+              <SunriseStateCard
+                dawnCard={dawnCard}
+                hasLoggedToday={true}
+                city={cityName}
+                time={formatSunriseTime(sunriseToday)}
+              />
 
               {totalSunrises === 1 ? (
                 <Pressable
@@ -846,9 +794,6 @@ export default function HomeScreen() {
         )}
       </ScreenLayout>
 
-      {showDawnCard ? (
-        <DawnCardBottomSheet verb={dawnCard.verb} text={dawnCard.text} onDismissed={dismissDawnCard} />
-      ) : null}
     </View>
   );
 }

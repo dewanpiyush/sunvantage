@@ -17,15 +17,14 @@ import StreakBlock from '../components/StreakBlock';
 import RitualRevealCard from '../components/RitualRevealCard';
 import SharedDawnPreview from '../components/SharedDawnPreview';
 import DawnInvitationSection from '../components/DawnInvitationSection';
+import SunriseStateCard from '@/components/SunriseStateCard';
 import { computeBadgeStats, getEarnedBadges, computeEarnedAtByBadge, type BadgeDef } from './ritual-markers';
 import { dismissBadgeReveal } from '../lib/ritualReveal';
 import { BADGE_ICONS } from './ritual-markers';
 import { normalizeVantageForStorage, getNormalizedVantageFromRow } from '../lib/vantageUtils';
 import { getCoordinatesForCity } from '../services/weatherService';
 import { invokeModerateImage } from '../lib/moderateImageInvoke';
-import DawnCardBottomSheet from '../components/DawnCardBottomSheet';
-import { getEchoVariant } from '@/lib/echoDawnCard';
-import { getCachedDawnCard } from '@/lib/dawnCards';
+import { getTodayDawnCard, type DawnCard } from '../data/dawnCards';
 import { useUIState } from '@/store/uiState';
 
 const REFLECTION_PROMPTS = [
@@ -307,12 +306,30 @@ export function SunriseLog({
   const reflectionDebounceMs = 800;
   const signedUrlExpirySeconds = 60 * 60; // 1 hour
 
-  const [showEchoCard, setShowEchoCard] = useState(false);
-  const [echoCard, setEchoCard] = useState<{ verb: string; text: string } | null>(null);
+  const [dawnCard, setDawnCard] = useState<DawnCard>({
+    verb: 'WITNESS',
+    text: 'The sun does not carry yesterday.\nNeither do you have to.',
+    completion: 'You were here.',
+  });
 
   useEffect(() => {
     setBackgroundMode(hasLogged ? 'postLog' : 'default');
   }, [hasLogged, setBackgroundMode]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const c = await getTodayDawnCard();
+        if (!cancelled) setDawnCard(c);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const resolvePhotoDisplayUrl = async (
     photo_url: string | null | undefined,
@@ -407,7 +424,7 @@ export function SunriseLog({
   const sunriseCardGlow = useRef(new Animated.Value(0)).current;
   const breathPhase = useRef(new Animated.Value(0)).current;
 
-  const { sunriseToday, sunriseTomorrow, sunriseCardTimeMessage, minutesToSunrise } = useMorningContext(profileCity ?? null);
+  const { sunriseToday, sunriseTomorrow, minutesToSunrise } = useMorningContext(profileCity ?? null);
   const sunrisePassed = minutesToSunrise != null && minutesToSunrise < 0;
   const showFirstLightCard = Boolean(hasLogged && revealBadge);
   const [reflectionInvitationText, setReflectionInvitationText] = useState<string | null>(null);
@@ -1304,7 +1321,13 @@ export function SunriseLog({
             />
           )}
           {sunriseToday != null ? (
-            <View style={[styles.sunriseCardWrap, { marginTop: showFirstLightCard ? 24 : 8 }]}>
+            <View
+              style={[
+                styles.sunriseCardWrap,
+                { marginTop: showFirstLightCard ? 24 : 8 },
+                hasActiveLog ? styles.sunriseToMemoryGap : null,
+              ]}
+            >
               <Animated.View
                 style={[
                   styles.sunriseCardGlow,
@@ -1315,35 +1338,12 @@ export function SunriseLog({
                 ]}
                 pointerEvents="none"
               />
-              <Animated.View
-                style={[
-                  styles.sunriseContextCard,
-                  hasActiveLog ? styles.sunriseContextCardPostLog : null,
-                  {
-                    shadowColor: 'rgb(255,180,80)',
-                    shadowOffset: { width: 0, height: 0 },
-                    shadowOpacity: breathPhase.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0.25, 0],
-                    }),
-                    shadowRadius: breathPhase.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0, 6],
-                    }),
-                  },
-                ]}
-              >
-                <View style={styles.sunTitleRow}>
-                  <Text style={styles.sunEmoji}>☀️</Text>
-                  <Text style={styles.sunTitle}>Sunrise today</Text>
-                </View>
-                <Text style={styles.sunriseContextCardCityTime}>
-                  {profileCity || 'your city'} · {formatSunriseTime(sunriseToday)}
-                </Text>
-                <Text style={styles.sunriseContextCardTagline}>
-                  {hasLogged ? "You showed up. That's enough." : 'Earlier this morning'}
-                </Text>
-              </Animated.View>
+              <SunriseStateCard
+                dawnCard={dawnCard}
+                hasLoggedToday={hasLogged}
+                city={profileCity}
+                time={formatSunriseTime(sunriseToday)}
+              />
             </View>
           ) : null}
             <>
@@ -1370,12 +1370,6 @@ export function SunriseLog({
               )}
               {!hasLogged && sunrisePassed && (
                 <Text style={styles.witnessFooter}>You don&apos;t have to capture it.{'\n'}Just mark the moment.</Text>
-              )}
-
-              {hasActiveLog && globalCount !== null && globalCount >= 2 && (
-                <Text style={styles.globalCountMuted}>
-                  {globalCount} people greeted sunrise on SunVantage today.
-                </Text>
               )}
 
               {hasActiveLog && (
@@ -1554,6 +1548,12 @@ export function SunriseLog({
                 </Animated.View>
               )}
 
+              {hasActiveLog && globalCount !== null && globalCount >= 2 && (
+                <Text style={styles.globalCountMuted}>
+                  {globalCount} people greeted sunrise on SunVantage today.
+                </Text>
+              )}
+
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
               {!hasLogged ? (
@@ -1615,14 +1615,6 @@ export function SunriseLog({
             setRefreshTrigger((t) => t + 1);
           }, 2500);
 
-          // Echo Dawn Card (non-blocking, auto-fade). Uses cached "today" verb (no recompute).
-          const verb = getCachedDawnCard()?.verb ?? 'RESET';
-          const echoText = getEchoVariant(verb);
-          if (echoText) {
-            setEchoCard({ verb, text: echoText });
-            setShowEchoCard(true);
-          }
-
           // Subtle global lift after logging.
           setTimeout(() => setBackgroundMode('postLog'), 300);
         }}
@@ -1633,18 +1625,6 @@ export function SunriseLog({
         initialVantageName={initialVantageName}
       />
 
-      {showEchoCard && echoCard ? (
-        <DawnCardBottomSheet
-          verb={echoCard.verb}
-          text={echoCard.text}
-          autoDismiss
-          duration={3400}
-          onDismissed={() => {
-            setShowEchoCard(false);
-            setEchoCard(null);
-          }}
-        />
-      ) : null}
     </View>
   );
 }
@@ -1662,10 +1642,13 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    marginBottom: 8,
+    marginBottom: 7,
   },
   sunEmoji: {
     fontSize: 18,
+    textShadowColor: 'rgba(255, 200, 120, 0.35)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 6,
   },
   sunTitle: {
     fontSize: 18,
@@ -1769,8 +1752,8 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     textAlign: 'center',
   },
   globalCountMuted: {
-    marginTop: 12,
-    marginBottom: 12,
+    marginTop: 4,
+    marginBottom: 6,
     fontSize: 10,
     color: Dawn.text.secondary,
     textAlign: 'center',
@@ -1780,6 +1763,9 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     alignSelf: 'stretch',
     marginTop: 8,
     marginBottom: 0,
+  },
+  sunriseToMemoryGap: {
+    marginBottom: 24,
   },
   /* Wide elliptical horizon-style glow behind the Sunrise card */
   sunriseCardGlow: {
@@ -1803,21 +1789,45 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.sunriseCard,
     elevation: 2,
     alignSelf: 'stretch',
+    overflow: 'hidden',
   },
   sunriseContextCardPostLog: {
-    borderColor: Dawn.border.subtle,
+    borderColor: 'rgba(255, 200, 120, 0.4)',
     shadowOpacity: 0.04,
   },
+  sunriseCardWarmTint: {
+    ...StyleSheet.absoluteFillObject,
+  },
   sunriseContextCardCityTime: {
-    fontSize: 14,
+    fontSize: 13,
     color: Dawn.text.secondary,
-    marginBottom: 6,
+    opacity: 0.73,
+    marginBottom: 0,
     textAlign: 'center',
   },
   sunriseContextCardTagline: {
     fontSize: 13,
     color: Dawn.text.secondary,
     opacity: 0.9,
+    textAlign: 'center',
+  },
+  sunriseContextCardVerb: {
+    marginTop: 13,
+    fontSize: 17.5,
+    lineHeight: 22,
+    letterSpacing: 3.3,
+    color: Dawn.text.primary,
+    textAlign: 'center',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  sunriseContextCardCompletion: {
+    marginTop: 7,
+    fontSize: 13.5,
+    lineHeight: 20,
+    color: Dawn.text.secondary,
+    opacity: 0.9,
+    fontWeight: '500',
     textAlign: 'center',
   },
   reflectiveBlock: {
@@ -2020,7 +2030,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   },
   yourMorningCardCompact: {
     paddingBottom: 16,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   yourMorningHeader: {
     flexDirection: 'row',

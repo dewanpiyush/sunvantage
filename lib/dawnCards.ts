@@ -4,13 +4,15 @@ import { DAWN_CARD_SET, type DawnCardCopy } from './dawnCardSet';
 export type DawnCard = {
   verb: string;
   text: string;
+  completion: string;
 };
 
 const FIRST_OPEN_KEY = 'first_open_date';
 
 const FALLBACK_CARD: DawnCard = {
-  verb: 'RESET',
+  verb: 'WITNESS',
   text: 'The sun does not carry yesterday.\nNeither do you have to.',
+  completion: 'You were here.',
 };
 
 let cachedDawnCard: DawnCard | null = null;
@@ -47,7 +49,7 @@ export const getTodayDawnCard = async (): Promise<DawnCard> => {
       cachedDawnCard = FALLBACK_CARD;
       return FALLBACK_CARD;
     }
-    const resolved = { verb: card.verb, text: card.prompt };
+    const resolved = { verb: card.verb, text: card.prompt, completion: card.completion };
     cachedDawnCard = resolved;
     return resolved;
   } catch {

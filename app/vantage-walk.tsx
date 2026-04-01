@@ -17,6 +17,7 @@ import SunriseLogCard, { type SunriseLogSaveResult } from '../components/Sunrise
 import RitualRevealCard from '../components/RitualRevealCard';
 import SharedDawnPreview from '../components/SharedDawnPreview';
 import DawnInvitationSection from '../components/DawnInvitationSection';
+import SunriseStateCard from '@/components/SunriseStateCard';
 import { useMorningContext } from '../hooks/useMorningContext';
 import { hasLoggedToday, isTodayLocal } from '../lib/hasLoggedToday';
 import { computeBadgeStats, getEarnedBadges, computeEarnedAtByBadge, type BadgeDef } from './ritual-markers';
@@ -25,9 +26,7 @@ import { BADGE_ICONS } from './ritual-markers';
 import { useDawn } from '@/hooks/use-dawn';
 import { useAppTheme } from '@/context/AppThemeContext';
 import ScreenLayout from '@/components/ScreenLayout';
-import DawnCardBottomSheet from '../components/DawnCardBottomSheet';
-import { getEchoVariant } from '@/lib/echoDawnCard';
-import { getCachedDawnCard } from '@/lib/dawnCards';
+import { getTodayDawnCard, type DawnCard } from '../data/dawnCards';
 import { useUIState } from '@/store/uiState';
 
 type TodayLogDetails = {
@@ -102,20 +101,38 @@ export default function VantageWalkScreen() {
   const previousEarnedBadgeIdsRef = useRef<string[]>([]);
   const justSavedRef = useRef(false);
 
-  const [showEchoCard, setShowEchoCard] = useState(false);
-  const [echoCard, setEchoCard] = useState<{ verb: string; text: string } | null>(null);
+  const [dawnCard, setDawnCard] = useState<DawnCard>({
+    verb: 'WITNESS',
+    text: 'The sun does not carry yesterday.\nNeither do you have to.',
+    completion: 'You were here.',
+  });
   const [showSaved, setShowSaved] = useState(false);
   const savedOpacity = useRef(new Animated.Value(1)).current;
   const memorySettleY = useRef(new Animated.Value(0)).current;
   const savedFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { sunriseToday, sunriseTomorrow, sunriseCardTimeMessage, sunrisePassed } = useMorningContext(profileCity ?? null);
+  const { sunriseToday, sunriseTomorrow, sunrisePassed } = useMorningContext(profileCity ?? null);
   const loggedToday = hasLoggedToday(logs);
   const isPostSunriseRetrospective = sunrisePassed === true && !loggedToday;
 
   useEffect(() => {
     setBackgroundMode(loggedToday ? 'postLog' : 'default');
   }, [loggedToday, setBackgroundMode]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const c = await getTodayDawnCard();
+        if (!cancelled) setDawnCard(c);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadProfile = useCallback(async () => {
     setStreakLoading(true);
@@ -289,14 +306,6 @@ export default function VantageWalkScreen() {
     memorySettleY.setValue(0);
     loadLogs();
 
-    // Echo Dawn Card (non-blocking, auto-fade). Uses cached "today" verb (no recompute).
-    const verb = getCachedDawnCard()?.verb ?? 'RESET';
-    const echoText = getEchoVariant(verb);
-    if (echoText) {
-      setEchoCard({ verb, text: echoText });
-      setShowEchoCard(true);
-    }
-
     setTimeout(() => setBackgroundMode('postLog'), 300);
   }, [loadLogs, memorySettleY, savedOpacity, setBackgroundMode]);
 
@@ -352,16 +361,13 @@ export default function VantageWalkScreen() {
 
         {/* Sunrise card — compressed 3-row layout (Witness/Vantage) */}
         {sunriseToday != null && (
-          <View style={[styles.sunriseCard, loggedToday ? styles.sunriseCardPostLog : null]}>
-            <Text style={styles.sunEmoji}>☀️</Text>
-            <Text style={styles.sunTitle}>Sunrise today</Text>
-            <Text style={styles.sunriseCardCityTime}>
-              {profileCity || 'your city'} · {formatSunriseTime(sunriseToday)}
-            </Text>
-            <Text style={styles.sunriseCardTagline}>
-              {loggedToday ? "You showed up. That's enough." : 'Earlier this morning'}
-            </Text>
-          </View>
+          <SunriseStateCard
+            dawnCard={dawnCard}
+            hasLoggedToday={loggedToday}
+            city={profileCity}
+            time={formatSunriseTime(sunriseToday)}
+            style={loggedToday ? styles.sunriseToMemoryGap : undefined}
+          />
         )}
 
         {loggedToday ? (
@@ -506,18 +512,6 @@ export default function VantageWalkScreen() {
         initialVantageName={null}
       />
 
-      {showEchoCard && echoCard ? (
-        <DawnCardBottomSheet
-          verb={echoCard.verb}
-          text={echoCard.text}
-          autoDismiss
-          duration={3400}
-          onDismissed={() => {
-            setShowEchoCard(false);
-            setEchoCard(null);
-          }}
-        />
-      ) : null}
     </View>
   );
 }
@@ -560,10 +554,17 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
+    overflow: 'hidden',
   },
   sunriseCardPostLog: {
-    borderColor: Dawn.border.subtle,
+    borderColor: 'rgba(255, 200, 120, 0.4)',
     shadowOpacity: 0.04,
+  },
+  sunriseCardWarmTint: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  sunriseToMemoryGap: {
+    marginBottom: 24,
   },
   titleRowCentered: {
     flexDirection: 'row',
@@ -573,14 +574,17 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   },
   sunEmoji: {
     fontSize: 18,
-    marginBottom: 6,
+    marginBottom: 4,
+    textShadowColor: 'rgba(255, 200, 120, 0.35)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 6,
   },
   sunTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: Dawn.text.primary,
     textAlign: 'center',
-    marginBottom: 7,
+    marginBottom: 3,
   },
   titleRow: {
     flexDirection: 'row',
@@ -599,15 +603,35 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     marginBottom: 8,
   },
   sunriseCardCityTime: {
-    fontSize: 14,
+    fontSize: 13,
     color: Dawn.text.secondary,
-    marginBottom: 5,
+    opacity: 0.73,
+    marginBottom: 0,
     textAlign: 'center',
   },
   sunriseCardTagline: {
     fontSize: 13,
     color: Dawn.text.secondary,
     opacity: 0.9,
+    textAlign: 'center',
+  },
+  sunriseCardVerb: {
+    marginTop: 13,
+    fontSize: 17.5,
+    lineHeight: 22,
+    letterSpacing: 3.3,
+    color: Dawn.text.primary,
+    textAlign: 'center',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  sunriseCardCompletion: {
+    marginTop: 7,
+    fontSize: 13.5,
+    lineHeight: 20,
+    color: Dawn.text.secondary,
+    opacity: 0.9,
+    fontWeight: '500',
     textAlign: 'center',
   },
   messageBlock: {
