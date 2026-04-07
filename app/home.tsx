@@ -27,6 +27,9 @@ import { getTodayDawnCard, type DawnCard } from '../data/dawnCards';
 import { useUIState } from '@/store/uiState';
 import SunriseStateCard from '@/components/SunriseStateCard';
 
+/** Base spacing unit — home vertical rhythm (header → streak → greeting → cards). */
+const SPACE = 8;
+
 // ----- Streak (same logic as elsewhere) -----
 const YMD_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -89,6 +92,7 @@ function formatSunriseTime(hhmm: string | null): string {
 const TOMORROW_INTENTION_KEY = 'sunvantage_tomorrow_intention';
 const TOMORROW_ALARM_SET_KEY = 'sunvantage_tomorrow_alarm_set';
 const TOMORROW_ALARM_TIME_KEY = 'sunvantage_tomorrow_alarm_time';
+const OPEN_NAV_ONCE_KEY = 'sunvantage_open_nav_once';
 
 /** True if place is home-like: home, room, balcony, terrace, window (case-insensitive). */
 function isHomeLikePlace(place: string): boolean {
@@ -203,14 +207,16 @@ export default function HomeScreen() {
   const { mode } = useAppTheme();
   const { setBackgroundMode } = useUIState();
   const isMorningLight = mode === 'morning-light';
-  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
+  const styles = React.useMemo(() => makeStyles(Dawn, isMorningLight), [Dawn, isMorningLight]);
   const [profile, setProfile] = useState<{ first_name: string | null; city: string | null } | null>(null);
   const [logs, setLogs] = useState<{ created_at: string; reflection_text?: string | null; vantage_name?: string | null; city?: string | null }[]>([]);
   const [streak, setStreak] = useState<{ current: number; longest: number }>({ current: 0, longest: 0 });
   const [revealBadge, setRevealBadge] = useState<BadgeDef | null>(null);
-  const [showMyCitySunrises, setShowMyCitySunrises] = useState(false);
+  /** Approved photo logs in user's city from others — Explore only when enough to feel alive. */
+  const [citySunrisesCount, setCitySunrisesCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [hasOpenedBefore, setHasOpenedBefore] = useState(false);
+  const [openNavOnFirstEntry, setOpenNavOnFirstEntry] = useState(false);
   const [tomorrowPlan, setTomorrowPlan] = useState<{
     exists: boolean;
     place: string | null;
@@ -240,6 +246,7 @@ export default function HomeScreen() {
         setLogs([]);
         setStreak({ current: 0, longest: 0 });
         setRevealBadge(null);
+        setCitySunrisesCount(0);
         return;
       }
       const [profileRes, logsRes] = await Promise.all([
@@ -313,9 +320,9 @@ export default function HomeScreen() {
           .neq('user_id', userId)
           .not('photo_url', 'is', null)
           .eq('moderation_status', 'approved');
-        setShowMyCitySunrises((count ?? 0) > 1);
+        setCitySunrisesCount(count ?? 0);
       } else {
-        setShowMyCitySunrises(false);
+        setCitySunrisesCount(0);
       }
 
       // Warm key screens without blocking current UI.
@@ -326,7 +333,7 @@ export default function HomeScreen() {
       setLogs([]);
       setStreak({ current: 0, longest: 0 });
       setRevealBadge(null);
-      setShowMyCitySunrises(false);
+      setCitySunrisesCount(0);
     } finally {
       setLoading(false);
     }
@@ -341,6 +348,10 @@ export default function HomeScreen() {
   const firstName = profile?.first_name ?? null;
   const cityName = profile?.city ?? null;
   const totalSunrises = logs.length;
+  const myMorningCount = totalSunrises;
+  /** Self → future → discovery: prefer archive when user has more than one log (see STEP 2 note in PR). */
+  const SHOW_MY_MORNINGS = myMorningCount >= 2;
+  const SHOW_CITY_CARD = citySunrisesCount > 2;
   const showSunriseContextCard = sunrisePassed && !loggedToday;
   const newUserCtaCopy = React.useMemo(() => getNewUserLogCtaCopy(minutesToSunrise), [minutesToSunrise]);
 
@@ -423,6 +434,26 @@ export default function HomeScreen() {
     })();
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const flag = await AsyncStorage.getItem(OPEN_NAV_ONCE_KEY);
+        if (!cancelled && flag === '1') {
+          setOpenNavOnFirstEntry(true);
+        }
+        if (flag === '1') {
+          await AsyncStorage.removeItem(OPEN_NAV_ONCE_KEY);
+        }
+      } catch {
+        // ignore one-time nav auto-open failures
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleOpenWitness = () => {
     router.push('/witness');
   };
@@ -447,7 +478,7 @@ export default function HomeScreen() {
               hasLoggedToday={false}
               showMyCitySunrises={false}
               tagline="Your quiet place to notice the morning."
-              wrapperMarginBottom={9}
+              wrapperMarginBottom={0}
             />
           }
           scrollContentContainerStyle={styles.scrollContent}
@@ -483,9 +514,10 @@ export default function HomeScreen() {
         header={
           <SunVantageHeader
             hasLoggedToday={loggedToday}
-            showMyCitySunrises={showMyCitySunrises}
+            showMyCitySunrises={citySunrisesCount > 2}
             tagline="Your quiet place to notice the morning."
-            wrapperMarginBottom={9}
+            wrapperMarginBottom={0}
+            openNavOnMount={openNavOnFirstEntry}
           />
         }
         scrollContentContainerStyle={styles.scrollContent}
@@ -494,7 +526,7 @@ export default function HomeScreen() {
         {/* New user (no sunrise logged): greeting, then ritual card (tagline is in header) */}
         {totalSunrises === 0 && (
           <>
-            <View style={styles.anchorBlock}>
+            <View style={[styles.anchorBlock, styles.anchorBlockAfterHeader]}>
               <Text style={styles.anchorLine1}>
                 {newUserPreSunrise
                   ? (firstName ? `Good morning ${firstName}.` : 'Good morning.')
@@ -559,14 +591,24 @@ export default function HomeScreen() {
         ) : null}
 
         {loggedToday ? (
-          /* State B — After sunrise logged: Plan first (primary), then today settled, then archive */
+          /* State B — present → future → discovery (one tertiary card only). */
           <>
-            <View style={[styles.cardsBlock, totalSunrises === 1 && styles.cardsBlockFirstSunriseLogged]}>
+            <View style={[styles.cardsBlock, styles.cardsBlockStacked]}>
+              <SunriseStateCard
+                dawnCard={dawnCard}
+                hasLoggedToday={true}
+                city={cityName}
+                time={formatSunriseTime(sunriseToday)}
+                style={styles.sunriseCardInStack}
+                showSeeMorningLink={loggedToday}
+                onPressSeeMorning={() => router.push('/sunrise')}
+              />
+
               <Pressable
                 style={({ pressed }) => [
                   styles.modeCard,
                   styles.modeCardPrimary,
-                  totalSunrises === 1 && styles.modeCardFirstSunriseLoggedGap,
+                  styles.modeCardStacked,
                   pressed && styles.modeCardPressed,
                 ]}
                 onPress={() => router.push('/tomorrow-plan')}
@@ -598,35 +640,54 @@ export default function HomeScreen() {
                 </View>
               </Pressable>
 
-              <SunriseStateCard
-                dawnCard={dawnCard}
-                hasLoggedToday={true}
-                city={cityName}
-                time={formatSunriseTime(sunriseToday)}
-              />
-
-              {totalSunrises === 1 ? (
+              {SHOW_MY_MORNINGS ? (
                 <Pressable
-                  style={({ pressed }) => [styles.modeCard, styles.modeCardSecondary, pressed && styles.modeCardPressed]}
+                  style={({ pressed }) => [
+                    styles.modeCard,
+                    styles.modeCardSharedDawn,
+                    styles.modeCardStacked,
+                    pressed && styles.modeCardPressed,
+                  ]}
+                  onPress={() => router.push('/my-mornings')}
+                >
+                  <Text style={[styles.modeCardTitle, styles.modeCardTitleTertiary]}>Your mornings</Text>
+                  <Text style={[styles.modeCardDesc, styles.modeCardDescTertiary]}>Revisit the sunrises you{"'"}ve welcomed.</Text>
+                  <View style={[styles.modeCardButton, styles.modeCardButtonTertiary]}>
+                    <Text style={[styles.modeCardButtonText, styles.modeCardButtonTextTertiary]}>View your mornings →</Text>
+                  </View>
+                </Pressable>
+              ) : SHOW_CITY_CARD ? (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.modeCard,
+                    styles.modeCardSharedDawn,
+                    styles.modeCardStacked,
+                    pressed && styles.modeCardPressed,
+                  ]}
                   onPress={() => router.push('/my-city-sunrises')}
                 >
-                  <Text style={styles.modeCardTitle}>Shared dawn in {cityName || 'your city'}</Text>
-                  <Text style={styles.modeCardDesc}>
+                  <Text style={[styles.modeCardTitle, styles.modeCardTitleTertiary]}>Shared dawn in {cityName || 'your city'}</Text>
+                  <Text style={[styles.modeCardDesc, styles.modeCardDescTertiary]}>
                     See how others in {cityName || 'your city'} are welcoming mornings on SunVantage
                   </Text>
-                  <View style={styles.modeCardButton}>
-                    <Text style={styles.modeCardButtonText}>Explore city mornings</Text>
+                  <View style={[styles.modeCardButton, styles.modeCardButtonTertiary]}>
+                    <Text style={[styles.modeCardButtonText, styles.modeCardButtonTextTertiary]}>Explore city mornings</Text>
                   </View>
                 </Pressable>
               ) : (
                 <Pressable
-                  style={({ pressed }) => [styles.modeCard, styles.modeCardSecondary, pressed && styles.modeCardPressed]}
-                  onPress={() => router.push('/my-mornings')}
+                  style={({ pressed }) => [
+                    styles.modeCard,
+                    styles.modeCardSharedDawn,
+                    styles.modeCardStacked,
+                    pressed && styles.modeCardPressed,
+                  ]}
+                  onPress={() => router.push('/world-sunrise-gallery')}
                 >
-                  <Text style={styles.modeCardTitle}>View your mornings</Text>
-                  <Text style={styles.modeCardDesc}>Revisit the sunrises you{"'"}ve welcomed.</Text>
-                  <View style={styles.modeCardButton}>
-                    <Text style={styles.modeCardButtonText}>Open My Mornings</Text>
+                  <Text style={[styles.modeCardTitle, styles.modeCardTitleTertiary]}>Shared dawn across the world</Text>
+                  <Text style={[styles.modeCardDesc, styles.modeCardDescTertiary]}>Morning is unfolding everywhere.</Text>
+                  <View style={[styles.modeCardButton, styles.modeCardButtonTertiary]}>
+                    <Text style={[styles.modeCardButtonText, styles.modeCardButtonTextTertiary]}>Explore global mornings →</Text>
                   </View>
                 </Pressable>
               )}
@@ -706,7 +767,7 @@ export default function HomeScreen() {
         ) : newUserReturningPostSunrise || newUserPostSunrise ? (
           /* First-time user, post-sunrise: single merged card — Log for today + plan for tomorrow link */
           <>
-            <Text style={[styles.centerQuestion, styles.centerQuestionHeadline, { marginTop: 0, marginBottom: 12 }]}>
+            <Text style={[styles.centerQuestion, styles.centerQuestionHeadline, { marginTop: 28, marginBottom: 12 }]}>
               Your first sunrise moment awaits.
             </Text>
             <View style={styles.cardsBlockBeforeAction}>
@@ -798,7 +859,7 @@ export default function HomeScreen() {
   );
 }
 
-function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   return StyleSheet.create({
   titleRowCentered: {
     flexDirection: 'row',
@@ -839,8 +900,9 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 40,
-    paddingTop: 12,
+    paddingBottom: 28,
+    /** Rhythm: header → first row = streak marginTop (2×SPACE); no double padding here. */
+    paddingTop: 0,
   },
   tagline: {
     marginTop: 12,
@@ -886,13 +948,19 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     marginTop: 6,
   },
   anchorBlock: {
-    marginBottom: 24,
+    /** Greeting → first card: 2×SPACE */
+    marginBottom: SPACE * 2,
+  },
+  /** New-user path: header → greeting = 2×SPACE (no streak row). */
+  anchorBlockAfterHeader: {
+    marginTop: SPACE * 2,
   },
   anchorLine1: {
     fontSize: 15,
     fontWeight: '500',
     color: Dawn.text.secondary,
-    marginBottom: 4,
+    /** Streak + greeting read as one cluster */
+    marginBottom: 2,
   },
   anchorLine2: {
     fontSize: 14,
@@ -976,11 +1044,12 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   cardsBlockBeforeAction: {
     marginTop: 16,
   },
-  cardsBlockFirstSunriseLogged: {
-    marginTop: 0,
+  /** Uniform card gaps (3×SPACE); use with modeCardStacked (no per-card marginBottom). */
+  cardsBlockStacked: {
+    gap: SPACE * 3,
   },
-  modeCardFirstSunriseLoggedGap: {
-    marginBottom: 24,
+  modeCardStacked: {
+    marginBottom: 0,
   },
   modeCardLinkWrap: {
     marginTop: 12,
@@ -1033,6 +1102,27 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   },
   modeCardSecondary: {
     backgroundColor: Dawn.surface.cardSecondary,
+  },
+  /** Tertiary / low emphasis — sits “back” vs Plan + Sunrise (shared city, archive). */
+  modeCardSharedDawn: {
+    backgroundColor: isMorningLight ? 'rgba(220, 234, 247, 0.78)' : 'rgba(20, 28, 50, 0.65)',
+    borderColor: isMorningLight ? 'rgba(203, 213, 225, 0.85)' : 'rgba(42, 70, 107, 0.45)',
+  },
+  modeCardTitleTertiary: {
+    opacity: 0.88,
+  },
+  modeCardDescTertiary: {
+    opacity: 0.82,
+  },
+  modeCardButtonTertiary: {
+    backgroundColor: isMorningLight ? 'rgba(245, 166, 35, 0.78)' : 'rgba(255, 179, 71, 0.72)',
+  },
+  modeCardButtonTextTertiary: {
+    opacity: 0.95,
+  },
+  /** Sunrise “today” card between primary Plan and tertiary shared — medium weight. */
+  sunriseCardInStack: {
+    borderColor: isMorningLight ? 'rgba(245, 166, 35, 0.32)' : 'rgba(255, 179, 71, 0.35)',
   },
   /** After logging: “Plan for tomorrow” is the primary card (glow + contrast) */
   modeCardPrimary: {

@@ -1623,6 +1623,7 @@ export function SunriseLog({
         city={profileCity}
         sunriseTime={sunriseToday}
         initialVantageName={initialVantageName}
+        source={context === 'explorer' ? 'explorer' : context === 'retroactive' ? 'other' : 'home'}
       />
 
     </View>

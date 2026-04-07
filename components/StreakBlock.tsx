@@ -70,9 +70,10 @@ export default function StreakBlock({ currentStreak, longestStreak, loading = fa
 
 function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   return StyleSheet.create({
+  /** Home rhythm: header → streak 16; streak → greeting 8 (see SPACE in home). */
   streakBlock: {
     marginTop: 16,
-    paddingVertical: 2,
+    paddingVertical: 0,
     marginBottom: 8,
   },
   streakRow: {

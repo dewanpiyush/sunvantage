@@ -10,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import supabase from '../supabase';
 import { Dawn } from '../constants/theme';
 import { useMorningContext } from '../hooks/useMorningContext';
@@ -121,6 +122,11 @@ export default function OnboardingScreen() {
         return;
       }
 
+      try {
+        await AsyncStorage.setItem('sunvantage_open_nav_once', '1');
+      } catch {
+        // ignore non-critical onboarding affordance flag failure
+      }
       router.replace('/home' as never);
     } catch (e) {
       setError('Something went wrong. Please try again.');

@@ -5,6 +5,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   View,
   Text,
@@ -48,6 +49,7 @@ type NavItem = {
 type Props = {
   visible: boolean;
   onClose: () => void;
+  instantOpen?: boolean;
   hasLoggedToday: boolean;
   showMyCitySunrises: boolean;
   onSignOut: () => void;
@@ -56,6 +58,7 @@ type Props = {
 export default function NavigationOverlay({
   visible,
   onClose,
+  instantOpen = false,
   hasLoggedToday,
   showMyCitySunrises,
   onSignOut,
@@ -69,6 +72,7 @@ export default function NavigationOverlay({
   const panelTopPadding = insets.top + Math.round(insets.top * PANEL_TOP_OFFSET_RATIO);
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const panelTranslateX = useRef(new Animated.Value(-panelWidth)).current;
+  const gestureStartY = useRef<number | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
   const morningItems: NavItem[] = [
@@ -98,19 +102,24 @@ export default function NavigationOverlay({
     const pw = Math.round(windowWidth * PANEL_WIDTH_RATIO);
     if (visible) {
       setModalVisible(true);
-      panelTranslateX.setValue(-pw);
-      Animated.parallel([
-        Animated.timing(backdropOpacity, {
-          toValue: 1,
-          duration: 220,
-          useNativeDriver: true,
-        }),
-        Animated.timing(panelTranslateX, {
-          toValue: 0,
-          duration: 260,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      if (instantOpen) {
+        panelTranslateX.setValue(0);
+        backdropOpacity.setValue(1);
+      } else {
+        panelTranslateX.setValue(-pw);
+        Animated.parallel([
+          Animated.timing(backdropOpacity, {
+            toValue: 1,
+            duration: 220,
+            useNativeDriver: true,
+          }),
+          Animated.timing(panelTranslateX, {
+            toValue: 0,
+            duration: 260,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }
     } else if (modalVisible) {
       Animated.parallel([
         Animated.timing(backdropOpacity, {
@@ -148,6 +157,19 @@ export default function NavigationOverlay({
   const handleSignOut = () => {
     handleClose();
     onSignOut();
+  };
+
+  const handlePanelTouchStart = (y: number) => {
+    gestureStartY.current = y;
+  };
+
+  const handlePanelTouchEnd = (y: number) => {
+    if (gestureStartY.current == null) return;
+    const deltaY = y - gestureStartY.current;
+    gestureStartY.current = null;
+    if (deltaY > 44) {
+      handleClose();
+    }
   };
 
   const renderSection = (title: string, items: NavItem[], isFirst: boolean) => {
@@ -212,22 +234,41 @@ export default function NavigationOverlay({
       <Animated.View
         style={[
           styles.backdrop,
-          { opacity: backdropOpacity.interpolate({ inputRange: [0, 1], outputRange: [0, 0.6] }) },
+          {
+            opacity: backdropOpacity.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, instantOpen ? 0 : 0.6],
+            }),
+          },
         ]}
       >
         <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
       </Animated.View>
+
+      {/* Dedicated outside-tap hit area: always closes when user taps outside panel. */}
+      <Pressable
+        style={[styles.outsideTapZone, { left: panelWidth }]}
+        onPress={handleClose}
+      />
 
       <Animated.View
         style={[
           styles.panel,
           {
             width: panelWidth,
-            backgroundColor: Dawn.background.primary,
             transform: [{ translateX: panelTranslateX }],
           },
         ]}
+        onTouchStart={(e) => handlePanelTouchStart(e.nativeEvent.pageY)}
+        onTouchEnd={(e) => handlePanelTouchEnd(e.nativeEvent.pageY)}
       >
+        <LinearGradient
+          colors={['rgba(18,32,58,0.92)', 'rgba(28, 42, 74, 0.88)']}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
         <SafeAreaView style={[styles.panelInner, { paddingTop: panelTopPadding }]} edges={[]}>
           <View style={styles.panelBody}>
             <ScrollView
@@ -283,6 +324,12 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     // set dynamically in component style to avoid static token capture
+  },
+  outsideTapZone: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
   },
   panelInner: {
     flex: 1,

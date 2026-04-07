@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import DawnInvitationSection from '../components/DawnInvitationSection';
 import { useMorningContext } from '../hooks/useMorningContext';
 import { useDawn } from '@/hooks/use-dawn';
 import { useAppTheme } from '@/context/AppThemeContext';
+import posthog from '@/lib/posthog';
 
 const TOMORROW_INTENTION_KEY = 'sunvantage_tomorrow_intention';
 export const TOMORROW_ALARM_SET_KEY = 'sunvantage_tomorrow_alarm_set';
@@ -118,6 +119,7 @@ export default function TomorrowPlanScreen() {
   const [alarmScheduled, setAlarmScheduled] = useState(false);
   const [alarmTime, setAlarmTime] = useState<string | null>(null);
   const [showReminderUpdated, setShowReminderUpdated] = useState(false);
+  const lastNextSunriseIntentKeyRef = useRef<string | null>(null);
 
   const { sunriseToday, sunriseTomorrow, minutesToSunrise, isDawnMode, tomorrowWeather } = useMorningContext(profile?.city ?? null);
   const cityName = profile?.city ?? null;
@@ -214,12 +216,24 @@ export default function TomorrowPlanScreen() {
       } catch {
         // ignore
       }
+
+      // PostHog: user confirmed next sunrise intent (alarm scheduled successfully).
+      try {
+        const key = `${intention.trim()}|${reminderDate?.toISOString() ?? ''}`;
+        if (lastNextSunriseIntentKeyRef.current !== key) {
+          lastNextSunriseIntentKeyRef.current = key;
+          if (posthog) posthog.capture('next_sunrise_intent_set');
+        }
+      } catch {
+        // ignore analytics failures
+      }
+
       setShowReminderUpdated(true);
       setTimeout(() => setShowReminderUpdated(false), 2000);
     } catch (e) {
       Alert.alert('Could not set reminder', e instanceof Error ? e.message : 'Please try again.');
     }
-  }, [reminderDate, reminderTimeFormatted]);
+  }, [reminderDate, reminderTimeFormatted, intention]);
 
   const adjustReminder = useCallback((delta: number) => {
     setReminderMinsBefore((prev) => Math.min(MAX_MINS_BEFORE, Math.max(MIN_MINS_BEFORE, prev + delta)));
@@ -262,13 +276,25 @@ export default function TomorrowPlanScreen() {
         } catch {
           // ignore
         }
+
+        // PostHog: user confirmed intent again (alarm rescheduled successfully).
+        try {
+          const key = `${intention.trim()}|${newReminderDate?.toISOString() ?? ''}`;
+          if (lastNextSunriseIntentKeyRef.current !== key) {
+            lastNextSunriseIntentKeyRef.current = key;
+            if (posthog) posthog.capture('next_sunrise_intent_set');
+          }
+        } catch {
+          // ignore analytics failures
+        }
+
         setShowReminderUpdated(true);
         setTimeout(() => setShowReminderUpdated(false), 2000);
       } catch {
         // ignore
       }
     },
-    [reminderMinsBefore, sunriseTomorrow, sunriseToday, isTodayMode]
+    [reminderMinsBefore, sunriseTomorrow, sunriseToday, isTodayMode, intention]
   );
 
   useEffect(() => {

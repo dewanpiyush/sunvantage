@@ -33,6 +33,7 @@ import { useMorningContext } from '../hooks/useMorningContext';
 import { getMinutesToSunrise, getCoordinatesForCity } from '../services/weatherService';
 import { invokeModerateImage } from '../lib/moderateImageInvoke';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import posthog from '@/lib/posthog';
 
 const photoBucket = 'sunrise_photos';
 const TOTAL_STEPS = 4; /* Step 0 = pause, 1 = vantage, 2 = photo, 3 = reflection */
@@ -97,6 +98,7 @@ export type SunriseLogCardProps = {
   city?: string | null;
   sunriseTime?: string | null;
   initialVantageName?: string | null;
+  source?: 'home' | 'explorer' | 'other';
 };
 
 export default function SunriseLogCard({
@@ -108,6 +110,7 @@ export default function SunriseLogCard({
   city = null,
   sunriseTime = null,
   initialVantageName = null,
+  source = 'other',
 }: SunriseLogCardProps) {
   const Dawn = useDawn();
   const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
@@ -154,6 +157,8 @@ export default function SunriseLogCard({
     sunriseTime.trim() !== '' &&
     getMinutesToSunrise(sunriseTime) < -60;
 
+  const sunriseLogStartedFiredRef = useRef(false);
+
   // When modal opens: subtle fade + slight upward motion (150–200ms).
   useEffect(() => {
     if (visible) {
@@ -196,6 +201,21 @@ export default function SunriseLogCard({
       cardTranslateY.setValue(10);
     }
   }, [visible, initialVantageName, backdropOpacity, cardOpacity, cardScale, cardTranslateY]);
+
+  // PostHog: fire once per modal open.
+  useEffect(() => {
+    if (!visible) {
+      sunriseLogStartedFiredRef.current = false;
+      return;
+    }
+    if (sunriseLogStartedFiredRef.current) return;
+    sunriseLogStartedFiredRef.current = true;
+    try {
+      if (posthog) posthog.capture('sunrise_log_started', { source });
+    } catch {
+      // ignore analytics errors
+    }
+  }, [visible, source]);
 
   // Android-safe visibility fallback: if entry animation is interrupted,
   // ensure the modal content still renders in a visible state.
@@ -501,6 +521,15 @@ export default function SunriseLogCard({
       const capturedReflection = reflectionTrim;
 
       didSucceed = true;
+      const hasPhoto = Boolean(capturedPhotoUri);
+      // PostHog: flow completed successfully.
+      try {
+        if (posthog) {
+          posthog.capture('sunrise_log_completed', { has_photo: hasPhoto, source });
+        }
+      } catch {
+        // ignore
+      }
       setSaving(false);
       setSaveStage('idle');
       resetFormAfterSave();
@@ -532,6 +561,13 @@ export default function SunriseLogCard({
                 message: uploadError.message,
               });
               return;
+            }
+
+            // PostHog: photo upload succeeded (after the storage upload completes).
+            try {
+              if (posthog) posthog.capture('photo_uploaded');
+            } catch {
+              // ignore
             }
 
             const { error: dbErr } = await supabase
@@ -597,7 +633,7 @@ export default function SunriseLogCard({
         setSaveStage('idle');
       }
     }
-  }, [vantageName, reflectionText, reflectionPrompt, photoBase64, photoUri, photoMime, onSaved, onClose, resetFormAfterSave, onModerationComplete, city, overrideCoords]);
+  }, [vantageName, reflectionText, reflectionPrompt, photoBase64, photoUri, photoMime, onSaved, onClose, resetFormAfterSave, onModerationComplete, city, overrideCoords, source]);
 
   if (!visible) return null;
 

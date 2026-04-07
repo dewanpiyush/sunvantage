@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -19,11 +19,15 @@ import { Ionicons } from '@expo/vector-icons';
 import supabase from '../supabase';
 import { Dawn } from '../constants/theme';
 import { fetchProfileCompleteness } from '../lib/profileGuard';
+import posthog from '@/lib/posthog';
 import PrivacyPolicyModal from '@/components/PrivacyPolicyModal';
 import TermsModal from '@/components/TermsModal';
 
 export default function AuthScreen() {
   const router = useRouter();
+
+  // Light touch: avoid repeated identify calls while this screen is mounted.
+  const identifiedUserIdRef = useRef<string | null>(null);
 
   const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
   const [email, setEmail] = useState('');
@@ -45,6 +49,21 @@ export default function AuthScreen() {
         } = await supabase.auth.getSession();
 
         if (!session?.user?.id) return;
+
+        // PostHog: identify on session load (if this user hasn't been identified yet).
+        try {
+          const userId = session.user.id;
+          const userEmail = session.user.email;
+          if (posthog && identifiedUserIdRef.current !== userId) {
+            identifiedUserIdRef.current = userId;
+            posthog.identify(userId);
+            if (userEmail && posthog.people?.set) {
+              posthog.people.set({ email: userEmail });
+            }
+          }
+        } catch {
+          // ignore analytics failures
+        }
 
         const { complete } = await fetchProfileCompleteness(supabase, session.user.id);
         router.replace((complete ? '/home' : '/onboarding') as never);
@@ -79,6 +98,26 @@ export default function AuthScreen() {
           return;
         }
 
+        // PostHog: identify after successful account creation (if Supabase returns a user).
+        try {
+          const userId = data?.user?.id;
+          const userEmail = data?.user?.email ?? email;
+          if (posthog && userId && identifiedUserIdRef.current !== userId) {
+            identifiedUserIdRef.current = userId;
+            posthog.identify(userId);
+            if (userEmail && posthog.people?.set) posthog.people.set({ email: userEmail });
+          }
+        } catch {
+          // ignore analytics failures
+        }
+
+        // PostHog: account created successfully.
+        try {
+          if (posthog) posthog.capture('user_signed_up');
+        } catch {
+          // analytics should never break auth flow
+        }
+
         setMessage('Check your email to confirm your account.');
         router.replace('/onboarding');
       } else {
@@ -93,6 +132,21 @@ export default function AuthScreen() {
         }
 
         if (data?.user?.id) {
+          // PostHog: identify after successful login.
+          try {
+            const userId = data.user.id;
+            const userEmail = data.user.email ?? email;
+            if (posthog && identifiedUserIdRef.current !== userId) {
+              identifiedUserIdRef.current = userId;
+              posthog.identify(userId);
+              if (userEmail && posthog.people?.set) {
+                posthog.people.set({ email: userEmail });
+              }
+            }
+          } catch {
+            // ignore analytics failures
+          }
+
           const { complete } = await fetchProfileCompleteness(supabase, data.user.id);
           router.replace((complete ? '/home' : '/onboarding') as never);
         }

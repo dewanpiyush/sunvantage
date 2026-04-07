@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import supabase from '@/supabase';
@@ -7,6 +9,8 @@ import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
+import posthog from '../lib/posthog';
+
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { fetchProfileCompleteness } from '@/lib/profileGuard';
 import { Dawn } from '@/constants/theme';
@@ -15,6 +19,7 @@ import { UIStateProvider } from '@/store/uiState';
 import AppBackground from '@/components/AppBackground';
 
 const PUBLIC_PATHS = new Set(['', '/', 'auth', 'onboarding']);
+let appOpenedCaptured = false;
 
 function isPublicPath(pathname: string): boolean {
   const segment = pathname.replace(/^\/+/, '').split('/')[0] ?? '';
@@ -96,6 +101,17 @@ function RootLayoutInner() {
 
   /** Pending sunrise moderation when app foregrounds (any screen), not only Home focus. */
   usePendingModerationRecoveryOnAppActive(supabase);
+
+  // PostHog: fire exactly once when the app loads.
+  useEffect(() => {
+    if (appOpenedCaptured) return;
+    appOpenedCaptured = true;
+    try {
+      if (posthog) posthog.capture('app_opened');
+    } catch {
+      // ignore analytics errors
+    }
+  }, []);
 
   return (
     <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>

@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, useWindowDimensions, Animated, Easing } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SunVantageHeader from '@/components/SunVantageHeader';
 import WorldMap from '@/components/map/WorldMap';
 import SunriseTerminator from '@/components/map/SunriseTerminator';
@@ -22,9 +22,13 @@ const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 const DEFAULT_USER_CITY = { city: 'Delhi', lat: 28.6139, lng: 77.209 };
 
+const HEADER_MAP_GAP = 20;
+const TOP_SAFE_EXTRA = 8;
+
 export default function GlobalSunriseMapScreen() {
   const router = useRouter();
   const Dawn = useDawn();
+  const insets = useSafeAreaInsets();
   const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   const [now, setNow] = useState(() => new Date());
   const { width, height } = useWindowDimensions();
@@ -88,7 +92,8 @@ export default function GlobalSunriseMapScreen() {
   const userWitnessedToday = aggregate.userWitnessedToday;
   const isUserFirstWitness = userWitnessedToday && aggregate.totalWitnesses === 1;
 
-  const mapHeight = height * 0.5;
+  /** Slightly taller so the map reads as the hero. */
+  const mapHeight = height * 0.53;
 
   // Extremely gentle “time passing” motion for the terminator arc.
   const arcDrift = useRef(new Animated.Value(0)).current;
@@ -119,7 +124,7 @@ export default function GlobalSunriseMapScreen() {
   const arcOpacity = arcPulse.interpolate({ inputRange: [0, 1], outputRange: [0.62, 0.75] });
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <View style={[styles.safe, { paddingTop: insets.top + TOP_SAFE_EXTRA, paddingBottom: insets.bottom }]}>
       <SunVantageHeader
         showBack
         hideMenu
@@ -128,10 +133,11 @@ export default function GlobalSunriseMapScreen() {
         subtitle="Celebrating the shared splendour of humanity"
         screenTitle
         wrapperMarginBottom={0}
+        subtitleStyle={styles.headerSubtitleSoft}
         onBackPress={() => router.push('/home')}
       />
 
-      <View style={[styles.mapContainer, { width, height: mapHeight }]}>
+      <View style={[styles.mapContainer, { width, height: mapHeight, marginTop: HEADER_MAP_GAP }]}>
         <WorldMap width={width} height={mapHeight} />
         <Animated.View
           pointerEvents="none"
@@ -183,7 +189,7 @@ export default function GlobalSunriseMapScreen() {
         userWitnessedToday={userWitnessedToday}
         isUserFirstWitness={isUserFirstWitness}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -193,17 +199,17 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     flex: 1,
     backgroundColor: Dawn.background.primary,
   },
+  /** Softer than default secondary — lets the map dominate. */
+  headerSubtitleSoft: {
+    opacity: 0.6,
+    lineHeight: 22,
+  },
   mapContainer: {
     width: '100%',
-    marginTop: 12,
     backgroundColor: Dawn.background.primary,
     overflow: 'hidden',
-    borderWidth: 0,
-    borderLeftWidth: 0,
-    borderRightWidth: 0,
-    borderTopWidth: 0,
-    borderBottomWidth: 0,
-    borderColor: 'transparent',
+    /** Edge-to-edge canvas — no card frame competing with the map. */
+    borderRadius: 0,
     elevation: 0,
     shadowOpacity: 0,
   },

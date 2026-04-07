@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useDawn } from '@/hooks/use-dawn';
 import type { DawnCard } from '@/data/dawnCards';
@@ -10,12 +10,23 @@ type Props = {
   city: string | null;
   time: string;
   style?: object;
+  /** Secondary text link (not a button) — e.g. open today’s sunrise when city Explore is hidden. */
+  showSeeMorningLink?: boolean;
+  onPressSeeMorning?: () => void;
 };
 
 const FALLBACK_PRE = 'You are here.';
 const FALLBACK_POST = 'You were here.';
 
-export default function SunriseStateCard({ dawnCard, hasLoggedToday, city, time, style }: Props) {
+export default function SunriseStateCard({
+  dawnCard,
+  hasLoggedToday,
+  city,
+  time,
+  style,
+  showSeeMorningLink = false,
+  onPressSeeMorning,
+}: Props) {
   const Dawn = useDawn();
   const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   const verb = (dawnCard?.verb || 'WITNESS').toUpperCase();
@@ -53,6 +64,16 @@ export default function SunriseStateCard({ dawnCard, hasLoggedToday, city, time,
           ))}
         </Text>
       )}
+      {hasLoggedToday && showSeeMorningLink && onPressSeeMorning ? (
+        <Pressable
+          onPress={onPressSeeMorning}
+          style={({ pressed }) => [styles.seeMorningLinkWrap, pressed && styles.seeMorningLinkPressed]}
+          accessibilityRole="link"
+          accessibilityLabel="See your morning"
+        >
+          <Text style={styles.seeMorningLinkText}>See your morning →</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -115,6 +136,22 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     postMessage: {
       opacity: 0.9,
       fontWeight: '500',
+    },
+    seeMorningLinkWrap: {
+      marginTop: 14,
+      paddingVertical: 6,
+      paddingHorizontal: 8,
+    },
+    seeMorningLinkPressed: {
+      opacity: 0.72,
+    },
+    seeMorningLinkText: {
+      fontSize: 13,
+      lineHeight: 18,
+      fontWeight: '500',
+      color: Dawn.accent.sunrise,
+      opacity: 0.82,
+      textAlign: 'center',
     },
   });
 }

@@ -510,6 +510,7 @@ export default function VantageWalkScreen() {
         city={profileCity}
         sunriseTime={sunriseToday}
         initialVantageName={null}
+        source="explorer"
       />
 
     </View>

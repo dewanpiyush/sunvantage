@@ -1,13 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, Pressable, StyleSheet, Animated } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Animated, type TextStyle } from 'react-native';
 import { useRouter } from 'expo-router';
 import supabase from '../supabase';
 import { useDawn } from '@/hooks/use-dawn';
 import NavigationOverlay from './NavigationOverlay';
 
 const ARROW_ROTATION_DURATION = 180;
+const SPACE = 8;
 const TITLE_TO_TAGLINE = 6;
 const TAGLINE_TO_ARROW = 6;
+/** Space below chevron before next screen content (pairs with home scroll padding). */
+const ARROW_BOTTOM = SPACE;
 const ARROW_TO_CONTENT = 18;
 
 type Props = {
@@ -37,6 +40,10 @@ type Props = {
   onHeaderPress?: () => void;
   /** Hide the sunrise emoji next to “SunVantage” (e.g. My Mornings keeps 🌅 only in body copy). */
   hideHeaderEmoji?: boolean;
+  /** One-time behavior: show nav immediately on mount (no trigger tap). */
+  openNavOnMount?: boolean;
+  /** Optional override for subtitle text (e.g. opacity, lineHeight). */
+  subtitleStyle?: TextStyle;
 };
 
 export default function SunVantageHeader({
@@ -55,11 +62,21 @@ export default function SunVantageHeader({
   screenTitle = false,
   onHeaderPress,
   hideHeaderEmoji = false,
+  openNavOnMount = false,
+  subtitleStyle,
 }: Props) {
   const router = useRouter();
   const Dawn = useDawn();
   const [navVisible, setNavVisible] = useState(false);
   const arrowRotation = useRef(new Animated.Value(0)).current;
+  const hasAppliedInitialOpen = useRef(false);
+
+  useEffect(() => {
+    if (!openNavOnMount || hasAppliedInitialOpen.current) return;
+    hasAppliedInitialOpen.current = true;
+    arrowRotation.setValue(1);
+    setNavVisible(true);
+  }, [arrowRotation, openNavOnMount]);
 
   useEffect(() => {
     if (!navVisible) {
@@ -134,7 +151,7 @@ export default function SunVantageHeader({
                 </View>
                 {tagline ? (
                   <>
-                    <Text style={[styles.tagline, { color: Dawn.text.secondary }]}>{tagline}</Text>
+                    <Text style={[styles.tagline, { color: Dawn.text.secondary, opacity: 0.75 }]}>{tagline}</Text>
                     <Animated.Text
                       style={[
                         styles.arrowIndicator,
@@ -175,7 +192,14 @@ export default function SunVantageHeader({
           </Text>
         ) : null}
         {subtitle ? (
-          <Text style={[styles.subtitle, isBackWithBrandingRow && styles.subtitleCompact, { color: Dawn.text.secondary }]}>
+          <Text
+            style={[
+              styles.subtitle,
+              isBackWithBrandingRow && styles.subtitleCompact,
+              { color: Dawn.text.secondary },
+              subtitleStyle,
+            ]}
+          >
             {subtitle}
           </Text>
         ) : null}
@@ -185,6 +209,7 @@ export default function SunVantageHeader({
       <NavigationOverlay
         visible={navVisible}
         onClose={() => setNavVisible(false)}
+        instantOpen={openNavOnMount}
         hasLoggedToday={hasLoggedToday}
         showMyCitySunrises={showMyCitySunrises}
         onSignOut={handleSignOut}
@@ -246,7 +271,7 @@ const styles = StyleSheet.create({
   },
   arrowIndicator: {
     marginTop: TAGLINE_TO_ARROW,
-    marginBottom: 0,
+    marginBottom: ARROW_BOTTOM,
     fontSize: 14,
     // color set dynamically in component
     opacity: 0.8,
