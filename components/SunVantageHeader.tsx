@@ -22,6 +22,8 @@ type Props = {
   children?: React.ReactNode;
   /** When true, first menu item is "Today's sunrise"; when false, "Log today's sunrise". Both route to /witness. */
   hasLoggedToday?: boolean;
+  /** When true, show "My Mornings" in the nav panel. If omitted, we infer it from profile data. */
+  hasEverLogged?: boolean;
   /** When true, only show back (← Home), title, subtitle; no SunVantage dropdown. */
   hideMenu?: boolean;
   /** When true with hideMenu, show the large "SunVantage" branding text (no menu trigger). */
@@ -42,6 +44,10 @@ type Props = {
   hideHeaderEmoji?: boolean;
   /** One-time behavior: show nav immediately on mount (no trigger tap). */
   openNavOnMount?: boolean;
+  /** Subtle nudge: blink chevron indicator briefly (used for discovery, not auto-open). */
+  highlightChevronHint?: boolean;
+  /** Called when user manually opens the nav from header tap. */
+  onNavOpen?: () => void;
   /** Optional override for subtitle text (e.g. opacity, lineHeight). */
   subtitleStyle?: TextStyle;
 };
@@ -53,6 +59,7 @@ export default function SunVantageHeader({
   tagline,
   children,
   hasLoggedToday = false,
+  hasEverLogged,
   hideMenu = false,
   showBranding = false,
   showMyCitySunrises = false,
@@ -63,12 +70,16 @@ export default function SunVantageHeader({
   onHeaderPress,
   hideHeaderEmoji = false,
   openNavOnMount = false,
+  highlightChevronHint = false,
+  onNavOpen,
   subtitleStyle,
 }: Props) {
   const router = useRouter();
   const Dawn = useDawn();
   const [navVisible, setNavVisible] = useState(false);
+  const [hasEverLoggedDerived, setHasEverLoggedDerived] = useState<boolean>(Boolean(hasEverLogged));
   const arrowRotation = useRef(new Animated.Value(0)).current;
+  const chevronHintOpacity = useRef(new Animated.Value(1)).current;
   const hasAppliedInitialOpen = useRef(false);
 
   useEffect(() => {
@@ -77,6 +88,36 @@ export default function SunVantageHeader({
     arrowRotation.setValue(1);
     setNavVisible(true);
   }, [arrowRotation, openNavOnMount]);
+
+  useEffect(() => {
+    setHasEverLoggedDerived(Boolean(hasEverLogged));
+  }, [hasEverLogged]);
+
+  useEffect(() => {
+    if (hasEverLogged !== undefined) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: userRes } = await supabase.auth.getUser();
+        const userId = userRes?.user?.id;
+        if (!userId) return;
+        const { data } = await supabase
+          .from('profiles')
+          .select('current_streak,last_witness_date')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (cancelled) return;
+        const current = typeof data?.current_streak === 'number' ? data.current_streak : 0;
+        const lastDate = typeof data?.last_witness_date === 'string' ? data.last_witness_date : null;
+        setHasEverLoggedDerived(Boolean(lastDate) || current > 0);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hasEverLogged]);
 
   useEffect(() => {
     if (!navVisible) {
@@ -88,6 +129,26 @@ export default function SunVantageHeader({
     }
   }, [navVisible]);
 
+  useEffect(() => {
+    if (!highlightChevronHint || navVisible) {
+      chevronHintOpacity.stopAnimation();
+      chevronHintOpacity.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(chevronHintOpacity, { toValue: 0.32, duration: 320, useNativeDriver: true }),
+        Animated.timing(chevronHintOpacity, { toValue: 1, duration: 360, useNativeDriver: true }),
+      ]),
+      { iterations: 3 }
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      chevronHintOpacity.setValue(1);
+    };
+  }, [highlightChevronHint, navVisible, chevronHintOpacity]);
+
   const handleHeaderPress = () => {
     if (onHeaderPress) {
       onHeaderPress();
@@ -97,7 +158,10 @@ export default function SunVantageHeader({
       toValue: 1,
       duration: ARROW_ROTATION_DURATION,
       useNativeDriver: true,
-    }).start(() => setNavVisible(true));
+    }).start(() => {
+      setNavVisible(true);
+      onNavOpen?.();
+    });
   };
 
   const handleSignOut = async () => {
@@ -155,7 +219,7 @@ export default function SunVantageHeader({
                     <Animated.Text
                       style={[
                         styles.arrowIndicator,
-                        { color: Dawn.text.secondary },
+                        { color: Dawn.text.secondary, opacity: chevronHintOpacity },
                         {
                           transform: [
                             {
@@ -211,6 +275,7 @@ export default function SunVantageHeader({
         onClose={() => setNavVisible(false)}
         instantOpen={openNavOnMount}
         hasLoggedToday={hasLoggedToday}
+        hasEverLogged={hasEverLoggedDerived}
         showMyCitySunrises={showMyCitySunrises}
         onSignOut={handleSignOut}
       />

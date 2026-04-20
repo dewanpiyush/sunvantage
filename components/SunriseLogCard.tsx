@@ -30,13 +30,39 @@ import { REFLECTION_PROMPT, getNextReflectionPrompt, setLastUsedReflectionPrompt
 import { normalizeVantageForStorage } from '../lib/vantageUtils';
 import { useDawn } from '@/hooks/use-dawn';
 import { useMorningContext } from '../hooks/useMorningContext';
-import { getMinutesToSunrise, getCoordinatesForCity } from '../services/weatherService';
+import { getMinutesToSunriseForCity, getCoordinatesForCity } from '../services/weatherService';
 import { invokeModerateImage } from '../lib/moderateImageInvoke';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import posthog from '@/lib/posthog';
 
 const photoBucket = 'sunrise_photos';
-const TOTAL_STEPS = 4; /* Step 0 = pause, 1 = vantage, 2 = photo, 3 = reflection */
+
+/** Aligned with `isSunriseWindow` on Today's Sunrise screen (presence / present-tense modal). */
+const MODAL_LIVE_WINDOW_MIN = 20;
+/** Optional "use current location" while still plausibly near the witness window. */
+const USE_LOCATION_WINDOW_MIN = 60;
+
+const LOG_MODAL_COPY = {
+  live: {
+    step1: 'Where are you as the light arrives?',
+    step2: 'Capture this moment, if you want.',
+    step3: 'What is staying with you?',
+    reflectionPlaceholder: 'A word, a sentence, or just how it feels.',
+  },
+  retro: {
+    step0: 'Did you welcome the sunrise today?',
+    step1: 'Where were you when the light arrived?',
+    step2: 'Did you capture the sunrise today?',
+    step3: 'What stayed with you today?',
+    reflectionPlaceholder: 'A word, a sentence, or just how it felt.',
+  },
+  pre: {
+    step1: 'Where will you be when the light arrives?',
+    step2: 'Capture this morning, if you can.',
+    step3: 'What is on your mind before dawn?',
+    reflectionPlaceholder: 'A word, a sentence, or a quiet intention.',
+  },
+} as const;
 
 function getTodayLocalDateString(): string {
   const d = new Date();
@@ -114,7 +140,7 @@ export default function SunriseLogCard({
 }: SunriseLogCardProps) {
   const Dawn = useDawn();
   const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
-  const [step, setStep] = useState<0 | 1 | 2 | 3>(0);
+  const [step, setStep] = useState<0 | 1 | 2 | 3>(1);
   const [showMissedScreen, setShowMissedScreen] = useState(false);
   const [vantageName, setVantageName] = useState('');
   const [reflectionPrompt, setReflectionPrompt] = useState<string>(REFLECTION_PROMPT);
@@ -141,21 +167,33 @@ export default function SunriseLogCard({
 
   const cityLabel = (city && city.trim()) || 'your city';
   const sunriseLabel = formatSunriseTime(sunriseTime);
-  const { sunriseTomorrow } = useMorningContext(city ?? null);
+  const { sunriseTomorrow, cityTimezone } = useMorningContext(city ?? null);
   const tomorrowSunriseLabel = formatSunriseTime(sunriseTomorrow ?? null);
 
-  const isWithinSunriseWindow =
-    sunriseTime != null &&
-    typeof sunriseTime === 'string' &&
-    sunriseTime.trim() !== '' &&
-    Math.abs(getMinutesToSunrise(sunriseTime)) <= 60;
+  const minutesToSunriseCity = React.useMemo(
+    () => getMinutesToSunriseForCity(sunriseTime, cityTimezone),
+    [sunriseTime, cityTimezone]
+  );
 
-  /** Post-sunrise (after the ±60 min window): use retrospective copy in step 2. */
-  const isPostSunrise =
-    sunriseTime != null &&
-    typeof sunriseTime === 'string' &&
-    sunriseTime.trim() !== '' &&
-    getMinutesToSunrise(sunriseTime) < -60;
+  const isLiveSunriseWindow =
+    minutesToSunriseCity != null &&
+    minutesToSunriseCity >= -MODAL_LIVE_WINDOW_MIN &&
+    minutesToSunriseCity <= MODAL_LIVE_WINDOW_MIN;
+
+  const logModalTone: keyof typeof LOG_MODAL_COPY = React.useMemo(() => {
+    const m = minutesToSunriseCity;
+    if (m != null && m >= -MODAL_LIVE_WINDOW_MIN && m <= MODAL_LIVE_WINDOW_MIN) return 'live';
+    if (m != null && m < -MODAL_LIVE_WINDOW_MIN) return 'retro';
+    return 'pre';
+  }, [minutesToSunriseCity]);
+
+  const logCopy = LOG_MODAL_COPY[logModalTone];
+  /** Opening confirmation — retrospective logging only (live / pre start at step 1). */
+  const hasRetroStep0 = logModalTone === 'retro';
+
+  const showUseCurrentLocation =
+    minutesToSunriseCity != null &&
+    Math.abs(minutesToSunriseCity) <= USE_LOCATION_WINDOW_MIN;
 
   const sunriseLogStartedFiredRef = useRef(false);
 
@@ -165,6 +203,7 @@ export default function SunriseLogCard({
       setError('');
       setSaveStage('idle');
       setShowMissedScreen(false);
+      setStep(logModalTone === 'retro' ? 0 : 1);
       if (vantageName === '' && initialVantageName?.trim()) {
         setVantageName(initialVantageName.trim());
       }
@@ -200,7 +239,7 @@ export default function SunriseLogCard({
       cardScale.setValue(0.96);
       cardTranslateY.setValue(10);
     }
-  }, [visible, initialVantageName, backdropOpacity, cardOpacity, cardScale, cardTranslateY]);
+  }, [visible, initialVantageName, logModalTone, backdropOpacity, cardOpacity, cardScale, cardTranslateY]);
 
   // PostHog: fire once per modal open.
   useEffect(() => {
@@ -323,13 +362,14 @@ export default function SunriseLogCard({
     if (step === 0) {
       handleClose();
     } else if (step === 1) {
-      goToStep(0);
+      if (hasRetroStep0) goToStep(0);
+      else handleClose();
     } else if (step === 2) {
       goToStep(1);
     } else {
       goToStep(2);
     }
-  }, [showMissedScreen, step, handleClose, goToStep]);
+  }, [showMissedScreen, step, hasRetroStep0, handleClose, goToStep]);
 
   const handleContinueFromStep0 = useCallback(() => {
     goToStep(1);
@@ -404,13 +444,13 @@ export default function SunriseLogCard({
   }, []);
 
   const resetFormAfterSave = useCallback(() => {
-    setStep(0);
+    setStep(logModalTone === 'retro' ? 0 : 1);
     setVantageName('');
     setReflectionText('');
     setPhotoUri(null);
     setPhotoBase64(null);
     setOverrideCoords(null);
-  }, []);
+  }, [logModalTone]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -687,17 +727,20 @@ export default function SunriseLogCard({
                     onPress={handleBack}
                     hitSlop={8}
                     accessibilityRole="button"
-                    accessibilityLabel={showMissedScreen ? 'Back' : step === 0 ? 'Close' : 'Back'}
+                    accessibilityLabel={
+                      showMissedScreen
+                        ? 'Back'
+                        : step === 0
+                          ? 'Close'
+                          : step === 1 && !hasRetroStep0
+                            ? 'Close'
+                            : 'Back'
+                    }
                   >
                     <Ionicons name="chevron-back" size={24} color={Dawn.text.primary} />
                   </Pressable>
                   <View style={styles.headerContent}>
-                    {!showMissedScreen && step === 0 ? (
-                      <View style={styles.headerTitleRowStep0}>
-                        <Text style={styles.headerTitleEmojiLarge}>🌅</Text>
-                        <Text style={[styles.headerTitleStep0, styles.headerTitleStep0Text]}>This morning</Text>
-                      </View>
-                    ) : showMissedScreen ? (
+                    {showMissedScreen ? (
                       <View style={styles.headerTitleRow}>
                         <Text style={styles.headerTitleEmoji}>🌅</Text>
                         <View style={styles.headerTitleAndTime}>
@@ -715,7 +758,7 @@ export default function SunriseLogCard({
                     )}
                     {!showMissedScreen && step >= 1 ? (
                       <Text style={styles.headerSub}>
-                        {cityLabel} — Sunrise {sunriseLabel}
+                        {cityLabel} — Sunrise {sunriseLabel}{isLiveSunriseWindow ? ' · Now' : ''}
                       </Text>
                     ) : null}
                   </View>
@@ -733,19 +776,22 @@ export default function SunriseLogCard({
                   </Pressable>
                 </View>
 
-                {/* Progress dots — only from step 1 onward; hide on missed screen */}
-                {!showMissedScreen && step >= 1 ? (
+                {/* Progress dots — hide on missed screen */}
+                {!showMissedScreen ? (
                   <View style={styles.progressRow}>
-                    {[0, 1, 2].map((i) => (
-                      <View
-                        key={i}
-                        style={[
-                          styles.progressDot,
-                          i === step - 1 && styles.progressDotActive,
-                          i < step - 1 && styles.progressDotDone,
-                        ]}
-                      />
-                    ))}
+                    {Array.from({ length: hasRetroStep0 ? 4 : 3 }, (_, i) => {
+                      const activeIndex = hasRetroStep0 ? step : step - 1;
+                      return (
+                        <View
+                          key={i}
+                          style={[
+                            styles.progressDot,
+                            i === activeIndex && styles.progressDotActive,
+                            i < activeIndex && styles.progressDotDone,
+                          ]}
+                        />
+                      );
+                    })}
                   </View>
                 ) : null}
 
@@ -783,19 +829,18 @@ export default function SunriseLogCard({
                         </Text>
                       </View>
                     )}
-                    {/* Step 0 — witness confirmation */}
-                    {!showMissedScreen && step === 0 && (
+                    {/* Step 0 — retrospective only: witness confirmation */}
+                    {!showMissedScreen && step === 0 && hasRetroStep0 && (
                       <Animated.View style={[styles.stepInner, styles.step0Content, { opacity: stepOpacity }]}>
                         <Text style={styles.step0Question} maxFontSizeMultiplier={1.3}>
-                          Did you welcome the sunrise today?
+                          {LOG_MODAL_COPY.retro.step0}
                         </Text>
                       </Animated.View>
                     )}
-
                     {/* Step 1 — vantage name */}
                     {!showMissedScreen && step === 1 && (
                       <Animated.View style={[styles.stepInner, { opacity: stepOpacity }]}>
-                        <Text style={styles.sectionLabel}>Where were you when the light arrived?</Text>
+                        <Text style={styles.sectionLabel}>{logCopy.step1}</Text>
                         <TextInput
                           ref={vantageInputRef}
                           style={styles.vantageInput}
@@ -806,7 +851,7 @@ export default function SunriseLogCard({
                           autoCapitalize="words"
                           returnKeyType="done"
                         />
-                        {isWithinSunriseWindow && (
+                        {showUseCurrentLocation && (
                           <Pressable
                             style={({ pressed }) => [
                               styles.useLocationBtn,
@@ -831,9 +876,7 @@ export default function SunriseLogCard({
                     {/* Step 2 — photo */}
                     {!showMissedScreen && step === 2 && (
                       <Animated.View style={[styles.stepInner, { opacity: stepOpacity }]}>
-                        <Text style={styles.sectionLabel}>
-                          {isPostSunrise ? 'Did you capture the sunrise today?' : 'Capture the light'}
-                        </Text>
+                        <Text style={styles.sectionLabel}>{logCopy.step2}</Text>
                         {!photoUri ? (
                           <Pressable
                             style={({ pressed }) => [styles.addPhotoBtn, pressed && styles.addPhotoBtnPressed]}
@@ -859,9 +902,7 @@ export default function SunriseLogCard({
                               <Text style={styles.retakeText}>
                                 {uploadingPhoto
                                   ? 'Replacing…'
-                                  : isPostSunrise
-                                    ? 'Pick another'
-                                    : 'Retake'}
+                                  : 'Pick another'}
                               </Text>
                             </Pressable>
                           </>
@@ -874,13 +915,13 @@ export default function SunriseLogCard({
                     {/* Step 3 — reflection */}
                     {!showMissedScreen && step === 3 && (
                       <Animated.View style={[styles.stepInner, { opacity: stepOpacity }]}>
-                        <Text style={styles.sectionLabel}>{reflectionPrompt}</Text>
+                        <Text style={styles.sectionLabel}>{logCopy.step3}</Text>
                         <TextInput
                           ref={reflectionInputRef}
                           style={styles.reflectionInput}
                           value={reflectionText}
                           onChangeText={setReflectionText}
-                          placeholder="A word, a sentence, or just how it felt."
+                          placeholder={logCopy.reflectionPlaceholder}
                           placeholderTextColor={Dawn.text.secondary}
                           multiline
                           numberOfLines={4}
@@ -900,7 +941,6 @@ export default function SunriseLogCard({
                 <View style={[
                   styles.footer,
                   showMissedScreen && styles.footerMissed,
-                  !showMissedScreen && step === 0 && styles.footerStep0,
                 ]}>
                   {showMissedScreen ? (
                     <View style={[styles.footerRow, styles.footerRowStep0, styles.footerRowMissed]}>
@@ -924,8 +964,9 @@ export default function SunriseLogCard({
                         <Text style={styles.primaryBtnText}>Plan for tomorrow</Text>
                       </Pressable>
                     </View>
-                  ) : step === 0 ? (
-                    <View style={[styles.footerRow, styles.footerRowStep0, styles.footerRowStep0Gap]}>
+                  ) : null}
+                  {step === 0 && hasRetroStep0 ? (
+                    <View style={[styles.footerRow, styles.footerRowStep0, styles.footerRowStep0Gap, styles.footerStep0]}>
                       <Pressable
                         style={({ pressed }) => [styles.step0SecondaryBtn, pressed && styles.btnPressed]}
                         onPress={() => setShowMissedScreen(true)}
@@ -1079,10 +1120,6 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     borderRadius: 999,
     backgroundColor: 'rgba(255,179,71,0.07)',
   },
-  headerTitleRowStep0: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
   headerTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1096,19 +1133,6 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   headerTitleEmoji: {
     fontSize: 22,
     lineHeight: 26,
-  },
-  headerTitleEmojiLarge: {
-    fontSize: 24,
-    lineHeight: 28,
-    color: Dawn.text.primary,
-  },
-  headerTitleStep0: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: Dawn.text.primary,
-  },
-  headerTitleStep0Text: {
-    marginLeft: 6,
   },
   header: {
     flexDirection: 'row',
@@ -1197,20 +1221,6 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     backgroundColor: Dawn.accent.sunrise,
     opacity: 0.6,
   },
-  step0Content: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 12,
-    paddingBottom: 12,
-  },
-  step0Question: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Dawn.text.primary,
-    textAlign: 'center',
-    lineHeight: 28,
-    maxWidth: 280,
-  },
   missedScreenContent: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1224,6 +1234,20 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     color: Dawn.text.primary,
     textAlign: 'center',
     lineHeight: 28,
+  },
+  step0Content: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 12,
+    paddingBottom: 12,
+  },
+  step0Question: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Dawn.text.primary,
+    textAlign: 'center',
+    lineHeight: 28,
+    maxWidth: 280,
   },
   footerRowStep0: {
     justifyContent: 'space-between',

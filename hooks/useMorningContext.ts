@@ -31,16 +31,33 @@ export function getSunriseCardTimeMessage(minutesToSunrise: number | null): stri
 }
 
 /** Dawn window: sunriseToday - 60 min to sunriseToday + 30 min. */
-function computeIsDawnMode(sunriseToday: string | null): boolean {
+function getHourAndMinuteInTimeZone(timezone: string): { hour: number; minute: number } {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(new Date());
+  const hour = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0', 10);
+  const minute = parseInt(parts.find((p) => p.type === 'minute')?.value ?? '0', 10);
+  return {
+    hour: Number.isNaN(hour) ? 0 : hour,
+    minute: Number.isNaN(minute) ? 0 : minute,
+  };
+}
+
+function computeIsDawnMode(sunriseToday: string | null, cityTimezone: string | null): boolean {
   if (!sunriseToday || !/^\d{1,2}:\d{2}$/.test(sunriseToday)) return false;
+  if (!cityTimezone || !cityTimezone.trim()) return false;
   const [hStr, mStr] = sunriseToday.split(':');
   const h = parseInt(hStr!, 10);
   const m = parseInt(mStr!, 10);
-  const now = new Date();
-  const sunriseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
-  const dawnStart = new Date(sunriseDate.getTime() - 60 * 60 * 1000);
-  const dawnEnd = new Date(sunriseDate.getTime() + 30 * 60 * 1000);
-  return now >= dawnStart && now <= dawnEnd;
+  if (Number.isNaN(h) || Number.isNaN(m)) return false;
+  const now = getHourAndMinuteInTimeZone(cityTimezone);
+  const nowMinutes = now.hour * 60 + now.minute;
+  const sunriseMinutes = h * 60 + m;
+  return nowMinutes >= sunriseMinutes - 60 && nowMinutes <= sunriseMinutes + 30;
 }
 
 type UseMorningContextResult = {
@@ -51,6 +68,8 @@ type UseMorningContextResult = {
   earlyMorning: boolean | null;
   tomorrowWeather: MorningContext['tomorrowWeather'] | null;
   condition: MorningContext['condition'] | null;
+  sunriseSource: MorningContext['sunriseSource'] | null;
+  cityTimezone: string | null;
   isDawnMode: boolean;
   sunriseCardTimeMessage: string | null;
   loading: boolean;
@@ -108,7 +127,8 @@ export function useMorningContext(
 
   const sunriseToday = context?.sunriseToday ?? null;
   const minutesToSunrise = context?.minutesToSunrise ?? null;
-  const isDawnMode = computeIsDawnMode(sunriseToday);
+  const cityTimezone = context?.cityTimezone ?? null;
+  const isDawnMode = computeIsDawnMode(sunriseToday, cityTimezone);
   const sunriseCardTimeMessage = getSunriseCardTimeMessage(minutesToSunrise);
 
   return {
@@ -119,6 +139,8 @@ export function useMorningContext(
     earlyMorning: context?.earlyMorning ?? null,
     tomorrowWeather: context?.tomorrowWeather ?? null,
     condition: context?.condition ?? null,
+    sunriseSource: context?.sunriseSource ?? null,
+    cityTimezone,
     isDawnMode,
     sunriseCardTimeMessage,
     loading,

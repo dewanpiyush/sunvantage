@@ -8,7 +8,7 @@ import {
   Platform,
   TextInput,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -243,6 +243,12 @@ export default function MyMorningsScreen() {
     };
     void bootstrap();
   }, [loadLogs]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadLogs({ silent: true, force: true });
+    }, [loadLogs])
+  );
 
   useEffect(() => {
     if (logs.length === 0 && userCity) {
@@ -497,7 +503,8 @@ export default function MyMorningsScreen() {
                                     source={{ uri: imageUrls[log.id]! }}
                                     style={styles.memoryCardPhoto}
                                     contentFit="cover"
-                                    transition={200}
+                                    transition={90}
+                                    cachePolicy="memory-disk"
                                   />
                                 </View>
                               ) : null}

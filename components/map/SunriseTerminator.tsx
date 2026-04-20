@@ -8,7 +8,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, useWindowDimensions, StyleSheet } from 'react-native';
+import { View, useWindowDimensions, StyleSheet, Platform } from 'react-native';
 import Svg, { Path, Rect, G, Defs, ClipPath, LinearGradient, Stop } from 'react-native-svg';
 import { getTerminatorGeometry, getNightHemisphereGeometry } from '@/lib/sunTerminator';
 import { getMapProjection, getGeoPath } from '@/lib/mapProjection';
@@ -26,7 +26,7 @@ const NIGHT_HEMISPHERE_FILL = 'rgba(0, 0, 0, 0.32)';
 /** Inset so terminator stroke never touches viewport edge (no visible gold frame). */
 const VIEWPORT_INSET = 10;
 /** Extra top inset so horizontal terminator segments at top are clipped. */
-const TOP_INSET_EXTRA = 32;
+const TOP_INSET_EXTRA = Platform.OS === 'ios' ? 84 : 32;
 
 type Props = {
   date: Date;
@@ -53,7 +53,9 @@ export default function SunriseTerminator({ date, width: propWidth, height: prop
   if (!terminatorPath) return null;
 
   const inset = VIEWPORT_INSET;
-  const topInset = inset + TOP_INSET_EXTRA;
+  // On iOS, react-native-svg can leave a thin clipped stroke segment visible at the top edge.
+  // Increasing the clip inset avoids a stray horizontal “glow line” without affecting the arc readability.
+  const topInset = inset + TOP_INSET_EXTRA + OUTER_GLOW_WIDTH;
   const clipX = inset;
   const clipY = topInset;
   const clipW = width - 2 * inset;

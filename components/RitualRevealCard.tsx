@@ -10,6 +10,8 @@ import {
   Pressable,
   StyleSheet,
   Animated,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useDawn } from '@/hooks/use-dawn';
@@ -25,6 +27,10 @@ export type RitualRevealCardProps = {
   /** Concrete explanation, e.g. "You logged two reflections." */
   description: string;
   ctaText?: string;
+  /** Home header extension should read lighter than primary cards. */
+  variant?: 'default' | 'headerBanner';
+  containerStyle?: StyleProp<ViewStyle>;
+  isLiveState?: boolean;
 };
 
 const ENTER_DURATION = 350;
@@ -40,6 +46,9 @@ export default function RitualRevealCard({
   title,
   description,
   ctaText = 'View markers',
+  variant = 'default',
+  containerStyle,
+  isLiveState = false,
 }: RitualRevealCardProps) {
   const Dawn = useDawn();
   const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
@@ -93,6 +102,8 @@ export default function RitualRevealCard({
     <Animated.View
       style={[
         styles.wrap,
+        variant === 'headerBanner' && styles.wrapHeaderBanner,
+        containerStyle,
         {
           opacity,
           transform: [{ translateY }],
@@ -100,22 +111,33 @@ export default function RitualRevealCard({
       ]}
     >
       <Pressable
-        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+        style={({ pressed }) => [
+          styles.card,
+          variant === 'headerBanner' && styles.cardHeaderBanner,
+          variant === 'headerBanner' && isLiveState && styles.cardHeaderBannerLive,
+          pressed && styles.cardPressed,
+        ]}
         onPress={handleDismiss}
         accessibilityRole="button"
         accessibilityLabel={`${title}. ${resolvedDescription}.${showCta && onViewMarkers ? ` ${ctaText}.` : ''} Tap to dismiss.`}
       >
-        <View style={styles.inner}>
+        <View
+          style={[
+            styles.inner,
+            variant === 'headerBanner' && styles.innerHeaderBanner,
+            variant === 'headerBanner' && isLiveState && styles.innerHeaderBannerLive,
+          ]}
+        >
           <View style={styles.topRow}>
             <View style={styles.titleBlock}>
               {icon != null ? (
-                <View style={styles.iconWrap}>{typeof icon === 'string' ? <Text style={styles.iconEmoji}>{icon}</Text> : icon}</View>
+                <View style={styles.iconWrap}>{typeof icon === 'string' ? <Text style={[styles.iconEmoji, variant === 'headerBanner' && styles.iconEmojiHeaderBanner]}>{icon}</Text> : icon}</View>
               ) : (
                 <View style={styles.iconWrap}>
-                  <Text style={styles.iconEmoji}>✦</Text>
+                  <Text style={[styles.iconEmoji, variant === 'headerBanner' && styles.iconEmojiHeaderBanner]}>✦</Text>
                 </View>
               )}
-              <Text style={styles.title}>{title}</Text>
+              <Text style={[styles.title, variant === 'headerBanner' && styles.titleHeaderBanner]}>{title}</Text>
             </View>
             <Pressable
               style={({ pressed }) => [styles.dismissBtn, pressed && styles.dismissBtnPressed]}
@@ -127,7 +149,7 @@ export default function RitualRevealCard({
               <Ionicons name="close" size={16} color={Dawn.text.secondary} />
             </Pressable>
           </View>
-          <Text style={styles.description}>{resolvedDescription}</Text>
+          <Text style={[styles.description, variant === 'headerBanner' && styles.descriptionHeaderBanner]}>{resolvedDescription}</Text>
           {showCta && onViewMarkers ? (
             <Pressable style={({ pressed }) => [styles.ctaLink, pressed && styles.ctaLinkPressed]} onPress={onViewMarkers}>
               <Text style={styles.ctaLinkText}>{ctaText} →</Text>
@@ -145,12 +167,22 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     alignSelf: 'stretch',
     marginBottom: 16,
   },
+  wrapHeaderBanner: {
+    marginBottom: 14,
+  },
   card: {
     position: 'relative',
     borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
+  },
+  cardHeaderBanner: {
+    borderRadius: 14,
+    borderColor: 'rgba(255,255,255,0.07)',
+  },
+  cardHeaderBannerLive: {
+    borderColor: 'rgba(255,255,255,0.04)',
   },
   cardPressed: {
     opacity: 0.98,
@@ -162,6 +194,18 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     paddingTop: 12,
     paddingHorizontal: 16,
     paddingBottom: 12,
+  },
+  innerHeaderBanner: {
+    backgroundColor: Dawn.surface.cardSecondary,
+    borderRadius: 13,
+    paddingTop: 12,
+    paddingHorizontal: 14,
+    paddingBottom: 12,
+  },
+  innerHeaderBannerLive: {
+    paddingTop: 10,
+    paddingHorizontal: 12,
+    paddingBottom: 10,
   },
   topRow: {
     flexDirection: 'row',
@@ -190,11 +234,19 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     fontSize: 18,
     opacity: 0.8,
   },
+  iconEmojiHeaderBanner: {
+    fontSize: 16,
+    opacity: 0.72,
+  },
   title: {
     fontSize: 16,
     fontWeight: '500',
     color: Dawn.text.primary,
     flex: 1,
+  },
+  titleHeaderBanner: {
+    fontSize: 15,
+    fontWeight: '500',
   },
   description: {
     fontSize: 13,
@@ -202,6 +254,11 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     lineHeight: 19,
     marginTop: 6,
     marginBottom: 0,
+  },
+  descriptionHeaderBanner: {
+    fontSize: 12,
+    lineHeight: 17,
+    opacity: 0.9,
   },
   ctaLink: {
     alignSelf: 'flex-start',

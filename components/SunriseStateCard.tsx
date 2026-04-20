@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Platform, Pressable, type ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useDawn } from '@/hooks/use-dawn';
 import type { DawnCard } from '@/data/dawnCards';
@@ -9,7 +9,10 @@ type Props = {
   hasLoggedToday: boolean;
   city: string | null;
   time: string;
-  style?: object;
+  relativeTimeLabel?: string | null;
+  statusLabel?: string | null;
+  style?: ViewStyle | ViewStyle[];
+  tone?: 'default' | 'context';
   /** Secondary text link (not a button) — e.g. open today’s sunrise when city Explore is hidden. */
   showSeeMorningLink?: boolean;
   onPressSeeMorning?: () => void;
@@ -23,7 +26,10 @@ export default function SunriseStateCard({
   hasLoggedToday,
   city,
   time,
+  relativeTimeLabel = null,
+  statusLabel = null,
   style,
+  tone = 'default',
   showSeeMorningLink = false,
   onPressSeeMorning,
 }: Props) {
@@ -34,7 +40,7 @@ export default function SunriseStateCard({
   const postText = dawnCard?.completion || FALLBACK_POST;
 
   return (
-    <View style={[styles.card, style]}>
+    <View style={[styles.card, tone === 'context' && styles.cardContext, style]}>
       {hasLoggedToday ? (
         <LinearGradient
           colors={['rgba(255,179,71,0.0)', 'rgba(255,179,71,0.11)']}
@@ -44,13 +50,15 @@ export default function SunriseStateCard({
           pointerEvents="none"
         />
       ) : null}
-      <View style={styles.titleRow}>
+      <View style={[styles.titleRow, tone === 'context' && styles.titleRowContext]}>
         <Text style={styles.sunEmoji}>☀️</Text>
-        <Text style={styles.title}>Sunrise today</Text>
+        <Text style={[styles.title, tone === 'context' && styles.titleContext]}>Sunrise today</Text>
       </View>
-      <Text style={styles.cityTime}>
-        {city || 'Your city'}. {time}.
+      {relativeTimeLabel ? <Text style={styles.relativeTime}>{relativeTimeLabel}</Text> : null}
+      <Text style={[styles.cityTime, relativeTimeLabel && styles.cityTimeSecondary]}>
+        {city || 'Your city'} · {time}
       </Text>
+      {statusLabel ? <Text style={styles.statusLabel}>{statusLabel}</Text> : null}
       <Text style={styles.verb}>{verb}</Text>
       {hasLoggedToday ? (
         <Text style={[styles.message, styles.postMessage]}>{postText}</Text>
@@ -89,12 +97,19 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
       borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : 'rgba(255, 200, 120, 0.4)',
       overflow: 'hidden',
     },
+    cardContext: {
+      paddingVertical: 12,
+      borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.04)' : 'rgba(255, 200, 120, 0.22)',
+    },
     titleRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 6,
       marginBottom: 4,
+    },
+    titleRowContext: {
+      marginBottom: 3,
     },
     sunEmoji: {
       fontSize: 18,
@@ -108,12 +123,40 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
       color: Dawn.text.primary,
       textAlign: 'center',
     },
+    titleContext: {
+      fontSize: 17,
+      fontWeight: '500',
+    },
     cityTime: {
       fontSize: 13,
       opacity: 0.73,
       color: Dawn.text.secondary,
       textAlign: 'center',
       marginBottom: 0,
+    },
+    cityTimeSecondary: {
+      marginTop: 2,
+      opacity: 0.7,
+    },
+    relativeTime: {
+      fontSize: 16,
+      lineHeight: 20,
+      fontWeight: '600',
+      color: Dawn.text.primary,
+      textAlign: 'center',
+      marginBottom: 1,
+    },
+    statusLabel: {
+      marginTop: 10,
+      marginBottom: -2,
+      fontSize: 11,
+      lineHeight: 14,
+      fontWeight: '600',
+      letterSpacing: 1.2,
+      textTransform: 'uppercase',
+      color: Dawn.text.secondary,
+      opacity: 0.72,
+      textAlign: 'center',
     },
     verb: {
       marginTop: 13,

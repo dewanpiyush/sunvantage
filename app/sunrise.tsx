@@ -26,6 +26,7 @@ import { getCoordinatesForCity } from '../services/weatherService';
 import { invokeModerateImage } from '../lib/moderateImageInvoke';
 import { getTodayDawnCard, type DawnCard } from '../data/dawnCards';
 import { useUIState } from '@/store/uiState';
+import { prefetchMyMornings } from '@/lib/screenDataCache';
 
 const REFLECTION_PROMPTS = [
   'What are you grateful for this morning?',
@@ -426,6 +427,7 @@ export function SunriseLog({
 
   const { sunriseToday, sunriseTomorrow, minutesToSunrise } = useMorningContext(profileCity ?? null);
   const sunrisePassed = minutesToSunrise != null && minutesToSunrise < 0;
+  const isSunriseWindow = minutesToSunrise != null && minutesToSunrise >= -20 && minutesToSunrise <= 20;
   const showFirstLightCard = Boolean(hasLogged && revealBadge);
   const [reflectionInvitationText, setReflectionInvitationText] = useState<string | null>(null);
   const reflectionBlockYRef = useRef(0);
@@ -1343,6 +1345,8 @@ export function SunriseLog({
                 hasLoggedToday={hasLogged}
                 city={profileCity}
                 time={formatSunriseTime(sunriseToday)}
+                statusLabel={!hasLogged && isSunriseWindow ? 'NOW' : null}
+                tone={!hasLogged && isSunriseWindow ? 'context' : 'default'}
               />
             </View>
           ) : null}
@@ -1360,7 +1364,11 @@ export function SunriseLog({
               )}
               {!hasLogged && (
                 <Pressable
-                  style={({ pressed }) => [styles.logThisMorningBtn, pressed && styles.logThisMorningBtnPressed]}
+                  style={({ pressed }) => [
+                    styles.logThisMorningBtn,
+                    !hasLogged && isSunriseWindow && styles.logThisMorningBtnLive,
+                    pressed && styles.logThisMorningBtnPressed,
+                  ]}
                   onPress={() => setShowLogCard(true)}
                   accessibilityRole="button"
                   accessibilityLabel="Log this morning"
@@ -1444,8 +1452,8 @@ export function SunriseLog({
                             source={{ uri: effectivePhotoUrl! }}
                             style={styles.yourMorningPhoto}
                             contentFit="cover"
-                            transition={200}
-                            cachePolicy="none"
+                            transition={90}
+                            cachePolicy="memory-disk"
                             onError={() => setImageError(true)}
                             onLoad={() => setImageError(false)}
                           />
@@ -1557,7 +1565,7 @@ export function SunriseLog({
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
               {!hasLogged ? (
-                <View style={styles.sharedDawnSectionWrap}>
+                <View style={[styles.sharedDawnSectionWrap, !hasLogged && isSunriseWindow && styles.sharedDawnSectionWrapLive]}>
                   <SharedDawnPreview city={profileCity} currentUserId={currentUserId} fromScreen="witness" />
                 </View>
               ) : null}
@@ -1614,6 +1622,11 @@ export function SunriseLog({
             deferredRefreshRef.current = null;
             setRefreshTrigger((t) => t + 1);
           }, 2500);
+
+          // Keep "My Mornings" in sync immediately after a successful log save.
+          if (currentUserId) {
+            void prefetchMyMornings(currentUserId, { force: true });
+          }
 
           // Subtle global lift after logging.
           setTimeout(() => setBackgroundMode('postLog'), 300);
@@ -1977,6 +1990,21 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     borderRadius: 999,
     backgroundColor: 'rgba(255, 179, 71, 0.86)',
   },
+  logThisMorningBtnLive: {
+    marginTop: 24,
+    paddingVertical: Platform.OS === 'android' ? 11 : 13,
+    paddingHorizontal: 30,
+    backgroundColor: 'rgba(255, 190, 92, 0.92)',
+    ...Platform.select({
+      ios: {
+        shadowColor: 'rgba(255, 179, 71, 1)',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.16,
+        shadowRadius: 8,
+      },
+      android: { elevation: 3 },
+    }),
+  },
   logThisMorningBtnPressed: {
     opacity: 0.9,
   },
@@ -1988,6 +2016,9 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   sharedDawnSectionWrap: {
     marginTop: 28,
     width: '100%',
+  },
+  sharedDawnSectionWrapLive: {
+    marginTop: 44,
   },
   witnessFooter: {
     marginTop: 18,

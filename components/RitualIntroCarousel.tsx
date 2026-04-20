@@ -50,6 +50,7 @@ export default function RitualIntroCarousel() {
   const didNudgeThisMount = useRef(false);
   const isAdjustingLoop = useRef(false);
   const currentPageRef = useRef(1);
+  const [activeRealIndex, setActiveRealIndex] = useState(0);
 
   const onLayout = (event: LayoutChangeEvent) => {
     const width = Math.round(event.nativeEvent.layout.width);
@@ -142,6 +143,7 @@ export default function RitualIntroCarousel() {
         requestAnimationFrame(() => {
           scrollToX(lastRealIndexInLoop * cardWidth, false);
           currentPageRef.current = lastRealIndexInLoop;
+          setActiveRealIndex(SLIDES.length - 1);
           isAdjustingLoop.current = false;
         });
         return;
@@ -153,9 +155,12 @@ export default function RitualIntroCarousel() {
         requestAnimationFrame(() => {
           scrollToX(cardWidth, false);
           currentPageRef.current = 1;
+          setActiveRealIndex(0);
           isAdjustingLoop.current = false;
         });
+        return;
       }
+      setActiveRealIndex(Math.max(0, Math.min(SLIDES.length - 1, page - 1)));
     },
     [cardWidth, scrollToX]
   );
@@ -194,6 +199,11 @@ export default function RitualIntroCarousel() {
       >
         <Text style={styles.peekArrow}>→</Text>
       </Pressable>
+      <View style={styles.dotsRow} pointerEvents="none">
+        {SLIDES.map((_, idx) => (
+          <View key={`dot_${idx}`} style={[styles.dot, idx === activeRealIndex && styles.dotActive]} />
+        ))}
+      </View>
     </View>
   );
 }
@@ -211,6 +221,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     slide: {
       paddingVertical: 16,
       paddingHorizontal: 18,
+      paddingBottom: 30,
       alignSelf: 'flex-start',
       alignItems: 'center',
       justifyContent: 'center',
@@ -234,6 +245,29 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     },
     peekArrowPressed: {
       opacity: 0.72,
+    },
+    dotsRow: {
+      position: 'absolute',
+      bottom: 10,
+      left: 0,
+      right: 0,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 6,
+    },
+    dot: {
+      width: 4,
+      height: 4,
+      borderRadius: 99,
+      backgroundColor: Dawn.text.secondary,
+      opacity: 0.28,
+    },
+    dotActive: {
+      width: 5,
+      height: 5,
+      opacity: 0.7,
+      backgroundColor: Dawn.accent.sunrise,
     },
     title: {
       fontSize: 17,

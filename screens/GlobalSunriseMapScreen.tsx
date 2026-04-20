@@ -125,17 +125,19 @@ export default function GlobalSunriseMapScreen() {
 
   return (
     <View style={[styles.safe, { paddingTop: insets.top + TOP_SAFE_EXTRA, paddingBottom: insets.bottom }]}>
-      <SunVantageHeader
-        showBack
-        hideMenu
-        showBranding
-        title="Global Sunrise Map"
-        subtitle="Celebrating the shared splendour of humanity"
-        screenTitle
-        wrapperMarginBottom={0}
-        subtitleStyle={styles.headerSubtitleSoft}
-        onBackPress={() => router.push('/home')}
-      />
+      <View style={styles.headerInset}>
+        <SunVantageHeader
+          showBack
+          hideMenu
+          showBranding
+          title="Global Sunrise Map"
+          subtitle="Celebrating the shared splendour of humanity"
+          screenTitle
+          wrapperMarginBottom={0}
+          subtitleStyle={styles.headerSubtitleSoft}
+          onBackPress={() => router.push('/home')}
+        />
+      </View>
 
       <View style={[styles.mapContainer, { width, height: mapHeight, marginTop: HEADER_MAP_GAP }]}>
         <WorldMap width={width} height={mapHeight} />
@@ -198,6 +200,9 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   safe: {
     flex: 1,
     backgroundColor: Dawn.background.primary,
+  },
+  headerInset: {
+    paddingHorizontal: 24,
   },
   /** Softer than default secondary — lets the map dominate. */
   headerSubtitleSoft: {

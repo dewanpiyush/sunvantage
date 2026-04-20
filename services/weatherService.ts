@@ -13,6 +13,8 @@ const GEOCODE_BASE = 'https://geocoding-api.open-meteo.com/v1/search';
 const FORECAST_BASE = 'https://api.open-meteo.com/v1/forecast';
 
 const CACHE_KEY_PREFIX = 'sunvantage_weather_';
+const SUNRISE_CITY_CACHE_KEY_PREFIX = 'sunvantage_sunrise_city_';
+const DEFAULT_FALLBACK_SUNRISE_HHMM = '06:00';
 
 export type WeatherCondition = 'clear' | 'cloudy' | 'rain' | 'storm' | 'unknown';
 
@@ -24,6 +26,8 @@ export type MorningContext = {
   earlyMorning: boolean;
   tomorrowWeather: WeatherCondition;
   condition: 'good_for_exploring' | 'ok_for_exploring' | 'poor_for_exploring' | 'unknown';
+  sunriseSource: 'live' | 'cached' | 'fallback';
+  cityTimezone: string;
 };
 
 export type GetMorningContextOptions = {
@@ -45,6 +49,13 @@ type OpenMeteoDaily = {
 };
 
 type CachedContext = MorningContext & { cachedAt: string };
+type CachedCitySunrise = {
+  city: string;
+  sunriseTime: string;
+  timezone: string;
+  date: string;
+  cachedAt: string;
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -65,6 +76,11 @@ function cacheKey(city: string): string {
   const normalizedCity = normalizedCityForCache(city);
   const date = getTodayDateKey();
   return `${CACHE_KEY_PREFIX}${date}_${normalizedCity}`;
+}
+
+function citySunriseCacheKey(city: string): string {
+  const normalizedCity = normalizedCityForCache(city);
+  return `${SUNRISE_CITY_CACHE_KEY_PREFIX}${normalizedCity}`;
 }
 
 /**
@@ -116,11 +132,169 @@ export function getMinutesToSunrise(sunriseTime: string): number {
 
 /** Format ISO8601 or date to "HH:mm" (local). */
 function formatTimeToHHmm(isoOrDate: string): string {
+  const localMatch = isoOrDate.match(/T(\d{1,2}):(\d{2})/);
+  if (localMatch) {
+    const h = parseInt(localMatch[1], 10);
+    const m = parseInt(localMatch[2], 10);
+    if (!Number.isNaN(h) && !Number.isNaN(m)) {
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+  }
   const d = new Date(isoOrDate);
   if (Number.isNaN(d.getTime())) return isoOrDate;
   const h = d.getHours();
   const m = d.getMinutes();
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function getNowPartsInTimeZone(timezone: string): {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+} {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(new Date());
+  const get = (type: Intl.DateTimeFormatPartTypes) => {
+    const value = parts.find((p) => p.type === type)?.value ?? '0';
+    return parseInt(value, 10);
+  };
+  return {
+    year: get('year'),
+    month: get('month'),
+    day: get('day'),
+    hour: get('hour'),
+    minute: get('minute'),
+  };
+}
+
+function getMinutesToSunriseInTimezone(sunriseLocal: string, timezone: string): number {
+  const local = sunriseLocal.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{1,2}):(\d{2})/);
+  if (!local) return 0;
+  const [, y, m, d, h, min] = local;
+  const sunriseYear = parseInt(y, 10);
+  const sunriseMonth = parseInt(m, 10);
+  const sunriseDay = parseInt(d, 10);
+  const sunriseHour = parseInt(h, 10);
+  const sunriseMinute = parseInt(min, 10);
+  if ([sunriseYear, sunriseMonth, sunriseDay, sunriseHour, sunriseMinute].some(Number.isNaN)) return 0;
+
+  const now = getNowPartsInTimeZone(timezone);
+  const dayDiff = Math.round(
+    (Date.UTC(sunriseYear, sunriseMonth - 1, sunriseDay) - Date.UTC(now.year, now.month - 1, now.day)) / 86_400_000
+  );
+  return dayDiff * 1440 + (sunriseHour * 60 + sunriseMinute) - (now.hour * 60 + now.minute);
+}
+
+function getMinutesToSunriseFromHHmmInTimezone(sunriseHHmm: string, timezone: string): number {
+  const hhmm = sunriseHHmm.match(/^(\d{1,2}):(\d{2})$/);
+  if (!hhmm) return 0;
+  const sunriseHour = parseInt(hhmm[1], 10);
+  const sunriseMinute = parseInt(hhmm[2], 10);
+  if (Number.isNaN(sunriseHour) || Number.isNaN(sunriseMinute)) return 0;
+  const now = getNowPartsInTimeZone(timezone);
+  return (sunriseHour * 60 + sunriseMinute) - (now.hour * 60 + now.minute);
+}
+
+/**
+ * Minutes until sunrise using the selected city's local clock when possible.
+ * `sunriseTime` from morning context is HH:mm in that city — **not** device local time.
+ * Falls back to {@link getMinutesToSunrise} when timezone or format is missing.
+ */
+export function getMinutesToSunriseForCity(
+  sunriseTime: string | null | undefined,
+  cityTimezone: string | null | undefined
+): number | null {
+  if (!sunriseTime?.trim()) return null;
+  const s = sunriseTime.trim();
+  const tz = cityTimezone?.trim();
+  if (tz) {
+    const match = s.match(/^(\d{1,2}):(\d{2})$/);
+    if (match) {
+      const h = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10);
+      if (!Number.isNaN(h) && !Number.isNaN(m)) {
+        const norm = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        const mins = getMinutesToSunriseFromHHmmInTimezone(norm, tz);
+        return Number.isFinite(mins) ? mins : null;
+      }
+    }
+  }
+  const legacy = getMinutesToSunrise(s);
+  return Number.isFinite(legacy) ? legacy : null;
+}
+
+function normalizeHHmmOrFallback(value: string | null | undefined): string {
+  if (!value) return DEFAULT_FALLBACK_SUNRISE_HHMM;
+  const match = value.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return DEFAULT_FALLBACK_SUNRISE_HHMM;
+  const h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  if (Number.isNaN(h) || Number.isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) {
+    return DEFAULT_FALLBACK_SUNRISE_HHMM;
+  }
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+async function readCachedCitySunrise(city: string): Promise<{ sunriseTime: string; timezone: string } | null> {
+  try {
+    const raw = await AsyncStorage.getItem(citySunriseCacheKey(city));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedCitySunrise;
+    const time = normalizeHHmmOrFallback(parsed?.sunriseTime);
+    const timezone = typeof parsed?.timezone === 'string' && parsed.timezone.trim() ? parsed.timezone.trim() : 'UTC';
+    return { sunriseTime: time, timezone };
+  } catch {
+    return null;
+  }
+}
+
+async function writeCachedCitySunrise(city: string, sunriseTime: string, timezone: string): Promise<void> {
+  try {
+    const payload: CachedCitySunrise = {
+      city: city.trim(),
+      sunriseTime: normalizeHHmmOrFallback(sunriseTime),
+      timezone: timezone.trim() || 'UTC',
+      date: getTodayDateKey(),
+      cachedAt: new Date().toISOString(),
+    };
+    await AsyncStorage.setItem(citySunriseCacheKey(city), JSON.stringify(payload));
+  } catch {
+    // ignore cache write errors
+  }
+}
+
+function buildFallbackContext(
+  sunriseToday: string,
+  sunriseTomorrow: string,
+  source: 'cached' | 'fallback',
+  cityTimezone: string
+): MorningContext {
+  const today = normalizeHHmmOrFallback(sunriseToday);
+  const tomorrow = normalizeHHmmOrFallback(sunriseTomorrow);
+  const timezone = cityTimezone?.trim() || 'UTC';
+  const minutesToSunrise = getMinutesToSunriseFromHHmmInTimezone(today, timezone);
+  const sunrisePassed = minutesToSunrise < 0;
+  return {
+    sunriseToday: today,
+    sunriseTomorrow: tomorrow,
+    minutesToSunrise,
+    sunrisePassed,
+    earlyMorning: minutesToSunrise > 30,
+    tomorrowWeather: 'unknown',
+    condition: 'unknown',
+    sunriseSource: source,
+    cityTimezone: timezone,
+  };
 }
 
 /** Derive exploration condition from weather. */
@@ -279,15 +453,38 @@ export async function getMorningContext(
     if (raw) {
       const parsed: CachedContext = JSON.parse(raw);
       if (parsed?.sunriseToday != null) {
-        const minutesToSunrise = getMinutesToSunrise(parsed.sunriseToday);
+        let cityTimezone = typeof parsed.cityTimezone === 'string' && parsed.cityTimezone.trim()
+          ? parsed.cityTimezone.trim()
+          : null;
+        // Backward-compatible recovery for old cache entries that predate cityTimezone.
+        if (!cityTimezone) {
+          const geoFromCacheRecovery = await getCoordinatesForCity(trimmed, options);
+          cityTimezone = geoFromCacheRecovery?.timezone?.trim() || null;
+        }
+        if (!cityTimezone) {
+          const citySunrise = await readCachedCitySunrise(trimmed);
+          cityTimezone = citySunrise?.timezone ?? null;
+        }
+        if (!cityTimezone) cityTimezone = 'UTC';
+        const minutesToSunrise = getMinutesToSunriseFromHHmmInTimezone(parsed.sunriseToday, cityTimezone);
         const sunrisePassed = minutesToSunrise < 0;
         const earlyMorning = minutesToSunrise > 30;
-        return {
+        const cachedContextResolved: MorningContext = {
           ...parsed,
           minutesToSunrise,
           sunrisePassed,
           earlyMorning,
+          sunriseSource: parsed.sunriseSource ?? 'cached',
+          cityTimezone,
         };
+        // Persist upgraded cache shape so future reads are stable.
+        try {
+          const toCache: CachedContext = { ...cachedContextResolved, cachedAt: new Date().toISOString() };
+          await AsyncStorage.setItem(key, JSON.stringify(toCache));
+        } catch {
+          // ignore cache write errors
+        }
+        return cachedContextResolved;
       }
     }
   } catch {
@@ -296,11 +493,23 @@ export async function getMorningContext(
 
   // 2. Coordinates (from profile if available, else geocode and optionally persist)
   const geo = await getCoordinatesForCity(trimmed, options);
-  if (!geo) return null;
+  if (!geo) {
+    const cachedCitySunrise = await readCachedCitySunrise(trimmed);
+    if (cachedCitySunrise) {
+      return buildFallbackContext(cachedCitySunrise.sunriseTime, cachedCitySunrise.sunriseTime, 'cached', cachedCitySunrise.timezone);
+    }
+    return buildFallbackContext(DEFAULT_FALLBACK_SUNRISE_HHMM, DEFAULT_FALLBACK_SUNRISE_HHMM, 'fallback', 'UTC');
+  }
 
   // 3. Forecast
   const daily = await fetchForecast(geo.latitude, geo.longitude, geo.timezone);
-  if (!daily?.time?.length || !daily.sunrise?.length || daily.weather_code == null) return null;
+  if (!daily?.time?.length || !daily.sunrise?.length || daily.weather_code == null) {
+    const cachedCitySunrise = await readCachedCitySunrise(trimmed);
+    if (cachedCitySunrise) {
+      return buildFallbackContext(cachedCitySunrise.sunriseTime, cachedCitySunrise.sunriseTime, 'cached', cachedCitySunrise.timezone);
+    }
+    return buildFallbackContext(DEFAULT_FALLBACK_SUNRISE_HHMM, DEFAULT_FALLBACK_SUNRISE_HHMM, 'fallback', geo.timezone);
+  }
 
   const sunriseTodayRaw = daily.sunrise[0];
   const sunriseTomorrowRaw = daily.sunrise[1];
@@ -309,7 +518,7 @@ export async function getMorningContext(
   const sunriseToday = formatTimeToHHmm(sunriseTodayRaw);
   const sunriseTomorrow = formatTimeToHHmm(sunriseTomorrowRaw);
   const tomorrowWeather = classifyMorningWeather({ weather_code: weatherCodeTomorrow });
-  const minutesToSunrise = getMinutesToSunrise(sunriseTodayRaw);
+  const minutesToSunrise = getMinutesToSunriseInTimezone(sunriseTodayRaw, geo.timezone);
   const sunrisePassed = minutesToSunrise < 0;
   const earlyMorning = minutesToSunrise > 30;
   const condition = conditionFromWeather(tomorrowWeather);
@@ -322,6 +531,8 @@ export async function getMorningContext(
     earlyMorning,
     tomorrowWeather,
     condition,
+    sunriseSource: 'live',
+    cityTimezone: geo.timezone,
   };
 
   // 4. Cache
@@ -331,6 +542,7 @@ export async function getMorningContext(
   } catch {
     // ignore cache write errors
   }
+  await writeCachedCitySunrise(trimmed, sunriseToday, geo.timezone);
 
   return context;
 }

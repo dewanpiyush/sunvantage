@@ -8,12 +8,13 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  InteractionManager,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-import { File } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import supabase from '../supabase';
 import { BADGE_REGISTRY, BADGE_ICONS, computeBadgeStats } from './ritual-markers';
 import SunVantageHeader from '../components/SunVantageHeader';
@@ -155,6 +156,15 @@ type LogRow = {
   city?: string | null;
 };
 
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
 export default function MyProfileScreen() {
   const router = useRouter();
   const Dawn = useDawn();
@@ -165,8 +175,8 @@ export default function MyProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [pickingAvatar, setPickingAvatar] = useState(false);
   const [avatarViewerVisible, setAvatarViewerVisible] = useState(false);
-  const [avatarActionSheetVisible, setAvatarActionSheetVisible] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -236,28 +246,67 @@ export default function MyProfileScreen() {
     }
   }, []);
 
-  const uploadAvatarFromUri = useCallback(async (uri: string, userId: string) => {
+  const uploadAvatarFromUri = useCallback(async (
+    uri: string,
+    userId: string,
+    sourceWidth?: number,
+    sourceHeight?: number
+  ) => {
     setUploadingAvatar(true);
     setError('');
     try {
+      const hasDims =
+        typeof sourceWidth === 'number' &&
+        sourceWidth > 0 &&
+        typeof sourceHeight === 'number' &&
+        sourceHeight > 0;
+      const longestSide = hasDims ? Math.max(sourceWidth!, sourceHeight!) : AVATAR_SIZE + 1;
+      const shouldResize = longestSide > AVATAR_SIZE;
+      const resizeAction = hasDims
+        ? {
+            width: shouldResize
+              ? Math.max(1, Math.round((sourceWidth! * AVATAR_SIZE) / longestSide))
+              : Math.round(sourceWidth!),
+            height: shouldResize
+              ? Math.max(1, Math.round((sourceHeight! * AVATAR_SIZE) / longestSide))
+              : Math.round(sourceHeight!),
+          }
+        : { width: AVATAR_SIZE };
+
+      console.log('[Profile] avatar manipulate start', {
+        uri,
+        sourceWidth: sourceWidth ?? null,
+        sourceHeight: sourceHeight ?? null,
+        resizeAction,
+      });
       const manipulated = await manipulateAsync(
         uri,
-        [{ resize: { width: AVATAR_SIZE, height: AVATAR_SIZE } }],
-        { compress: 0.9, format: SaveFormat.JPEG }
+        [{ resize: resizeAction }],
+        { compress: 0.7, format: SaveFormat.JPEG }
       );
+      console.log('[Profile] avatar manipulate complete', {
+        manipulatedUri: manipulated.uri,
+        width: manipulated.width,
+        height: manipulated.height,
+      });
       if (!manipulated.uri) {
         setError('Could not prepare image.');
         return;
       }
-      const file = new File(manipulated.uri);
-      const buffer = await file.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
+      console.log('[Profile] avatar file read start');
+      const base64 = await FileSystem.readAsStringAsync(manipulated.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const bytes = base64ToUint8Array(base64);
+      console.log('[Profile] avatar file read complete', { byteLength: bytes.byteLength });
 
       const avatarPath = `${userId}/${Date.now()}.jpg`;
+      console.log('[Profile] avatar upload start', { avatarPath, byteLength: bytes.byteLength });
       const { error: uploadError } = await supabase.storage.from(AVATAR_BUCKET).upload(avatarPath, bytes, {
         contentType: 'image/jpeg',
         upsert: true,
       });
+      console.log('[Profile] avatar upload complete', { avatarPath, ok: !uploadError });
       if (uploadError) {
         setError(uploadError.message || 'Upload failed.');
         return;
@@ -318,43 +367,57 @@ export default function MyProfileScreen() {
     return session?.user?.id ?? null;
   }, []);
 
-  const handleTakePhoto = useCallback(async () => {
-    const userId = await getCurrentUserId();
-    if (!userId) return;
-    setAvatarActionSheetVisible(false);
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      setError('Camera access is needed to take a photo.');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      allowsEditing: false,
-      aspect: [1, 1],
-      quality: 0.9,
-    });
-    if (result.canceled || !result.assets?.[0]?.uri) return;
-    await uploadAvatarFromUri(result.assets[0].uri, userId);
-  }, [getCurrentUserId, uploadAvatarFromUri]);
+  const waitForPickerReady = useCallback(
+    () =>
+      new Promise<void>((resolve) => {
+        let resolved = false;
+        const finish = () => {
+          if (resolved) return;
+          resolved = true;
+          resolve();
+        };
+        // Primary path: wait until modal interactions settle.
+        const task = InteractionManager.runAfterInteractions(() => {
+          requestAnimationFrame(finish);
+        });
+        // Fallback path: never block picker launch indefinitely.
+        setTimeout(() => {
+          task.cancel?.();
+          finish();
+        }, 260);
+      }),
+    []
+  );
 
   const handleChooseFromLibrary = useCallback(async () => {
-    const userId = await getCurrentUserId();
-    if (!userId) return;
-    setAvatarActionSheetVisible(false);
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      setError('Photo library access is needed.');
-      return;
+    if (pickingAvatar || uploadingAvatar) return;
+    setPickingAvatar(true);
+    try {
+      await waitForPickerReady();
+      const userId = await getCurrentUserId();
+      if (!userId) return;
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        setError('Photo library access is needed.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+      if (result.canceled || !result.assets?.[0]?.uri) return;
+      const asset = result.assets[0];
+      setAvatarViewerVisible(false);
+      await uploadAvatarFromUri(asset.uri, userId, asset.width, asset.height);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message || 'Could not open photo library.');
+    } finally {
+      setPickingAvatar(false);
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: false,
-      aspect: [1, 1],
-      quality: 0.9,
-    });
-    if (result.canceled || !result.assets?.[0]?.uri) return;
-    await uploadAvatarFromUri(result.assets[0].uri, userId);
-  }, [getCurrentUserId, uploadAvatarFromUri]);
+  }, [getCurrentUserId, uploadAvatarFromUri, pickingAvatar, uploadingAvatar, waitForPickerReady]);
 
   const handleRemovePhoto = useCallback(async () => {
     const userId = await getCurrentUserId();
@@ -377,8 +440,9 @@ export default function MyProfileScreen() {
   }, [getCurrentUserId, removeAvatar]);
 
   const handleAvatarPress = useCallback(() => {
+    if (pickingAvatar || uploadingAvatar) return;
     setAvatarViewerVisible(true);
-  }, []);
+  }, [pickingAvatar, uploadingAvatar]);
 
   useEffect(() => {
     load();
@@ -473,7 +537,7 @@ export default function MyProfileScreen() {
                   <Pressable
                     style={({ pressed }) => [styles.avatarCircle, pressed && styles.avatarCirclePressed]}
                     onPress={handleAvatarPress}
-                    disabled={uploadingAvatar}
+                    disabled={uploadingAvatar || pickingAvatar}
                   >
                     {profile?.avatar_url ? (
                       <Image
@@ -616,53 +680,25 @@ export default function MyProfileScreen() {
             <View style={styles.avatarViewerActions}>
               <Pressable
                 style={({ pressed }) => [styles.avatarViewerActionBtn, pressed && styles.avatarViewerActionPressed]}
-                onPress={() => setAvatarActionSheetVisible(true)}
+                disabled={uploadingAvatar || pickingAvatar}
+                onPress={handleChooseFromLibrary}
               >
-                <Text style={styles.avatarViewerActionText}>Change photo</Text>
+                <Text style={styles.avatarViewerActionText}>
+                  {profile?.avatar_url ? 'Change photo' : 'Add photo'}
+                </Text>
               </Pressable>
               <Pressable
                 style={({ pressed }) => [
                   styles.avatarViewerActionBtn,
-                  !profile?.avatar_url && styles.avatarViewerActionDisabled,
+                  (!profile?.avatar_url || uploadingAvatar || pickingAvatar) && styles.avatarViewerActionDisabled,
                   pressed && styles.avatarViewerActionPressed,
                 ]}
                 onPress={handleRemovePhoto}
-                disabled={!profile?.avatar_url}
+                disabled={!profile?.avatar_url || uploadingAvatar || pickingAvatar}
               >
                 <Text style={styles.avatarViewerActionText}>Remove photo</Text>
               </Pressable>
             </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      <Modal
-        visible={avatarActionSheetVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAvatarActionSheetVisible(false)}
-        statusBarTranslucent
-      >
-        <Pressable style={styles.avatarSheetBackdrop} onPress={() => setAvatarActionSheetVisible(false)}>
-          <Pressable style={styles.avatarSheet} onPress={(e) => e.stopPropagation()}>
-            <Pressable
-              style={({ pressed }) => [styles.avatarSheetRow, pressed && styles.avatarViewerActionPressed]}
-              onPress={handleTakePhoto}
-            >
-              <Text style={styles.avatarSheetText}>Take photo</Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.avatarSheetRow, pressed && styles.avatarViewerActionPressed]}
-              onPress={handleChooseFromLibrary}
-            >
-              <Text style={styles.avatarSheetText}>Choose from library</Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.avatarSheetRow, pressed && styles.avatarViewerActionPressed]}
-              onPress={() => setAvatarActionSheetVisible(false)}
-            >
-              <Text style={styles.avatarSheetText}>Cancel</Text>
-            </Pressable>
           </Pressable>
         </Pressable>
       </Modal>
@@ -958,30 +994,6 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     fontSize: 14,
     fontWeight: '500',
     color: Dawn.text.primary,
-  },
-  avatarSheetBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.42)',
-    justifyContent: 'flex-end',
-    padding: 16,
-  },
-  avatarSheet: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: Dawn.border.subtle,
-    backgroundColor: Dawn.surface.card,
-  },
-  avatarSheetRow: {
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: Dawn.border.subtle,
-  },
-  avatarSheetText: {
-    fontSize: 16,
-    color: Dawn.text.primary,
-    textAlign: 'center',
   },
   });
 }

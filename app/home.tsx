@@ -69,30 +69,78 @@ function getPreviousDayString(ymd: string): string {
   return `${y2}-${String(m2 + 1).padStart(2, '0')}-${String(d2).padStart(2, '0')}`;
 }
 
-/** Time-aware greeting (morning / afternoon / evening). */
-function getGreeting(): string {
-  const hour = new Date().getHours();
+function getHourInTimeZone(timezone: string | null): number | null {
+  if (!timezone || !timezone.trim()) return null;
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour: '2-digit',
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(new Date());
+    const hour = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '', 10);
+    return Number.isNaN(hour) ? null : hour;
+  } catch {
+    return null;
+  }
+}
+
+function getHourMinuteInTimeZone(timezone: string | null): { hour: number; minute: number } | null {
+  if (!timezone || !timezone.trim()) return null;
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(new Date());
+    const hour = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '', 10);
+    const minute = parseInt(parts.find((p) => p.type === 'minute')?.value ?? '', 10);
+    if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
+    return { hour, minute };
+  } catch {
+    return null;
+  }
+}
+
+function getMinutesToSunriseFromCityClock(sunriseHHmm: string | null, cityTimezone: string | null): number | null {
+  if (!sunriseHHmm || !/^\d{1,2}:\d{2}$/.test(sunriseHHmm)) return null;
+  const now = getHourMinuteInTimeZone(cityTimezone);
+  if (!now) return null;
+  const [hStr, mStr] = sunriseHHmm.split(':');
+  const sunriseH = parseInt(hStr!, 10);
+  const sunriseM = parseInt(mStr!, 10);
+  if (Number.isNaN(sunriseH) || Number.isNaN(sunriseM)) return null;
+  return sunriseH * 60 + sunriseM - (now.hour * 60 + now.minute);
+}
+
+/** Time-aware greeting based on selected city timezone (morning / afternoon / evening). */
+function getGreeting(cityHour: number | null): string {
+  const hour = cityHour ?? 12;
   if (hour < 12) return 'Good morning';
   if (hour < 17) return 'Good afternoon';
   return 'Good evening';
 }
 
 /** Format "HH:mm" as "h:mm AM/PM" for display. */
-function formatSunriseTime(hhmm: string | null): string {
-  if (!hhmm || !/^\d{1,2}:\d{2}$/.test(hhmm)) return hhmm ?? '—';
+function formatSunriseTime(hhmm: string | null, source: 'live' | 'cached' | 'fallback' | null = null): string {
+  if (!hhmm || !/^\d{1,2}:\d{2}$/.test(hhmm)) {
+    return source === 'fallback' ? 'Around 6:00 AM' : '6:00 AM';
+  }
   const [hStr, mStr] = hhmm.split(':');
   let h = parseInt(hStr!, 10);
   const m = mStr!;
   const ampm = h < 12 ? 'AM' : 'PM';
   if (h === 0) h = 12;
   else if (h > 12) h -= 12;
-  return `${h}:${m} ${ampm}`;
+  const human = `${h}:${m} ${ampm}`;
+  return source === 'fallback' ? `Around ${human}` : human;
 }
 
 const TOMORROW_INTENTION_KEY = 'sunvantage_tomorrow_intention';
 const TOMORROW_ALARM_SET_KEY = 'sunvantage_tomorrow_alarm_set';
 const TOMORROW_ALARM_TIME_KEY = 'sunvantage_tomorrow_alarm_time';
-const OPEN_NAV_ONCE_KEY = 'sunvantage_open_nav_once';
 
 /** True if place is home-like: home, room, balcony, terrace, window (case-insensitive). */
 function isHomeLikePlace(place: string): boolean {
@@ -167,6 +215,29 @@ function getNewUserLogCtaCopy(minutesToSunrise: number | null): { title: string;
   };
 }
 
+function getPreSunriseRelativeLabel(minutesToSunrise: number | null): string | null {
+  if (minutesToSunrise == null || minutesToSunrise <= 0) return null;
+  if (minutesToSunrise >= 60) {
+    const roundedHours = Math.max(1, Math.round(minutesToSunrise / 60));
+    return `In ~${roundedHours} hour${roundedHours === 1 ? '' : 's'}`;
+  }
+  const roundedMinutes = Math.max(5, Math.round(minutesToSunrise / 5) * 5);
+  return `In ~${roundedMinutes} minutes`;
+}
+
+type SunrisePhase = 'pre' | 'live' | 'post';
+
+function getSunrisePhase(minutesToSunrise: number | null, sunrisePassed: boolean | null, cityHour: number | null): SunrisePhase {
+  if (minutesToSunrise != null) {
+    if (minutesToSunrise > 20) return 'pre';
+    if (minutesToSunrise >= -20) return 'live';
+    return 'post';
+  }
+  // Fallback when timing data is briefly unavailable.
+  if (sunrisePassed === true || (cityHour != null && cityHour >= 12)) return 'post';
+  return 'pre';
+}
+
 function computeStreakFromLogDates(
   createdAts: string[]
 ): { current: number; longest: number } {
@@ -216,7 +287,8 @@ export default function HomeScreen() {
   const [citySunrisesCount, setCitySunrisesCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [hasOpenedBefore, setHasOpenedBefore] = useState(false);
-  const [openNavOnFirstEntry, setOpenNavOnFirstEntry] = useState(false);
+  const [showNavChevronHint, setShowNavChevronHint] = useState(false);
+  const [hasManuallyOpenedNav, setHasManuallyOpenedNav] = useState(false);
   const [tomorrowPlan, setTomorrowPlan] = useState<{
     exists: boolean;
     place: string | null;
@@ -228,11 +300,20 @@ export default function HomeScreen() {
     minutesToSunrise,
     sunriseToday,
     sunriseTomorrow,
+    sunriseSource,
+    cityTimezone,
     isDawnMode,
   } = useMorningContext(profile?.city ?? null);
-  const sunrisePassed = minutesToSunrise != null && minutesToSunrise < 0;
-  const isPreSunrise = minutesToSunrise != null && minutesToSunrise > 0;
-  const greeting = getGreeting();
+  const cityHour = React.useMemo(() => getHourInTimeZone(cityTimezone), [cityTimezone]);
+  const minutesToSunriseFromCityClock = React.useMemo(
+    () => getMinutesToSunriseFromCityClock(sunriseToday, cityTimezone),
+    [sunriseToday, cityTimezone]
+  );
+  // Prefer city-clock recomputation for phase-sensitive UI edges (e.g. exact sunrise minute),
+  // fallback to fetched minutes when unavailable.
+  const effectiveMinutesToSunrise = minutesToSunriseFromCityClock ?? minutesToSunrise;
+  const sunrisePassed = effectiveMinutesToSunrise != null && effectiveMinutesToSunrise < 0;
+  const greeting = getGreeting(cityHour);
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -352,15 +433,22 @@ export default function HomeScreen() {
   /** Self → future → discovery: prefer archive when user has more than one log (see STEP 2 note in PR). */
   const SHOW_MY_MORNINGS = myMorningCount >= 2;
   const SHOW_CITY_CARD = citySunrisesCount > 2;
-  const showSunriseContextCard = sunrisePassed && !loggedToday;
-  const newUserCtaCopy = React.useMemo(() => getNewUserLogCtaCopy(minutesToSunrise), [minutesToSunrise]);
+  const sunrisePhase = getSunrisePhase(effectiveMinutesToSunrise, sunrisePassed, cityHour);
+  const newUserCtaCopy = React.useMemo(
+    () => getNewUserLogCtaCopy(effectiveMinutesToSunrise),
+    [effectiveMinutesToSunrise]
+  );
+  const preSunriseRelativeLabel = React.useMemo(
+    () => (sunrisePhase === 'pre' ? getPreSunriseRelativeLabel(effectiveMinutesToSunrise) : null),
+    [effectiveMinutesToSunrise, sunrisePhase]
+  );
 
-  const newUserPreSunrise = totalSunrises === 0 && minutesToSunrise != null && minutesToSunrise > 0;
-  const newUserPostSunrise = totalSunrises === 0 && (minutesToSunrise == null || minutesToSunrise <= 0);
-  const newUserReturningPreSunrise =
-    totalSunrises === 0 && hasOpenedBefore && minutesToSunrise != null && minutesToSunrise > 0;
+  const newUserPreOrLive = totalSunrises === 0 && (sunrisePhase === 'pre' || sunrisePhase === 'live');
+  const newUserPostSunrise = totalSunrises === 0 && sunrisePhase === 'post';
+  const newUserReturningPreOrLive =
+    totalSunrises === 0 && hasOpenedBefore && (sunrisePhase === 'pre' || sunrisePhase === 'live');
   const newUserReturningPostSunrise =
-    totalSunrises === 0 && hasOpenedBefore && (minutesToSunrise == null || minutesToSunrise <= 0);
+    totalSunrises === 0 && hasOpenedBefore && sunrisePhase === 'post';
   const tomorrowSunriseLine = getTomorrowSunriseLine(cityName, sunriseTomorrow);
 
   useEffect(() => {
@@ -435,31 +523,20 @@ export default function HomeScreen() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const flag = await AsyncStorage.getItem(OPEN_NAV_ONCE_KEY);
-        if (!cancelled && flag === '1') {
-          setOpenNavOnFirstEntry(true);
-        }
-        if (flag === '1') {
-          await AsyncStorage.removeItem(OPEN_NAV_ONCE_KEY);
-        }
-      } catch {
-        // ignore one-time nav auto-open failures
-      }
-    })();
+    if (loading || loggedToday || totalSunrises > 0 || hasManuallyOpenedNav) {
+      setShowNavChevronHint(false);
+      return;
+    }
+    const timeout = setTimeout(() => {
+      setShowNavChevronHint(true);
+    }, 10_000);
     return () => {
-      cancelled = true;
+      clearTimeout(timeout);
     };
-  }, []);
+  }, [loading, loggedToday, totalSunrises, hasManuallyOpenedNav]);
 
   const handleOpenWitness = () => {
     router.push('/witness');
-  };
-
-  const handleExplorer = () => {
-    router.push('/vantage-walk');
   };
 
   if (loading) {
@@ -514,10 +591,15 @@ export default function HomeScreen() {
         header={
           <SunVantageHeader
             hasLoggedToday={loggedToday}
+            hasEverLogged={logs.length > 0}
             showMyCitySunrises={citySunrisesCount > 2}
             tagline="Your quiet place to notice the morning."
             wrapperMarginBottom={0}
-            openNavOnMount={openNavOnFirstEntry}
+            highlightChevronHint={showNavChevronHint}
+            onNavOpen={() => {
+              setHasManuallyOpenedNav(true);
+              setShowNavChevronHint(false);
+            }}
           />
         }
         scrollContentContainerStyle={styles.scrollContent}
@@ -528,7 +610,7 @@ export default function HomeScreen() {
           <>
             <View style={[styles.anchorBlock, styles.anchorBlockAfterHeader]}>
               <Text style={styles.anchorLine1}>
-                {newUserPreSunrise
+                {newUserPreOrLive
                   ? (firstName ? `Good morning ${firstName}.` : 'Good morning.')
                   : (firstName ? `${greeting} ${firstName}.` : `${greeting}.`)}
               </Text>
@@ -546,6 +628,22 @@ export default function HomeScreen() {
               loading={loading}
               hideLongestWhenFirst={totalSunrises === 1}
             />
+            <View style={[styles.anchorBlock, revealBadge ? styles.anchorBlockBeforeHeaderBanner : null]}>
+              <Text style={[styles.anchorLine1, sunrisePhase === 'live' && styles.anchorLine1Live]}>
+                {!loggedToday && sunrisePhase === 'live'
+                  ? (firstName ? `${firstName}, you are here.` : 'You are here.')
+                  : !loggedToday && isDawnMode
+                  ? (firstName ? `${firstName}, you are up at dawn.` : 'You are up at dawn.')
+                  : loggedToday
+                    ? `${greeting}${firstName ? ` ${firstName}.` : '.'}`
+                    : `${greeting}${firstName ? ` ${firstName}.` : '.'}`}
+              </Text>
+              {loggedToday ? null : sunrisePhase === 'pre' ? (
+                <Text style={styles.anchorLine2}>The light is waiting.</Text>
+              ) : sunrisePhase === 'live' ? (
+                <Text style={styles.anchorLine2}>The show is on.</Text>
+              ) : null}
+            </View>
             {revealBadge ? (
               <RitualRevealCard
                 visible={true}
@@ -561,22 +659,11 @@ export default function HomeScreen() {
                 title={revealBadge.title}
                 description={revealBadge.earnedExplanation}
                 ctaText="View markers"
+                variant="headerBanner"
+                isLiveState={sunrisePhase === 'live'}
+                containerStyle={[styles.headerBannerReveal, sunrisePhase === 'live' && styles.headerBannerRevealLive]}
               />
             ) : null}
-            <View style={styles.anchorBlock}>
-              <Text style={styles.anchorLine1}>
-                {!loggedToday && isDawnMode
-                  ? (firstName ? `${firstName}, you are up at dawn.` : 'You are up at dawn.')
-                  : loggedToday
-                    ? `${greeting}${firstName ? ` ${firstName}.` : '.'}`
-                    : `${greeting}${firstName ? ` ${firstName}.` : '.'}`}
-              </Text>
-              {loggedToday ? null : minutesToSunrise != null && minutesToSunrise >= 0 ? (
-                <Text style={styles.anchorLine2}>The sun will rise in {minutesToSunrise} minutes.</Text>
-              ) : showSunriseContextCard ? null : (
-                <Text style={styles.anchorLine2}>The light is waiting.</Text>
-              )}
-            </View>
           </>
         )}
 
@@ -586,8 +673,15 @@ export default function HomeScreen() {
             dawnCard={dawnCard}
             hasLoggedToday={false}
             city={cityName}
-            time={formatSunriseTime(sunriseToday)}
+            time={formatSunriseTime(sunriseToday, sunriseSource)}
+            relativeTimeLabel={preSunriseRelativeLabel}
+            tone={sunrisePhase === 'live' || sunrisePhase === 'post' ? 'context' : 'default'}
+            style={sunrisePhase === 'pre' ? styles.sunriseCardPreDominant : sunrisePhase === 'live' ? styles.sunriseCardLiveContext : undefined}
           />
+        ) : null}
+
+        {!loggedToday && sunrisePhase === 'live' ? (
+          <Text style={[styles.centerQuestion, styles.centerQuestionHeadline]}>The show is on.</Text>
         ) : null}
 
         {loggedToday ? (
@@ -598,7 +692,7 @@ export default function HomeScreen() {
                 dawnCard={dawnCard}
                 hasLoggedToday={true}
                 city={cityName}
-                time={formatSunriseTime(sunriseToday)}
+                time={formatSunriseTime(sunriseToday, sunriseSource)}
                 style={styles.sunriseCardInStack}
                 showSeeMorningLink={loggedToday}
                 onPressSeeMorning={() => router.push('/sunrise')}
@@ -693,73 +787,37 @@ export default function HomeScreen() {
               )}
             </View>
           </>
-        ) : newUserReturningPreSunrise ? (
-          /* STATE 1b — First-time user, pre-sunrise: Witness + Plan for tomorrow */
+        ) : newUserReturningPreOrLive ? (
+          /* STATE 1b — First-time user, pre/live: single primary witness action */
           <>
-            <Text style={[styles.centerQuestion, styles.centerQuestionHeadline]}>Today could be your first sunrise here.</Text>
-            <View style={styles.cardsBlock}>
+            {sunrisePhase === 'pre' ? (
+              <Text style={[styles.centerQuestion, styles.centerQuestionHeadline]}>Be there when it begins.</Text>
+            ) : null}
+            <View style={[styles.cardsBlock, sunrisePhase === 'live' && styles.cardsBlockLive]}>
               <Pressable
                 style={({ pressed }) => [styles.modeCard, styles.modeCardTightBottom, pressed && styles.modeCardPressed]}
                 onPress={handleOpenWitness}
               >
-                <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>Witness the sunrise</Text>
+                <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>Be there for the sunrise</Text>
                 <Text style={styles.modeCardDesc}>Show up. Stand still. Welcome the day.</Text>
                 <View style={styles.modeCardButton}>
-                  <Text style={styles.modeCardButtonText}>Open witness</Text>
-                </View>
-              </Pressable>
-              <View style={styles.orDivider}>
-                <View style={styles.orDividerLine} />
-                <Text style={styles.orDividerText}>OR</Text>
-                <View style={styles.orDividerLine} />
-              </View>
-              <Pressable
-                style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
-                onPress={() => router.push('/tomorrow-plan')}
-              >
-                <View style={styles.titleRowCentered}>
-                  <Text style={styles.titleEmoji}>🌅</Text>
-                  <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>Welcome the first light tomorrow</Text>
-                </View>
-                <Text style={styles.modeCardDesc}>Tomorrow brings another sunrise.</Text>
-                <Text style={styles.modeCardDesc}>Choose a moment to step outside and notice it.</Text>
-                <View style={styles.modeCardButton}>
-                  <Text style={styles.modeCardButtonText}>Plan for tomorrow</Text>
+                  <Text style={styles.modeCardButtonText}>Mark your morning</Text>
                 </View>
               </Pressable>
             </View>
           </>
-        ) : newUserPreSunrise ? (
-          /* STATE 1 — First-time user, pre-sunrise: Witness + Plan for tomorrow */
+        ) : newUserPreOrLive ? (
+          /* STATE 1 — First-time user, pre/live: single primary witness action */
           <>
             <View style={styles.cardsBlock}>
               <Pressable
                 style={({ pressed }) => [styles.modeCard, styles.modeCardTightBottom, pressed && styles.modeCardPressed]}
                 onPress={handleOpenWitness}
               >
-                <Text style={styles.modeCardTitle}>Witness the sunrise</Text>
+                <Text style={styles.modeCardTitle}>Be there for the sunrise</Text>
                 <Text style={styles.modeCardDesc}>Show up. Stand still. Welcome the day.</Text>
                 <View style={styles.modeCardButton}>
-                  <Text style={styles.modeCardButtonText}>Open witness</Text>
-                </View>
-              </Pressable>
-              <View style={styles.orDivider}>
-                <View style={styles.orDividerLine} />
-                <Text style={styles.orDividerText}>OR</Text>
-                <View style={styles.orDividerLine} />
-              </View>
-              <Pressable
-                style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
-                onPress={() => router.push('/tomorrow-plan')}
-              >
-                <View style={styles.titleRowCentered}>
-                  <Text style={styles.titleEmoji}>🌅</Text>
-                  <Text style={styles.modeCardTitle}>Welcome the first light tomorrow</Text>
-                </View>
-                <Text style={styles.modeCardDesc}>Tomorrow brings another sunrise.</Text>
-                <Text style={styles.modeCardDesc}>Choose a moment to step outside and notice it.</Text>
-                <View style={styles.modeCardButton}>
-                  <Text style={styles.modeCardButtonText}>Plan for tomorrow</Text>
+                  <Text style={styles.modeCardButtonText}>Mark your morning</Text>
                 </View>
               </Pressable>
             </View>
@@ -792,65 +850,74 @@ export default function HomeScreen() {
         ) : (
           /* State A — Returning user, not yet logged today */
           <>
-            <Text style={[styles.centerQuestion, (showSunriseContextCard || isPreSunrise) && styles.centerQuestionHeadline]}>
-              {showSunriseContextCard ? 'Met the first light today?' : 'How will you meet the light today?'}
-            </Text>
-            <View style={styles.cardsBlock}>
+            {sunrisePhase === 'live' ? null : (
+              <Text style={[styles.centerQuestion, styles.centerQuestionHeadline, sunrisePhase === 'post' && styles.centerQuestionPost]}>
+                {sunrisePhase === 'post' ? 'Did you meet the light today?' : 'How will you meet the light today?'}
+              </Text>
+            )}
+            <View style={[styles.cardsBlock, sunrisePhase === 'post' && styles.cardsBlockPost]}>
               <Pressable
                 style={({ pressed }) => [
                   styles.modeCard,
-                  (showSunriseContextCard || isPreSunrise) && styles.modeCardTightBottom,
+                  sunrisePhase === 'pre' && styles.modeCardPreSecondary,
+                  sunrisePhase === 'live' && styles.modeCardAfterSunriseLive,
+                  sunrisePhase === 'live' && styles.modeCardLivePrimary,
+                  sunrisePhase === 'post' && styles.modeCardAfterSunrisePost,
+                  sunrisePhase === 'post' && styles.modeCardPostHero,
+                  sunrisePhase !== 'live' && styles.modeCardTightBottom,
                   pressed && styles.modeCardPressed,
                 ]}
                 onPress={handleOpenWitness}
               >
-                <Text style={[styles.modeCardTitle, (showSunriseContextCard || isPreSunrise) && styles.modeCardTitleSecondary]}>
-                  {showSunriseContextCard ? 'Did you?' : 'Witness the sunrise'}
+                {sunrisePhase === 'live' ? (
+                  <LinearGradient
+                    colors={isMorningLight ? ['rgba(255,255,255,0)', 'rgba(245,166,35,0.10)'] : ['rgba(255,179,71,0.08)', 'rgba(255,179,71,0.02)']}
+                    start={{ x: 0.2, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFillObject}
+                    pointerEvents="none"
+                  />
+                ) : null}
+                <Text
+                  style={[
+                    styles.modeCardTitle,
+                    sunrisePhase !== 'live' && styles.modeCardTitleSecondary,
+                    sunrisePhase === 'post' && styles.modeCardTitlePostHero,
+                  ]}
+                >
+                  {sunrisePhase === 'post' ? 'You can still mark this morning.' : 'Be there for the sunrise'}
                 </Text>
-                <Text style={styles.modeCardDesc}>
-                  {showSunriseContextCard
-                    ? 'Show up. Stand still, and welcome the day?'
+                <Text style={[styles.modeCardDesc, sunrisePhase === 'post' && styles.modeCardDescPostHero]}>
+                  {sunrisePhase === 'post'
+                    ? 'Even if it has passed.'
+                    : sunrisePhase === 'live'
+                    ? "This moment won't wait."
                     : 'Show up. Stand still. Welcome the day.'}
                 </Text>
-                <View style={styles.modeCardButton}>
-                  <Text style={styles.modeCardButtonText}>
-                    {showSunriseContextCard ? 'Log for today' : 'Open witness'}
+                {sunrisePhase === 'live' ? <Text style={styles.modeCardDesc}>{"You're here."}</Text> : null}
+                <View
+                  style={[
+                    styles.modeCardButton,
+                    sunrisePhase === 'live' && styles.modeCardButtonLivePrimary,
+                    sunrisePhase === 'post' && styles.modeCardButtonPostHero,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.modeCardButtonText,
+                      sunrisePhase === 'live' && styles.modeCardButtonTextLivePrimary,
+                      sunrisePhase === 'post' && styles.modeCardButtonTextPostHero,
+                    ]}
+                  >
+                    {sunrisePhase === 'pre' || sunrisePhase === 'live' ? 'Mark your morning' : 'Log for today'}
                   </Text>
                 </View>
               </Pressable>
 
-              {(showSunriseContextCard || isPreSunrise) && (
-                <View style={styles.orDivider}>
-                  <View style={styles.orDividerLine} />
-                  <Text style={styles.orDividerText}>OR</Text>
-                  <View style={styles.orDividerLine} />
-                </View>
-              )}
-
-              <Pressable
-                style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
-                onPress={handleExplorer}
-              >
-                <Text style={[styles.modeCardTitle, (showSunriseContextCard || isPreSunrise) && styles.modeCardTitleSecondary]}>
-                  {showSunriseContextCard ? 'Find a new vantage?' : 'Find a new vantage'}
-                </Text>
-                <Text style={styles.modeCardDesc}>
-                  {showSunriseContextCard
-                    ? 'If you stepped out at dawn'
-                    : 'Step out before dawn.'}
-                </Text>
-                <Text style={styles.modeCardDesc}>
-                  {showSunriseContextCard
-                    ? 'and walked somewhere new.'
-                    : 'Walk toward somewhere new.'}
-                </Text>
-                <View style={styles.modeCardButton}>
-                  <Text style={styles.modeCardButtonText}>
-                    {showSunriseContextCard ? 'Log a vantage you discovered' : 'Begin a vantage walk'}
-                  </Text>
-                </View>
-              </Pressable>
             </View>
+            {sunrisePhase === 'post' ? (
+              <Text style={styles.postSunriseAnchorText}>The sun returns tomorrow.</Text>
+            ) : null}
           </>
         )}
       </ScreenLayout>
@@ -951,6 +1018,15 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     /** Greeting → first card: 2×SPACE */
     marginBottom: SPACE * 2,
   },
+  anchorBlockBeforeHeaderBanner: {
+    marginBottom: 10,
+  },
+  headerBannerReveal: {
+    marginBottom: 14,
+  },
+  headerBannerRevealLive: {
+    marginBottom: 8,
+  },
   /** New-user path: header → greeting = 2×SPACE (no streak row). */
   anchorBlockAfterHeader: {
     marginTop: SPACE * 2,
@@ -961,6 +1037,9 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     color: Dawn.text.secondary,
     /** Streak + greeting read as one cluster */
     marginBottom: 2,
+  },
+  anchorLine1Live: {
+    marginBottom: 5,
   },
   anchorLine2: {
     fontSize: 14,
@@ -1041,6 +1120,10 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     marginTop: 24,
     marginBottom: 16,
   },
+  centerQuestionPost: {
+    marginTop: 24,
+    marginBottom: 28,
+  },
   cardsBlockBeforeAction: {
     marginTop: 16,
   },
@@ -1072,11 +1155,21 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     marginBottom: 12,
   },
   cardsBlock: {},
+  cardsBlockLive: {
+    marginTop: 12,
+  },
+  cardsBlockPost: {
+    minHeight: 220,
+  },
   orDivider: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'center',
     marginVertical: 10,
+  },
+  orDividerPostSunrise: {
+    marginVertical: 16,
   },
   orDividerLine: {
     flex: 1,
@@ -1091,6 +1184,14 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     color: Dawn.text.secondary,
     textAlign: 'center',
   },
+  orDividerPostSunriseLabel: {
+    width: '100%',
+    marginTop: 8,
+    fontSize: 16,
+    fontWeight: '600',
+    color: Dawn.text.primary,
+    textAlign: 'center',
+  },
   modeCard: {
     backgroundColor: Dawn.surface.card,
     borderRadius: 16,
@@ -1099,6 +1200,19 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.06)' : Dawn.border.subtle,
+  },
+  modeCardAfterSunriseLive: {
+    marginTop: 14,
+  },
+  modeCardAfterSunrisePost: {
+    marginTop: 0,
+    marginBottom: 40,
+  },
+  modeCardPostHero: {
+    backgroundColor: isMorningLight ? 'rgba(222, 236, 250, 0.92)' : 'rgba(19, 45, 78, 0.94)',
+    borderColor: isMorningLight ? 'rgba(245, 166, 35, 0.54)' : 'rgba(255, 179, 71, 0.5)',
+    borderWidth: 1.2,
+    paddingVertical: 24,
   },
   modeCardSecondary: {
     backgroundColor: Dawn.surface.cardSecondary,
@@ -1124,6 +1238,15 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   sunriseCardInStack: {
     borderColor: isMorningLight ? 'rgba(245, 166, 35, 0.32)' : 'rgba(255, 179, 71, 0.35)',
   },
+  sunriseCardPreDominant: {
+    borderColor: isMorningLight ? 'rgba(245, 166, 35, 0.46)' : 'rgba(255, 179, 71, 0.48)',
+    borderWidth: 1.2,
+  },
+  sunriseCardLiveContext: {
+    borderColor: isMorningLight ? 'rgba(148, 170, 198, 0.28)' : 'rgba(126, 153, 186, 0.24)',
+    borderWidth: 1,
+    backgroundColor: isMorningLight ? 'rgba(219, 233, 247, 0.72)' : 'rgba(18, 40, 68, 0.74)',
+  },
   /** After logging: “Plan for tomorrow” is the primary card (glow + contrast) */
   modeCardPrimary: {
     backgroundColor: Dawn.surface.cardPrimary,
@@ -1136,6 +1259,21 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   },
   modeCardTightBottom: {
     marginBottom: 6,
+  },
+  modeCardPreSecondary: {
+    backgroundColor: isMorningLight ? 'rgba(220, 234, 247, 0.84)' : 'rgba(20, 41, 70, 0.82)',
+    borderColor: isMorningLight ? 'rgba(203, 213, 225, 0.74)' : 'rgba(59, 90, 126, 0.52)',
+  },
+  modeCardLivePrimary: {
+    backgroundColor: isMorningLight ? 'rgba(229, 239, 250, 0.96)' : 'rgba(24, 50, 82, 0.94)',
+    borderColor: isMorningLight ? 'rgba(245, 166, 35, 0.68)' : 'rgba(255, 179, 71, 0.66)',
+    borderWidth: 1.5,
+    paddingVertical: 26,
+    shadowColor: Dawn.accent.sunrise,
+    shadowOpacity: 0.13,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
   modeCardPressed: {
     opacity: 0.92,
@@ -1154,12 +1292,20 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     fontWeight: '500',
     color: Dawn.text.primary,
   },
+  modeCardTitlePostHero: {
+    fontSize: 17,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
   modeCardDesc: {
     fontSize: 14,
     color: Dawn.text.secondary,
     lineHeight: 22,
     marginBottom: 4,
     textAlign: 'center',
+  },
+  modeCardDescPostHero: {
+    opacity: 0.92,
   },
   modeCardButton: {
     marginTop: 12,
@@ -1169,10 +1315,42 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     borderRadius: 999,
     backgroundColor: Dawn.accent.sunrise,
   },
+  modeCardButtonPostHero: {
+    paddingVertical: 11,
+    paddingHorizontal: 22,
+    backgroundColor: isMorningLight ? '#F5A623' : '#FFB347',
+  },
+  modeCardButtonLivePrimary: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: isMorningLight ? '#F6B347' : '#FFC15A',
+    shadowColor: Dawn.accent.sunrise,
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
   modeCardButtonText: {
     fontSize: 14,
     fontWeight: '500',
     color: Dawn.accent.sunriseOn,
+  },
+  modeCardButtonTextPostHero: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  modeCardButtonTextLivePrimary: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  postSunriseAnchorText: {
+    marginTop: 0,
+    marginBottom: 48,
+    fontSize: 13,
+    lineHeight: 18,
+    color: Dawn.text.secondary,
+    opacity: 0.55,
+    textAlign: 'center',
   },
   skeletonHomeCard: {
     backgroundColor: Dawn.surface.card,

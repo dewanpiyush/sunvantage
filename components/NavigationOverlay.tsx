@@ -44,6 +44,8 @@ type NavItem = {
   show?: boolean;
   /** Slightly brighter label — gentle section lead (not pushy) */
   emphasis?: 'lead';
+  /** Very subtle warmth for special calm-discovery items. */
+  tint?: 'warm';
 };
 
 type Props = {
@@ -51,6 +53,7 @@ type Props = {
   onClose: () => void;
   instantOpen?: boolean;
   hasLoggedToday: boolean;
+  hasEverLogged: boolean;
   showMyCitySunrises: boolean;
   onSignOut: () => void;
 };
@@ -60,6 +63,7 @@ export default function NavigationOverlay({
   onClose,
   instantOpen = false,
   hasLoggedToday,
+  hasEverLogged,
   showMyCitySunrises,
   onSignOut,
 }: Props) {
@@ -83,13 +87,13 @@ export default function NavigationOverlay({
       emphasis: 'lead',
     },
     { emoji: '🌅', label: 'Plan Tomorrow', route: '/tomorrow-plan' },
-    { emoji: '📷', label: 'My Mornings', route: '/my-mornings' },
+    { emoji: '📷', label: 'My Mornings', route: '/my-mornings', show: hasEverLogged },
   ];
 
   const communityItems: NavItem[] = [
-    { emoji: '🌐', label: 'Global Sunrise Map', route: '/global-sunrise-map', emphasis: 'lead' },
-    { emoji: '🌍', label: "My City's Sunrises", route: '/my-city-sunrises', show: showMyCitySunrises },
+    { emoji: '🌍', label: 'Global Sunrise Map', route: '/global-sunrise-map', emphasis: 'lead' },
     { emoji: '🖼️', label: 'World Sunrise Gallery', route: '/world-sunrise-gallery' },
+    { emoji: '✨', label: 'Morning Fragments', route: '/morning-fragments' },
   ];
 
   const youItems: NavItem[] = [
@@ -183,6 +187,7 @@ export default function NavigationOverlay({
             item.route != null && pathname.replace(/^\/+/, '') === item.route.replace(/^\/+/, '');
           const isLead = item.emphasis === 'lead';
           const isMuted = !isCurrent && !isLead;
+          const isWarmTint = item.tint === 'warm';
           const isLast = index === visibleItems.length - 1;
           return (
             <Pressable
@@ -211,6 +216,7 @@ export default function NavigationOverlay({
                   isCurrent && { color: Dawn.text.secondary },
                   !isCurrent && isLead && { color: Dawn.text.primary },
                   !isCurrent && !isLead && { color: Dawn.text.secondary },
+                  !isCurrent && isWarmTint && { color: 'rgba(238, 198, 138, 0.92)' },
                 ]}
                 numberOfLines={1}
               >
