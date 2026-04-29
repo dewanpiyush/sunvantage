@@ -92,12 +92,18 @@ export default function NavigationOverlay({
 
   const communityItems: NavItem[] = [
     { emoji: '🌍', label: 'Global Sunrise Map', route: '/global-sunrise-map', emphasis: 'lead' },
+    {
+      emoji: '🌇',
+      label: "My City's Sunrises",
+      route: '/my-city-sunrises',
+      show: showMyCitySunrises,
+    },
     { emoji: '🖼️', label: 'World Sunrise Gallery', route: '/world-sunrise-gallery' },
-    { emoji: '✨', label: 'Morning Fragments', route: '/morning-fragments' },
   ];
 
   const youItems: NavItem[] = [
     { emoji: '✨', label: 'Ritual Markers', route: '/ritual-markers', emphasis: 'lead' },
+    { emoji: '✨', label: 'Morning Fragments', route: '/morning-fragments' },
     { emoji: '👤', label: 'Profile', route: '/profile' },
     { emoji: '⚙️', label: 'Settings', route: '/settings' },
   ];

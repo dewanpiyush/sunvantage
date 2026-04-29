@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { MorningFragmentIllustrationType } from '@/components/MorningFragmentCard';
 
 export type MorningFragment = {
@@ -8,15 +7,13 @@ export type MorningFragment = {
   illustrationType: MorningFragmentIllustrationType;
 };
 
-const MAX_RENDERABLE_FRAGMENTS = 30;
-const UNLOCKED_COUNT_KEY = 'morning_fragments_unlocked_count';
-const LAST_UNLOCK_DATE_KEY = 'morning_fragments_last_unlock_local_date';
+export const CURATED_MORNING_FRAGMENT_COUNT = 7;
 
 /**
  * Morning Fragments product guardrails:
  * - This section is a quiet, optional archive layer; it is NOT a feed.
  * - Keep the collection finite and chronological (oldest -> newest).
- * - Unlock at most one new fragment per local day.
+ * - Render a fixed curated set (first 7 items) for now.
  * - Do not add feed mechanics (likes, comments, shares, read-more, notifications, infinite scroll).
  * - Avoid engagement-oriented UI; preserve a calm, non-intrusive reading experience.
  */
@@ -50,19 +47,19 @@ export const MORNING_FRAGMENTS: MorningFragment[] = [
     id: 'mf-05',
     title: 'Solar Navigation',
     body: 'Historical wayfinders used the sunrise position as a directional reference during open-water travel.',
-    illustrationType: 'sunpathJapan',
+    illustrationType: 'solarNavigation',
   },
   {
     id: 'mf-06',
     title: 'Shadow Clocks',
     body: 'Early timekeeping systems tracked changing dawn shadows to estimate morning progression.',
-    illustrationType: 'gateIndia',
+    illustrationType: 'shadowClocks',
   },
   {
     id: 'mf-07',
     title: 'High Latitude Dawn',
     body: 'Near polar regions, sunrise can linger close to the horizon, stretching twilight for hours.',
-    illustrationType: 'sunpathJapan',
+    illustrationType: 'highLatitudeDawn',
   },
   {
     id: 'mf-08',
@@ -174,52 +171,8 @@ export const MORNING_FRAGMENTS: MorningFragment[] = [
   },
 ];
 
-function getTodayLocalDateString(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = d.getMonth() + 1;
-  const day = d.getDate();
-  return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-}
-
-async function unlockNextFragmentIfNeededForToday(): Promise<void> {
-  const today = getTodayLocalDateString();
-  const maxCount = Math.min(MORNING_FRAGMENTS.length, MAX_RENDERABLE_FRAGMENTS);
-
-  try {
-    const [storedCountRaw, lastUnlockDate] = await Promise.all([
-      AsyncStorage.getItem(UNLOCKED_COUNT_KEY),
-      AsyncStorage.getItem(LAST_UNLOCK_DATE_KEY),
-    ]);
-
-    const parsed = Number(storedCountRaw ?? '0');
-    const currentCount = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
-    if (lastUnlockDate === today) return;
-    if (currentCount >= maxCount) {
-      await AsyncStorage.setItem(LAST_UNLOCK_DATE_KEY, today);
-      return;
-    }
-
-    const nextCount = currentCount + 1;
-    await Promise.all([
-      AsyncStorage.setItem(UNLOCKED_COUNT_KEY, String(nextCount)),
-      AsyncStorage.setItem(LAST_UNLOCK_DATE_KEY, today),
-    ]);
-  } catch {
-    // ignore storage failures; rendering falls back to empty list
-  }
-}
-
 export async function getUnlockedMorningFragments(): Promise<MorningFragment[]> {
-  await unlockNextFragmentIfNeededForToday();
-  try {
-    const storedCountRaw = await AsyncStorage.getItem(UNLOCKED_COUNT_KEY);
-    const parsed = Number(storedCountRaw ?? '0');
-    const unlockedCount = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
-    const capped = Math.min(unlockedCount, MORNING_FRAGMENTS.length, MAX_RENDERABLE_FRAGMENTS);
-    return MORNING_FRAGMENTS.slice(0, capped);
-  } catch {
-    return [];
-  }
+  const capped = Math.min(CURATED_MORNING_FRAGMENT_COUNT, MORNING_FRAGMENTS.length);
+  return MORNING_FRAGMENTS.slice(0, capped);
 }
 

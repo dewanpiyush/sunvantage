@@ -776,11 +776,11 @@ export default function SunriseLogCard({
                   </Pressable>
                 </View>
 
-                {/* Progress dots — hide on missed screen */}
-                {!showMissedScreen ? (
+                {/* Progress dots — only for steps 1→2→3; hidden on step 0 and on missed screen. */}
+                {!showMissedScreen && step >= 1 ? (
                   <View style={styles.progressRow}>
-                    {Array.from({ length: hasRetroStep0 ? 4 : 3 }, (_, i) => {
-                      const activeIndex = hasRetroStep0 ? step : step - 1;
+                    {Array.from({ length: 3 }, (_, i) => {
+                      const activeIndex = step - 1;
                       return (
                         <View
                           key={i}

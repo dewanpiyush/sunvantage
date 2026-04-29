@@ -109,7 +109,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     width: '85%',
     maxWidth: 420,
     alignSelf: 'center',
-    paddingTop: 20,
+    paddingTop: 24,
     paddingBottom: 24,
     paddingHorizontal: 8,
     marginTop: 0,

@@ -4,9 +4,23 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { useDawn } from '@/hooks/use-dawn';
 
-export type MorningFragmentIllustrationType = 'pyramidEgypt' | 'gateIndia' | 'sunpathJapan' | 'blueHour';
+export type MorningFragmentIllustrationType =
+  | 'pyramidEgypt'
+  | 'gateIndia'
+  | 'sunpathJapan'
+  | 'blueHour'
+  | 'solarNavigation'
+  | 'shadowClocks'
+  | 'highLatitudeDawn';
 type MorningFragmentAccent = 'sand' | 'saffron' | 'mist';
-type MorningFragmentMotif = 'pyramid' | 'gate' | 'sunpath' | 'blueHour';
+type MorningFragmentMotif =
+  | 'pyramid'
+  | 'gate'
+  | 'sunpath'
+  | 'blueHour'
+  | 'solarNavigation'
+  | 'shadowClocks'
+  | 'highLatitudeDawn';
 
 type MorningFragmentCardProps = {
   title: string;
@@ -32,12 +46,18 @@ export default function MorningFragmentCard({
     gateIndia: 'saffron',
     sunpathJapan: 'mist',
     blueHour: 'mist',
+    solarNavigation: 'sand',
+    shadowClocks: 'sand',
+    highLatitudeDawn: 'sand',
   };
   const motifByType: Record<MorningFragmentIllustrationType, MorningFragmentMotif> = {
     pyramidEgypt: 'pyramid',
     gateIndia: 'gate',
     sunpathJapan: 'sunpath',
     blueHour: 'blueHour',
+    solarNavigation: 'solarNavigation',
+    shadowClocks: 'shadowClocks',
+    highLatitudeDawn: 'highLatitudeDawn',
   };
   const accent = accentByType[illustrationType];
   const motif = motifByType[illustrationType];
@@ -49,10 +69,10 @@ export default function MorningFragmentCard({
         <FragmentIllustration motif={motif} lineColor={lineColor} />
       </View>
 
-      <Text style={styles.title} numberOfLines={1}>
+      <Text style={styles.title}>
         {title}
       </Text>
-      <Text style={styles.body} numberOfLines={3}>
+      <Text style={styles.body}>
         {body}
       </Text>
     </View>
@@ -68,8 +88,12 @@ function FragmentIllustration({
 }) {
   return (
     <View style={stylesIllustration.root}>
-      {/* Shared horizon cues — gate / blue-hour use fully custom compositions. */}
-      {motif !== 'gate' && motif !== 'blueHour' ? (
+      {/* Shared horizon cues — gate / blue-hour / solar-navigation / shadow-clocks / high-latitude use custom compositions. */}
+      {motif !== 'gate' &&
+      motif !== 'blueHour' &&
+      motif !== 'solarNavigation' &&
+      motif !== 'shadowClocks' &&
+      motif !== 'highLatitudeDawn' ? (
         <>
           <LinearGradient
             colors={['rgba(194,165,116,0)', 'rgba(194,165,116,0.06)', 'rgba(194,165,116,0)']}
@@ -308,6 +332,124 @@ function FragmentIllustration({
           <View style={[stylesIllustration.chorusWave2, { borderColor: lineColor }]} />
         </>
       ) : null}
+
+      {motif === 'solarNavigation' ? (
+        <>
+          {/* Sky ~60%: dark navy, lightening toward horizon (sea/open-land feel). */}
+          <LinearGradient
+            colors={['#0A1424', '#0E1C32', '#152A45']}
+            locations={[0, 0.55, 1]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={stylesIllustration.solarNavSky}
+            pointerEvents="none"
+          />
+          {/* Ground ~40%: flat, darker — reads as sea or open plain. */}
+          <LinearGradient
+            colors={['rgba(5,10,18,0.92)', 'rgba(4,8,14,0.98)']}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={stylesIllustration.solarNavGround}
+            pointerEvents="none"
+          />
+          <View style={[stylesIllustration.solarNavHorizonLine, { borderTopColor: lineColor }]} />
+          <LinearGradient
+            colors={['rgba(148,170,198,0)', 'rgba(148,170,198,0.07)', 'rgba(148,170,198,0)']}
+            locations={[0, 0.52, 1]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={stylesIllustration.solarNavHorizonHaze}
+            pointerEvents="none"
+          />
+          {/* Soft warm light band along horizon. */}
+          <LinearGradient
+            colors={['rgba(194,165,116,0)', 'rgba(194,165,116,0.11)', 'rgba(194,165,116,0)']}
+            locations={[0, 0.5, 1]}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={stylesIllustration.solarNavFirstLightBand}
+            pointerEvents="none"
+          />
+
+          {/* Sun: small, golden, clearly above horizon — directional reference. */}
+          <View style={stylesIllustration.solarNavSunHalo} />
+          <View style={[stylesIllustration.solarNavSunDisk, { borderColor: lineColor }]} />
+
+          {/* Faint vertical reference: projects the sun's position onto the horizon. */}
+          <View
+            style={[stylesIllustration.solarNavSunReference, { borderLeftColor: lineColor }]}
+          />
+
+          {/* Single chosen path: thin diagonal from foreground, converging at the sun's horizon point. */}
+          <View style={[stylesIllustration.solarNavPathMain, { borderColor: lineColor }]} />
+        </>
+      ) : null}
+
+      {motif === 'shadowClocks' ? (
+        <>
+          {/* Grounded shadow-clock composition: stick + dominant shadow = time. */}
+          <LinearGradient
+            colors={['#0A1424', '#0E1C32', '#152A45']}
+            locations={[0, 0.55, 1]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={stylesIllustration.shadowClockSky}
+            pointerEvents="none"
+          />
+          <LinearGradient
+            colors={['rgba(5,10,18,0.92)', 'rgba(4,8,14,0.98)']}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={stylesIllustration.shadowClockGround}
+            pointerEvents="none"
+          />
+          <View style={[stylesIllustration.shadowClockHorizonLine, { borderTopColor: lineColor }]} />
+          <View style={stylesIllustration.shadowClockSunHalo} />
+          <View style={[stylesIllustration.shadowClockSunDisk, { borderColor: lineColor }]} />
+
+          {/* Primitive base and movement cues. */}
+          <View style={stylesIllustration.shadowClockBaseFeather} />
+          <View style={stylesIllustration.shadowClockBase} />
+          <View style={[stylesIllustration.shadowClockDialArc, { borderColor: lineColor }]} />
+          <View style={[stylesIllustration.shadowClockTickA, { borderColor: lineColor }]} />
+          <View style={[stylesIllustration.shadowClockTickB, { borderColor: lineColor }]} />
+
+          {/* Gnomon + long directional morning shadow (hero). */}
+          <View style={[stylesIllustration.shadowClockGnomon, { borderColor: lineColor }]} />
+          <View style={stylesIllustration.shadowClockShadowMain} />
+        </>
+      ) : null}
+
+      {motif === 'highLatitudeDawn' ? (
+        <>
+          {/* Same visual system: open horizon, low-contrast sky/ground split, thin gold geometry. */}
+          <LinearGradient
+            colors={['#0A1424', '#0E1C32', '#152A45']}
+            locations={[0, 0.55, 1]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={stylesIllustration.highLatSky}
+            pointerEvents="none"
+          />
+          <LinearGradient
+            colors={['rgba(5,10,18,0.92)', 'rgba(4,8,14,0.98)']}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={stylesIllustration.highLatGround}
+            pointerEvents="none"
+          />
+          <View style={[stylesIllustration.highLatHorizonLine, { borderTopColor: lineColor }]} />
+
+          {/* Shallow movement arc hugging the horizon (high-latitude sunrise path). */}
+          <View style={[stylesIllustration.highLatPathArc, { borderColor: lineColor }]} />
+
+          {/* Sun lingers very low near the horizon, with faint previous/next positions. */}
+          <View style={stylesIllustration.highLatSunHaloMain} />
+          <View style={[stylesIllustration.highLatSunMain, { borderColor: lineColor }]} />
+          <View style={[stylesIllustration.highLatSunGhostLeft, { borderColor: lineColor }]} />
+          <View style={[stylesIllustration.highLatSunGhostRight, { borderColor: lineColor }]} />
+        </>
+      ) : null}
     </View>
   );
 }
@@ -315,20 +457,27 @@ function FragmentIllustration({
 function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   return StyleSheet.create({
     card: {
-      backgroundColor: Dawn.surface.cardSecondary,
+      backgroundColor: 'rgba(255,255,255,0.04)',
       borderRadius: 15,
       paddingTop: 20,
       paddingHorizontal: 20,
       paddingBottom: 18,
-      overflow: 'hidden',
+      overflow: 'visible',
+      shadowColor: '#AFC4E5',
+      shadowOpacity: 0.12,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 2,
     },
     visualArea: {
-      height: 128,
+      // Keep illustration fixed-height; let text drive card height below.
+      height: 116,
       borderRadius: 10,
       overflow: 'hidden',
       alignSelf: 'stretch',
       marginBottom: 12,
       backgroundColor: '#0F1B2D',
+      flexShrink: 0,
     },
     title: {
       marginTop: 0,
@@ -341,6 +490,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
       color: Dawn.text.secondary,
       opacity: 0.86,
       textAlign: 'left',
+      flexShrink: 0,
     },
     body: {
       fontSize: 14.5,
@@ -348,6 +498,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
       color: Dawn.text.primary,
       textAlign: 'left',
       opacity: 0.95,
+      flexShrink: 0,
     },
   });
 }
@@ -939,6 +1090,293 @@ const stylesIllustration = StyleSheet.create({
     borderTopLeftRadius: 120,
     borderTopRightRadius: 120,
     opacity: 0.65,
+  },
+
+  // --- Solar navigation: sun as a directional reference, diagonal path toward horizon. ---
+  solarNavSky: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: '60%',
+  },
+  solarNavGround: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '40%',
+  },
+  solarNavHorizonLine: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    top: '60%',
+    marginTop: -0.5,
+    height: 0,
+    borderTopWidth: 0.85,
+    opacity: 0.34,
+  },
+  solarNavHorizonHaze: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '56%',
+    height: 22,
+  },
+  solarNavFirstLightBand: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '58.5%',
+    height: 14,
+    opacity: 0.8,
+  },
+  /** Soft halo behind the sun. */
+  solarNavSunHalo: {
+    position: 'absolute',
+    right: 56,
+    top: '46.5%',
+    width: 18,
+    height: 18,
+    borderRadius: 999,
+    backgroundColor: 'rgba(194,165,116,0.18)',
+    opacity: 0.95,
+  },
+  /** Small golden sun, clearly above the horizon — not touching. */
+  solarNavSunDisk: {
+    position: 'absolute',
+    right: 61,
+    top: '48.8%',
+    width: 8,
+    height: 8,
+    borderWidth: 1,
+    borderRadius: 999,
+    backgroundColor: 'rgba(194,165,116,0.22)',
+    opacity: 0.95,
+  },
+  /**
+   * Single chosen path: thin diagonal from lower-left foreground up to the horizon
+   * at the sun's x-position. Paired with the vertical sun reference, this forms a
+   * clear angular relationship: direction is read off the sun.
+   */
+  solarNavPathMain: {
+    position: 'absolute',
+    left: 22,
+    right: 65,
+    bottom: 22,
+    borderTopWidth: 1,
+    opacity: 0.82,
+    transform: [{ rotate: '-13deg' }],
+  },
+  /**
+   * Faint vertical hairline projecting the sun's position onto the horizon.
+   * Begins just below the sun and ends at the horizon line.
+   */
+  solarNavSunReference: {
+    position: 'absolute',
+    right: 65,
+    top: '55.5%',
+    width: 0,
+    height: 7,
+    borderLeftWidth: 0.7,
+    opacity: 0.3,
+  },
+
+  // --- Shadow clocks: primitive dawn timekeeping through shadow geometry. ---
+  shadowClockSky: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: '60%',
+  },
+  shadowClockGround: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '40%',
+  },
+  shadowClockHorizonLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '60%',
+    marginTop: -0.5,
+    height: 0,
+    borderTopWidth: 1,
+    opacity: 0.42,
+  },
+  shadowClockSunHalo: {
+    position: 'absolute',
+    left: 34,
+    top: '56.8%',
+    width: 14,
+    height: 14,
+    borderRadius: 999,
+    backgroundColor: 'rgba(194,165,116,0.14)',
+  },
+  shadowClockSunDisk: {
+    position: 'absolute',
+    left: 38,
+    top: '58.1%',
+    width: 6,
+    height: 6,
+    borderWidth: 1,
+    borderRadius: 999,
+    opacity: 0.9,
+  },
+  /** Slightly off-center filled base keeps the composition grounded. */
+  shadowClockBaseFeather: {
+    position: 'absolute',
+    left: 92,
+    bottom: 44,
+    width: 30,
+    height: 12,
+    backgroundColor: 'rgba(194,165,116,0.08)',
+    transform: [{ rotate: '-1.8deg' }],
+  },
+  shadowClockBase: {
+    position: 'absolute',
+    left: 93,
+    bottom: 45,
+    width: 28,
+    height: 10,
+    backgroundColor: 'rgba(194,165,116,0.27)',
+    transform: [{ rotate: '-1.8deg' }],
+  },
+  /** Semi-circular primitive dial cue — stroke only. */
+  shadowClockDialArc: {
+    position: 'absolute',
+    left: 85,
+    bottom: 45,
+    width: 44,
+    height: 16,
+    borderTopWidth: 0.9,
+    borderLeftWidth: 0,
+    borderRightWidth: 0,
+    borderTopLeftRadius: 40,
+    borderTopRightRadius: 40,
+    opacity: 0.46,
+  },
+  /** Minimal progression ticks, no sketch noise. */
+  shadowClockTickA: {
+    position: 'absolute',
+    left: 87,
+    bottom: 56,
+    width: 6,
+    borderTopWidth: 0.8,
+    transform: [{ rotate: '-14deg' }],
+    opacity: 0.34,
+  },
+  shadowClockTickB: {
+    position: 'absolute',
+    left: 122,
+    bottom: 56,
+    width: 6,
+    borderTopWidth: 0.8,
+    transform: [{ rotate: '14deg' }],
+    opacity: 0.34,
+  },
+  /** Center stick/gnomon with subtle hand-drawn imperfection. */
+  shadowClockGnomon: {
+    position: 'absolute',
+    left: 106,
+    bottom: 45,
+    width: 0,
+    height: 24,
+    borderLeftWidth: 1.05,
+    transform: [{ rotate: '-0.9deg' }],
+    opacity: 0.92,
+  },
+  /** Hero shadow: long, filled, clearly directional. */
+  shadowClockShadowMain: {
+    position: 'absolute',
+    left: 106,
+    right: 10,
+    bottom: 49,
+    height: 6,
+    backgroundColor: 'rgba(194,165,116,0.34)',
+    transform: [{ rotate: '17deg' }],
+    opacity: 0.97,
+  },
+
+  // --- High latitude dawn: sun skims the horizon with shallow horizontal travel. ---
+  highLatSky: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: '60%',
+  },
+  highLatGround: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '40%',
+  },
+  highLatHorizonLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '60%',
+    marginTop: -0.5,
+    height: 0,
+    borderTopWidth: 1,
+    opacity: 0.44,
+  },
+  /** Wide shallow arc indicates horizontal sun movement near the horizon. */
+  highLatPathArc: {
+    position: 'absolute',
+    left: 44,
+    right: 44,
+    bottom: 47,
+    height: 10,
+    borderTopWidth: 1,
+    borderTopLeftRadius: 90,
+    borderTopRightRadius: 90,
+    opacity: 0.56,
+  },
+  highLatSunHaloMain: {
+    position: 'absolute',
+    left: 108,
+    top: '55.8%',
+    width: 18,
+    height: 18,
+    borderRadius: 999,
+    backgroundColor: 'rgba(194,165,116,0.17)',
+  },
+  highLatSunMain: {
+    position: 'absolute',
+    left: 113,
+    top: '57.2%',
+    width: 8,
+    height: 8,
+    borderWidth: 1.05,
+    borderRadius: 999,
+    opacity: 0.95,
+  },
+  highLatSunGhostLeft: {
+    position: 'absolute',
+    left: 84,
+    top: '57.8%',
+    width: 6,
+    height: 6,
+    borderWidth: 0.85,
+    borderRadius: 999,
+    opacity: 0.34,
+  },
+  highLatSunGhostRight: {
+    position: 'absolute',
+    left: 142,
+    top: '57.8%',
+    width: 6,
+    height: 6,
+    borderWidth: 0.85,
+    borderRadius: 999,
+    opacity: 0.34,
   },
 });
 

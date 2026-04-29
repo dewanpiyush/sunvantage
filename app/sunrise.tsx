@@ -1571,20 +1571,10 @@ export function SunriseLog({
               ) : null}
 
               {hasLogged ? (
-                <>
-                  <DawnInvitationSection
-                    city={profileCity}
-                    sunriseTomorrow={sunriseTomorrow}
-                  />
-                  <View style={styles.sharedDawnSectionWrap}>
-                    <SharedDawnPreview
-                      city={profileCity}
-                      currentUserId={currentUserId}
-                      fromScreen="witness"
-                      showEmptyState={false}
-                    />
-                  </View>
-                </>
+                <DawnInvitationSection
+                  city={profileCity}
+                  sunriseTomorrow={sunriseTomorrow}
+                />
               ) : null}
             </>
           </View>

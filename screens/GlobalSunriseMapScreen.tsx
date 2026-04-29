@@ -22,7 +22,7 @@ const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 const DEFAULT_USER_CITY = { city: 'Delhi', lat: 28.6139, lng: 77.209 };
 
-const HEADER_MAP_GAP = 20;
+const HEADER_MAP_GAP = 16;
 const TOP_SAFE_EXTRA = 8;
 
 export default function GlobalSunriseMapScreen() {
@@ -158,16 +158,13 @@ export default function GlobalSunriseMapScreen() {
         ))}
         <UserCityDot city={userCity} now={now} width={width} height={mapHeight} />
 
-        {/* Subtle vignette to blend arc/map into the atmosphere. */}
+        {/*
+         * Subtle bottom-only fade into the atmosphere/stats below.
+         * Top edge blends naturally — map ocean and app background share the same tone,
+         * so a top overlay would only manufacture a visible grey band above the continents.
+         */}
         <LinearGradient
-          colors={['rgba(14,34,61,0.45)', 'rgba(14,34,61,0)']}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-          style={styles.vignetteTop}
-          pointerEvents="none"
-        />
-        <LinearGradient
-          colors={['rgba(14,34,61,0)', 'rgba(14,34,61,0.35)']}
+          colors={['rgba(14,34,61,0)', 'rgba(14,34,61,0.3)']}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
           style={styles.vignetteBottom}
@@ -220,8 +217,8 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   },
   terminatorLabelContainer: {
     position: 'absolute',
-    bottom: 10,
-    left: 12,
+    bottom: 18,
+    left: 18,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'transparent',
@@ -262,19 +259,12 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     fontSize: 12,
     color: '#E9F0FF',
   },
-  vignetteTop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    height: 52,
-  },
   vignetteBottom: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    height: 64,
+    height: 72,
   },
   });
 }
