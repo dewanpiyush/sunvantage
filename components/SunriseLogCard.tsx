@@ -12,9 +12,9 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   Animated,
-  Image,
   Dimensions,
   ScrollView,
+  InteractionManager,
 } from 'react-native';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -22,6 +22,7 @@ const CARD_WIDTH_RATIO = 0.9;
 const CARD_MAX_WIDTH = 420;
 const CARD_MAX_HEIGHT_RATIO = 0.7; /* 70vh */
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import supabase from '../supabase';
 import { clearTomorrowPlan } from '../lib/clearTomorrowPlan';
 import { formatSunriseTime } from '../lib/formatSunriseTime';
@@ -33,6 +34,7 @@ import { useMorningContext } from '../hooks/useMorningContext';
 import { getMinutesToSunriseForCity, getCoordinatesForCity } from '../services/weatherService';
 import { invokeModerateImage } from '../lib/moderateImageInvoke';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { Image } from 'expo-image';
 import posthog from '@/lib/posthog';
 
 const photoBucket = 'sunrise_photos';
@@ -146,7 +148,6 @@ export default function SunriseLogCard({
   const [reflectionPrompt, setReflectionPrompt] = useState<string>(REFLECTION_PROMPT);
   const [reflectionText, setReflectionText] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [photoMime, setPhotoMime] = useState<string>('image/jpeg');
   const [saving, setSaving] = useState(false);
   const [saveStage, setSaveStage] = useState<'idle' | 'saved' | 'processing'>('idle');
@@ -427,15 +428,32 @@ export default function SunriseLogCard({
         mediaTypes: ['images'],
         allowsEditing: false,
         aspect: [4, 3],
-        quality: 0.8,
-        base64: true,
+        quality: 0.6,
+        base64: false,
       });
       if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
       if (!asset.uri) return;
-      setPhotoUri(asset.uri);
-      setPhotoBase64(asset.base64 ?? null);
-      setPhotoMime(asset.mimeType ?? 'image/jpeg');
+      let processedUri = asset.uri;
+      let processedMime = asset.mimeType ?? 'image/jpeg';
+      try {
+        const resized = await ImageManipulator.manipulateAsync(
+          asset.uri,
+          [{ resize: { width: 1080 } }],
+          {
+            compress: 0.6,
+            format: ImageManipulator.SaveFormat.JPEG,
+          }
+        );
+        if (resized?.uri) {
+          processedUri = resized.uri;
+          processedMime = 'image/jpeg';
+        }
+      } catch {
+        // Fallback to original pick; keep flow resilient if manipulation fails.
+      }
+      setPhotoUri(processedUri);
+      setPhotoMime(processedMime);
     } catch {
       setError('Something went wrong choosing a photo.');
     } finally {
@@ -448,7 +466,6 @@ export default function SunriseLogCard({
     setVantageName('');
     setReflectionText('');
     setPhotoUri(null);
-    setPhotoBase64(null);
     setOverrideCoords(null);
   }, [logModalTone]);
 
@@ -553,7 +570,6 @@ export default function SunriseLogCard({
         return;
       }
 
-      const capturedPhotoBase64 = photoBase64;
       const capturedPhotoUri = photoUri;
       const capturedMime = photoMime;
       const capturedReflectionPrompt = reflectionPrompt;
@@ -582,18 +598,17 @@ export default function SunriseLogCard({
         localPhotoUri: capturedPhotoUri ?? undefined,
       });
 
-      void (async () => {
+      const runBackgroundPipeline = () => void (async () => {
         try {
-          if (capturedPhotoBase64 && capturedPhotoUri) {
+          if (capturedPhotoUri) {
             const stagedPath = `${userId}/${logId}-${Date.now()}.jpg`;
             const savedPendingPhotoRef = `uploads_pending/${stagedPath}`;
-            const binary = atob(capturedPhotoBase64);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const fileResponse = await fetch(capturedPhotoUri);
+            const fileBuffer = await fileResponse.arrayBuffer();
 
             const { error: uploadError } = await supabase.storage
               .from('uploads_pending')
-              .upload(stagedPath, bytes, { contentType: capturedMime, upsert: true });
+              .upload(stagedPath, fileBuffer, { contentType: capturedMime, upsert: true });
             if (uploadError) {
               console.warn('[SunVantage] pending upload failed (background)', {
                 logId,
@@ -665,6 +680,7 @@ export default function SunriseLogCard({
           console.warn('[SunVantage] save background pipeline', e);
         }
       })();
+      InteractionManager.runAfterInteractions(runBackgroundPipeline);
     } catch {
       setError('Something went wrong. Please try again.');
     } finally {
@@ -673,7 +689,7 @@ export default function SunriseLogCard({
         setSaveStage('idle');
       }
     }
-  }, [vantageName, reflectionText, reflectionPrompt, photoBase64, photoUri, photoMime, onSaved, onClose, resetFormAfterSave, onModerationComplete, city, overrideCoords, source]);
+  }, [vantageName, reflectionText, reflectionPrompt, photoUri, photoMime, onSaved, onClose, resetFormAfterSave, onModerationComplete, city, overrideCoords, source]);
 
   if (!visible) return null;
 

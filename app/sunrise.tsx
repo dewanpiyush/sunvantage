@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, Pressable, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, TextInput, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, Animated, Easing } from 'react-native';
+import { View, Text, Pressable, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, TextInput, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, Animated, Easing, unstable_batchedUpdates } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
@@ -1586,27 +1586,29 @@ export function SunriseLog({
         visible={showLogCard}
         onClose={() => setShowLogCard(false)}
         onSaved={(result: SunriseLogSaveResult) => {
-          setHasLogged(true);
-          setLogId(result.logId);
-          setReflectionText(result.reflectionText);
-          setReflectionAck(result.reflectionText.trim().length > 0);
-          setVantageName(result.vantageName);
-          setVantageInputValue(result.vantageName);
-          setEditingVantage(false);
-          setPhotoPath(null);
-          setImageError(false);
-          if (result.localPhotoUri) {
-            setOptimisticPhotoUri(result.localPhotoUri);
-            setPhotoUrl(null);
-          } else {
-            setOptimisticPhotoUri(null);
-            setPhotoUrl(null);
-          }
-          setJustLanded(true);
-          justLandedRef.current = true;
-          setShowSaved(true);
-          savedOpacity.setValue(1);
-          memorySettleY.setValue(0);
+          unstable_batchedUpdates(() => {
+            setHasLogged(true);
+            setLogId(result.logId);
+            setReflectionText(result.reflectionText);
+            setReflectionAck(result.reflectionText.trim().length > 0);
+            setVantageName(result.vantageName);
+            setVantageInputValue(result.vantageName);
+            setEditingVantage(false);
+            setPhotoPath(null);
+            setImageError(false);
+            if (result.localPhotoUri) {
+              setOptimisticPhotoUri(result.localPhotoUri);
+              setPhotoUrl(null);
+            } else {
+              setOptimisticPhotoUri(null);
+              setPhotoUrl(null);
+            }
+            setJustLanded(true);
+            justLandedRef.current = true;
+            setShowSaved(true);
+            savedOpacity.setValue(1);
+            memorySettleY.setValue(0);
+          });
           if (deferredRefreshRef.current) clearTimeout(deferredRefreshRef.current);
           deferredRefreshRef.current = setTimeout(() => {
             deferredRefreshRef.current = null;
