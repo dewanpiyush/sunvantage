@@ -1,6 +1,6 @@
 /**
- * Global Sunrise Map: where sunrise has happened, is happening, and where users logged.
- * Fetches today's sunrise_logs aggregated by city and drives stats + map dots.
+ * Global Sunrise Map: symbolic progression of daylight today and where users welcomed the morning.
+ * Dots = today's sunrise logs. Terminator = soft boundary between daylight-arrived vs still-awaiting.
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -95,33 +95,21 @@ export default function GlobalSunriseMapScreen() {
   /** Slightly taller so the map reads as the hero. */
   const mapHeight = height * 0.53;
 
-  // Extremely gentle “time passing” motion for the terminator arc.
-  const arcDrift = useRef(new Animated.Value(0)).current;
+  // Barely perceptible drift on the daylight boundary — atmospheric, not “live radar”.
   const arcPulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const drift = Animated.loop(
-      Animated.sequence([
-        Animated.timing(arcDrift, { toValue: 1, duration: 16000, easing: Easing.linear, useNativeDriver: true }),
-        Animated.timing(arcDrift, { toValue: 0, duration: 16000, easing: Easing.linear, useNativeDriver: true }),
-      ])
-    );
     const pulse = Animated.loop(
       Animated.sequence([
-        Animated.timing(arcPulse, { toValue: 1, duration: 9000, easing: Easing.linear, useNativeDriver: true }),
-        Animated.timing(arcPulse, { toValue: 0, duration: 9000, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(arcPulse, { toValue: 1, duration: 14000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(arcPulse, { toValue: 0, duration: 14000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
       ])
     );
-    drift.start();
     pulse.start();
-    return () => {
-      drift.stop();
-      pulse.stop();
-    };
-  }, [arcDrift, arcPulse]);
+    return () => pulse.stop();
+  }, [arcPulse]);
 
-  const arcTranslateX = arcDrift.interpolate({ inputRange: [0, 1], outputRange: [-8, 8] });
-  const arcOpacity = arcPulse.interpolate({ inputRange: [0, 1], outputRange: [0.62, 0.75] });
+  const arcOpacity = arcPulse.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] });
 
   return (
     <View style={[styles.safe, { paddingTop: insets.top + TOP_SAFE_EXTRA, paddingBottom: insets.bottom }]}>
@@ -131,7 +119,7 @@ export default function GlobalSunriseMapScreen() {
           hideMenu
           showBranding
           title="Global Sunrise Map"
-          subtitle="Celebrating the shared splendour of humanity"
+          subtitle="How daylight and morning ritual move across the world"
           screenTitle
           wrapperMarginBottom={0}
           subtitleStyle={styles.headerSubtitleSoft}
@@ -141,10 +129,7 @@ export default function GlobalSunriseMapScreen() {
 
       <View style={[styles.mapContainer, { width, height: mapHeight, marginTop: HEADER_MAP_GAP }]}>
         <WorldMap width={width} height={mapHeight} />
-        <Animated.View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { opacity: arcOpacity, transform: [{ translateX: arcTranslateX }] }]}
-        >
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: arcOpacity }]}>
           <SunriseTerminator date={now} width={width} height={mapHeight} />
         </Animated.View>
         {aggregate.cities.map((city) => (
@@ -164,20 +149,26 @@ export default function GlobalSunriseMapScreen() {
          * so a top overlay would only manufacture a visible grey band above the continents.
          */}
         <LinearGradient
-          colors={['rgba(14,34,61,0)', 'rgba(14,34,61,0.3)']}
+          colors={['rgba(14,34,61,0)', 'rgba(14,34,61,0.18)']}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
           style={styles.vignetteBottom}
           pointerEvents="none"
         />
 
-        <View style={styles.terminatorLabelContainer} pointerEvents="none">
-          <View style={styles.terminatorLegend} aria-hidden>
-            <View style={styles.terminatorLegendOuter} />
-            <View style={styles.terminatorLegendMid} />
-            <View style={styles.terminatorLegendCore} />
+        <View style={styles.mapLegend} pointerEvents="none">
+          <View style={styles.legendRow}>
+            <View style={[styles.legendSwatch, styles.legendSwatchDay]} />
+            <Text style={styles.legendText}>Today has begun here</Text>
           </View>
-          <Text style={styles.terminatorLabelText}>Sunrise now</Text>
+          <View style={styles.legendRow}>
+            <View style={[styles.legendSwatch, styles.legendSwatchNight]} />
+            <Text style={styles.legendText}>Morning still ahead</Text>
+          </View>
+          <View style={styles.legendRow}>
+            <View style={[styles.legendSwatch, styles.legendSwatchDot]} />
+            <Text style={styles.legendText}>Morning welcomed today</Text>
+          </View>
         </View>
       </View>
 
@@ -215,49 +206,44 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     elevation: 0,
     shadowOpacity: 0,
   },
-  terminatorLabelContainer: {
+  mapLegend: {
     position: 'absolute',
-    bottom: 18,
-    left: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-    opacity: 0.88,
-  },
-  terminatorLegend: {
-    width: 18,
-    height: 10,
-    marginRight: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  terminatorLegendOuter: {
-    position: 'absolute',
-    width: 18,
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: '#F4C95D',
-    opacity: 0.08,
-  },
-  terminatorLegendMid: {
-    position: 'absolute',
-    width: 18,
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: '#F4C95D',
-    opacity: 0.18,
-  },
-  terminatorLegendCore: {
-    position: 'absolute',
-    width: 18,
-    height: 2,
-    borderRadius: 999,
-    backgroundColor: '#F4C95D',
+    bottom: 14,
+    left: 14,
+    right: 14,
+    gap: 6,
     opacity: 0.9,
   },
-  terminatorLabelText: {
-    fontSize: 12,
-    color: '#E9F0FF',
+  legendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  legendSwatch: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  legendSwatchDay: {
+    backgroundColor: 'rgba(100, 155, 210, 0.85)',
+  },
+  legendSwatchNight: {
+    backgroundColor: 'rgba(12, 24, 48, 0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(140, 170, 210, 0.25)',
+  },
+  legendSwatchDot: {
+    backgroundColor: 'rgba(212, 184, 122, 0.9)',
+    shadowColor: '#D4B87A',
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  legendText: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: 'rgba(233, 240, 255, 0.82)',
+    letterSpacing: 0.15,
   },
   vignetteBottom: {
     position: 'absolute',

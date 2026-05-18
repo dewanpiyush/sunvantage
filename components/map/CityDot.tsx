@@ -1,7 +1,6 @@
 /**
- * Golden dot for a city where SunVantage users logged a sunrise today.
- * Size scales with log count (radius = 2 + logCount * 0.6, max 10). Tappable for modal.
- * Dots with logs > 10 get a soft glow; all dots pulse gently every 6s.
+ * Soft glow for a city where SunVantage users welcomed the morning today.
+ * Size scales gently with log count. Tappable for a quiet detail modal.
  */
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
@@ -13,16 +12,15 @@ import { useWindowDimensions } from 'react-native';
 import { geoToScreen } from '@/lib/geoToScreen';
 import { Dawn } from '@/constants/theme';
 
-const GOLDEN_FILL = '#E7C46A';
+const WITNESS_FILL = '#D4B87A';
 const MIN_RADIUS = 2;
-const RADIUS_PER_LOG = 0.6;
-const MAX_RADIUS = 10;
-const GLOW_THRESHOLD = 10;
-const GLOW_EXTRA_RADIUS = 6;
-const GLOW_OPACITY = 0.6;
-const PULSE_CYCLE_MS = 6000;
-const PULSE_DURATION_MS = 3000;
-const PULSE_SCALE_MAX = 1.1;
+const RADIUS_PER_LOG = 0.45;
+const MAX_RADIUS = 8;
+const GLOW_THRESHOLD = 8;
+const GLOW_EXTRA_RADIUS = 5;
+const GLOW_OPACITY = 0.28;
+const PULSE_DURATION_MS = 4000;
+const PULSE_SCALE_MAX = 1.04;
 const DOT_BOX_SIZE = 36;
 
 export type CityLog = {
@@ -129,11 +127,11 @@ export default function CityDot({ city, now, width: propWidth, height: propHeigh
                 cx={center}
                 cy={center}
                 r={r + GLOW_EXTRA_RADIUS}
-                fill={GOLDEN_FILL}
+                fill={WITNESS_FILL}
                 opacity={GLOW_OPACITY}
               />
             )}
-            <Circle cx={center} cy={center} r={r} fill={GOLDEN_FILL} />
+            <Circle cx={center} cy={center} r={r} fill={WITNESS_FILL} opacity={0.92} />
           </Svg>
         </Animated.View>
       </View>
@@ -147,8 +145,10 @@ export default function CityDot({ city, now, width: propWidth, height: propHeigh
         <Pressable style={styles.modalBackdrop} onPress={() => setModalVisible(false)}>
           <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalCity}>{city.city}</Text>
-            <Text style={styles.modalWitnesses}>{city.logs} witness{city.logs !== 1 ? 'es' : ''} today</Text>
-            <Text style={styles.modalSunrise}>Sunrise: {format(sunriseTime, 'h:mm a')}</Text>
+            <Text style={styles.modalWitnesses}>
+              {city.logs} morning{city.logs !== 1 ? 's' : ''} welcomed here today
+            </Text>
+            <Text style={styles.modalSunrise}>Local light arrived at {format(sunriseTime, 'h:mm a')}</Text>
             <Pressable style={styles.modalClose} onPress={() => setModalVisible(false)}>
               <Text style={styles.modalCloseText}>Close</Text>
             </Pressable>

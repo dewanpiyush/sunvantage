@@ -438,6 +438,11 @@ export function SunriseLog({
   const hoursSinceSunrise =
     minutesToSunrise != null && minutesToSunrise < 0 ? -minutesToSunrise / 60 : 0;
 
+  /** Several hours after sunrise, or explicit retroactive entry — softer footer than the near-window copy. */
+  const isRetrospectiveLog =
+    context === 'retroactive' ||
+    (sunrisePassed && minutesToSunrise != null && hoursSinceSunrise > 2);
+
   // Glow intensity: after sunrise 0–2h strong, 2–6h medium, 6+ subtle; before sunrise very subtle
   const glowIntensity =
     minutesToSunrise != null && minutesToSunrise >= 0
@@ -1377,7 +1382,11 @@ export function SunriseLog({
                 </Pressable>
               )}
               {!hasLogged && sunrisePassed && (
-                <Text style={styles.witnessFooter}>You don&apos;t have to capture it.{'\n'}Just mark the moment.</Text>
+                <Text style={styles.witnessFooter}>
+                  {isRetrospectiveLog
+                    ? 'The sunrise has passed.\nThe moment still counts.'
+                    : "You don't have to capture it.\nJust mark the moment."}
+                </Text>
               )}
 
               {hasActiveLog && (

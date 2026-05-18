@@ -1,6 +1,8 @@
 /**
  * Solar terminator (day/night boundary) and subsolar point.
- * Uses UTC for consistency; terminator is drawn with d3-geo.
+ * For astronomical day/night tooling — the Global Sunrise Map uses `sunriseProgression.ts`
+ * (today's local sunrise passed) instead of these hemispheres.
+ * Uses UTC for consistency; geometry is drawn with d3-geo.
  */
 
 import { geoCircle, type GeoPermissibleObjects } from 'd3-geo';

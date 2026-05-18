@@ -1,7 +1,7 @@
 {
   "name": "sunvantage",
   "main": "expo-router/entry",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
@@ -21,6 +21,7 @@
     "base-64": "^1.0.0",
     "d3-geo": "^3.1.0",
     "date-fns": "^4.1.0",
+    "eas-cli": "^18.9.1",
     "expo": "~54.0.33",
     "expo-auth-session": "~7.0.10",
     "expo-constants": "~18.0.13",

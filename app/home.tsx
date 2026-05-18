@@ -17,7 +17,7 @@ import RitualRevealCard from '../components/RitualRevealCard';
 import RitualIntroCarousel from '../components/RitualIntroCarousel';
 import { useMorningContext } from '../hooks/useMorningContext';
 import { computeBadgeStats, getEarnedBadges, computeEarnedAtByBadge, BADGE_ICONS, type BadgeDef } from './ritual-markers';
-import { getDismissedBadgeIds, dismissBadgeReveal } from '../lib/ritualReveal';
+import { dismissBadgeReveal, markRevealLastSeen, selectHomeRevealBadge } from '../lib/ritualReveal';
 import { useDawn } from '@/hooks/use-dawn';
 import { useAppTheme } from '@/context/AppThemeContext';
 import { runPendingModerationRecoveryDebounced } from '@/lib/pendingModerationRecovery';
@@ -29,6 +29,9 @@ import SunriseStateCard from '@/components/SunriseStateCard';
 
 /** Base spacing unit — home vertical rhythm (header → streak → greeting → cards). */
 const SPACE = 8;
+
+/** Bottom breathing room so short Home states still feel gently scrollable. */
+const HOME_SCROLL_BREATHING_ROOM = 112;
 
 // ----- Streak (same logic as elsewhere) -----
 const YMD_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -355,43 +358,21 @@ export default function HomeScreen() {
       const streakResult = computeStreakFromLogDates(createdAts);
       setStreak(streakResult);
 
-      const revealToShow = await (async () => {
-        if (logRows.length === 0) return null;
+      let revealToShow: BadgeDef | null = null;
+      if (logRows.length > 0) {
         try {
           const stats = computeBadgeStats(logRows);
           const earned = getEarnedBadges(stats);
-          if (earned.length === 0) return null;
           const earnedAtByBadge = computeEarnedAtByBadge(logRows, stats);
-          const dismissed = await getDismissedBadgeIds();
-          const earnedNotDismissed = earned.filter((b) => !dismissed.includes(b.id));
-          const byMostRecent = <T extends { id: string }>(arr: T[]) =>
-            [...arr].sort((a, b) => {
-              const atA = earnedAtByBadge[a.id] ?? '';
-              const atB = earnedAtByBadge[b.id] ?? '';
-              return atB.localeCompare(atA);
-            });
-          // "Earned recently" on Home: only show an undismissed marker if it was earned in the last ~36h.
-          // This keeps Home intentional (not a persistent backlog of old undisplayed markers).
-          const RECENT_MS = 36 * 60 * 60 * 1000;
-          const recentEarnedNotDismissed = earnedNotDismissed.filter((b) => {
-            const at = earnedAtByBadge[b.id];
-            if (!at) return false;
-            const t = new Date(at).getTime();
-            if (Number.isNaN(t)) return false;
-            return Date.now() - t <= RECENT_MS;
-          });
-          if (recentEarnedNotDismissed.length > 0) {
-            return byMostRecent(recentEarnedNotDismissed)[0];
-          }
-          if (streakResult.current === 0) {
-            return byMostRecent(earned)[0];
-          }
-          return null;
+          revealToShow = await selectHomeRevealBadge(earned, earnedAtByBadge);
         } catch {
-          return null;
+          revealToShow = null;
         }
-      })();
+      }
       setRevealBadge(revealToShow);
+      if (!revealToShow) {
+        await markRevealLastSeen();
+      }
 
       if (city) {
         const { count } = await supabase
@@ -559,6 +540,8 @@ export default function HomeScreen() {
             />
           }
           scrollContentContainerStyle={styles.scrollContent}
+          contentBreathingRoom={HOME_SCROLL_BREATHING_ROOM}
+          enableGentleScrollWhenShort
         >
           <View style={styles.skeletonLineHomeWide} />
           <View style={styles.skeletonLineHomeMid} />
@@ -603,6 +586,8 @@ export default function HomeScreen() {
           />
         }
         scrollContentContainerStyle={styles.scrollContent}
+        contentBreathingRoom={HOME_SCROLL_BREATHING_ROOM}
+        enableGentleScrollWhenShort
       >
 
         {/* New user (no sunrise logged): greeting, then ritual card (tagline is in header) */}
@@ -650,6 +635,7 @@ export default function HomeScreen() {
                 onDismiss={async () => {
                   if (revealBadge) {
                     await dismissBadgeReveal(revealBadge.id);
+                    await markRevealLastSeen();
                     setRevealBadge(null);
                   }
                 }}
@@ -698,15 +684,7 @@ export default function HomeScreen() {
                 onPressSeeMorning={() => router.push('/sunrise')}
               />
 
-              <Pressable
-                style={({ pressed }) => [
-                  styles.modeCard,
-                  styles.modeCardPrimary,
-                  styles.modeCardStacked,
-                  pressed && styles.modeCardPressed,
-                ]}
-                onPress={() => router.push('/tomorrow-plan')}
-              >
+              <View style={[styles.modeCard, styles.modeCardPrimary, styles.modeCardStacked]}>
                 <Text style={styles.modeCardTitle}>
                   {tomorrowPlan.exists ? "Tomorrow's plan is set" : 'Dawn is always beautiful.'}
                 </Text>
@@ -727,63 +705,71 @@ export default function HomeScreen() {
                 {!tomorrowPlan.exists && tomorrowSunriseLine ? (
                   <Text style={styles.modeCardDesc}>{tomorrowSunriseLine}</Text>
                 ) : null}
-                <View style={styles.modeCardButton}>
+                <Pressable
+                  style={({ pressed }) => [styles.modeCardButton, pressed && styles.modeCardPressed]}
+                  onPress={() => router.push('/tomorrow-plan')}
+                  accessibilityRole="button"
+                  accessibilityLabel={tomorrowPlan.exists ? 'Review your plan' : 'Plan for tomorrow'}
+                >
                   <Text style={styles.modeCardButtonText}>
                     {tomorrowPlan.exists ? 'Review your plan' : 'Plan for tomorrow'}
                   </Text>
-                </View>
-              </Pressable>
+                </Pressable>
+              </View>
 
               {SHOW_MY_MORNINGS ? (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.modeCard,
-                    styles.modeCardSharedDawn,
-                    styles.modeCardStacked,
-                    pressed && styles.modeCardPressed,
-                  ]}
-                  onPress={() => router.push('/my-mornings')}
-                >
+                <View style={[styles.modeCard, styles.modeCardSharedDawn, styles.modeCardStacked]}>
                   <Text style={[styles.modeCardTitle, styles.modeCardTitleTertiary]}>Your mornings</Text>
                   <Text style={[styles.modeCardDesc, styles.modeCardDescTertiary]}>Revisit the sunrises you{"'"}ve welcomed.</Text>
-                  <View style={[styles.modeCardButton, styles.modeCardButtonTertiary]}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.modeCardButton,
+                      styles.modeCardButtonTertiary,
+                      pressed && styles.modeCardPressed,
+                    ]}
+                    onPress={() => router.push('/my-mornings')}
+                    accessibilityRole="button"
+                    accessibilityLabel="View your mornings"
+                  >
                     <Text style={[styles.modeCardButtonText, styles.modeCardButtonTextTertiary]}>View your mornings →</Text>
-                  </View>
-                </Pressable>
+                  </Pressable>
+                </View>
               ) : SHOW_CITY_CARD ? (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.modeCard,
-                    styles.modeCardSharedDawn,
-                    styles.modeCardStacked,
-                    pressed && styles.modeCardPressed,
-                  ]}
-                  onPress={() => router.push('/my-city-sunrises')}
-                >
+                <View style={[styles.modeCard, styles.modeCardSharedDawn, styles.modeCardStacked]}>
                   <Text style={[styles.modeCardTitle, styles.modeCardTitleTertiary]}>Shared dawn in {cityName || 'your city'}</Text>
                   <Text style={[styles.modeCardDesc, styles.modeCardDescTertiary]}>
                     See how others in {cityName || 'your city'} are welcoming mornings on SunVantage
                   </Text>
-                  <View style={[styles.modeCardButton, styles.modeCardButtonTertiary]}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.modeCardButton,
+                      styles.modeCardButtonTertiary,
+                      pressed && styles.modeCardPressed,
+                    ]}
+                    onPress={() => router.push('/my-city-sunrises')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Explore city mornings"
+                  >
                     <Text style={[styles.modeCardButtonText, styles.modeCardButtonTextTertiary]}>Explore city mornings</Text>
-                  </View>
-                </Pressable>
+                  </Pressable>
+                </View>
               ) : (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.modeCard,
-                    styles.modeCardSharedDawn,
-                    styles.modeCardStacked,
-                    pressed && styles.modeCardPressed,
-                  ]}
-                  onPress={() => router.push('/world-sunrise-gallery')}
-                >
+                <View style={[styles.modeCard, styles.modeCardSharedDawn, styles.modeCardStacked]}>
                   <Text style={[styles.modeCardTitle, styles.modeCardTitleTertiary]}>Shared dawn across the world</Text>
                   <Text style={[styles.modeCardDesc, styles.modeCardDescTertiary]}>Morning is unfolding everywhere.</Text>
-                  <View style={[styles.modeCardButton, styles.modeCardButtonTertiary]}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.modeCardButton,
+                      styles.modeCardButtonTertiary,
+                      pressed && styles.modeCardPressed,
+                    ]}
+                    onPress={() => router.push('/world-sunrise-gallery')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Explore global mornings"
+                  >
                     <Text style={[styles.modeCardButtonText, styles.modeCardButtonTextTertiary]}>Explore global mornings →</Text>
-                  </View>
-                </Pressable>
+                  </Pressable>
+                </View>
               )}
             </View>
           </>
@@ -794,32 +780,36 @@ export default function HomeScreen() {
               <Text style={[styles.centerQuestion, styles.centerQuestionHeadline]}>Be there when it begins.</Text>
             ) : null}
             <View style={[styles.cardsBlock, sunrisePhase === 'live' && styles.cardsBlockLive]}>
-              <Pressable
-                style={({ pressed }) => [styles.modeCard, styles.modeCardTightBottom, pressed && styles.modeCardPressed]}
-                onPress={handleOpenWitness}
-              >
+              <View style={[styles.modeCard, styles.modeCardTightBottom]}>
                 <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>Be there for the sunrise</Text>
                 <Text style={styles.modeCardDesc}>Show up. Stand still. Welcome the day.</Text>
-                <View style={styles.modeCardButton}>
+                <Pressable
+                  style={({ pressed }) => [styles.modeCardButton, pressed && styles.modeCardPressed]}
+                  onPress={handleOpenWitness}
+                  accessibilityRole="button"
+                  accessibilityLabel="Mark your morning"
+                >
                   <Text style={styles.modeCardButtonText}>Mark your morning</Text>
-                </View>
-              </Pressable>
+                </Pressable>
+              </View>
             </View>
           </>
         ) : newUserPreOrLive ? (
           /* STATE 1 — First-time user, pre/live: single primary witness action */
           <>
             <View style={styles.cardsBlock}>
-              <Pressable
-                style={({ pressed }) => [styles.modeCard, styles.modeCardTightBottom, pressed && styles.modeCardPressed]}
-                onPress={handleOpenWitness}
-              >
+              <View style={[styles.modeCard, styles.modeCardTightBottom]}>
                 <Text style={styles.modeCardTitle}>Be there for the sunrise</Text>
                 <Text style={styles.modeCardDesc}>Show up. Stand still. Welcome the day.</Text>
-                <View style={styles.modeCardButton}>
+                <Pressable
+                  style={({ pressed }) => [styles.modeCardButton, pressed && styles.modeCardPressed]}
+                  onPress={handleOpenWitness}
+                  accessibilityRole="button"
+                  accessibilityLabel="Mark your morning"
+                >
                   <Text style={styles.modeCardButtonText}>Mark your morning</Text>
-                </View>
-              </Pressable>
+                </Pressable>
+              </View>
             </View>
           </>
         ) : newUserReturningPostSunrise || newUserPostSunrise ? (
@@ -829,22 +819,26 @@ export default function HomeScreen() {
               Your first sunrise moment awaits.
             </Text>
             <View style={styles.cardsBlockBeforeAction}>
-              <Pressable
-                style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
-                onPress={handleOpenWitness}
-              >
+              <View style={styles.modeCard}>
                 <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>{newUserCtaCopy.title}</Text>
                 <Text style={styles.modeCardDesc}>{newUserCtaCopy.subtext}</Text>
-                <View style={styles.modeCardButton}>
+                <Pressable
+                  style={({ pressed }) => [styles.modeCardButton, pressed && styles.modeCardPressed]}
+                  onPress={handleOpenWitness}
+                  accessibilityRole="button"
+                  accessibilityLabel={newUserCtaCopy.cta}
+                >
                   <Text style={styles.modeCardButtonText}>{newUserCtaCopy.cta}</Text>
-                </View>
+                </Pressable>
                 <Pressable
                   style={({ pressed }) => [styles.modeCardLinkWrap, pressed && styles.modeCardPressed]}
                   onPress={() => router.push('/tomorrow-plan')}
+                  accessibilityRole="link"
+                  accessibilityLabel="Plan for tomorrow"
                 >
                   <Text style={styles.modeCardLink}>or plan for tomorrow</Text>
                 </Pressable>
-              </Pressable>
+              </View>
             </View>
           </>
         ) : (
@@ -856,8 +850,8 @@ export default function HomeScreen() {
               </Text>
             )}
             <View style={[styles.cardsBlock, sunrisePhase === 'post' && styles.cardsBlockPost]}>
-              <Pressable
-                style={({ pressed }) => [
+              <View
+                style={[
                   styles.modeCard,
                   sunrisePhase === 'pre' && styles.modeCardPreSecondary,
                   sunrisePhase === 'live' && styles.modeCardAfterSunriseLive,
@@ -865,9 +859,7 @@ export default function HomeScreen() {
                   sunrisePhase === 'post' && styles.modeCardAfterSunrisePost,
                   sunrisePhase === 'post' && styles.modeCardPostHero,
                   sunrisePhase !== 'live' && styles.modeCardTightBottom,
-                  pressed && styles.modeCardPressed,
                 ]}
-                onPress={handleOpenWitness}
               >
                 {sunrisePhase === 'live' ? (
                   <LinearGradient
@@ -895,12 +887,18 @@ export default function HomeScreen() {
                     : 'Show up. Stand still. Welcome the day.'}
                 </Text>
                 {sunrisePhase === 'live' ? <Text style={styles.modeCardDesc}>{"You're here."}</Text> : null}
-                <View
-                  style={[
+                <Pressable
+                  style={({ pressed }) => [
                     styles.modeCardButton,
                     sunrisePhase === 'live' && styles.modeCardButtonLivePrimary,
                     sunrisePhase === 'post' && styles.modeCardButtonPostHero,
+                    pressed && styles.modeCardPressed,
                   ]}
+                  onPress={handleOpenWitness}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    sunrisePhase === 'pre' || sunrisePhase === 'live' ? 'Mark your morning' : 'Log for today'
+                  }
                 >
                   <Text
                     style={[
@@ -911,8 +909,8 @@ export default function HomeScreen() {
                   >
                     {sunrisePhase === 'pre' || sunrisePhase === 'live' ? 'Mark your morning' : 'Log for today'}
                   </Text>
-                </View>
-              </Pressable>
+                </Pressable>
+              </View>
 
             </View>
             {sunrisePhase === 'post' ? (
@@ -967,9 +965,9 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 28,
     /** Rhythm: header → first row = streak marginTop (2×SPACE); no double padding here. */
     paddingTop: 0,
+    flexGrow: 1,
   },
   tagline: {
     marginTop: 12,

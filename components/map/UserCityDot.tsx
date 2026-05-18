@@ -15,11 +15,11 @@ const USER_DOT_INNER_RADIUS = 3;
 const USER_DOT_RING_RADIUS = 4;
 const USER_DOT_RING_WIDTH = 2;
 const USER_DOT_FILL = '#FFFFFF';
-const USER_DOT_RING_COLOR = '#F4C95D';
-const USER_DOT_GLOW_COLOR = '#F4C95D';
-const USER_DOT_SCALE = 1.1;
-const USER_DOT_GLOW_RADIUS = 10;
-const USER_DOT_GLOW_OPACITY = 0.16;
+const USER_DOT_RING_COLOR = '#C8DCEE';
+const USER_DOT_GLOW_COLOR = '#A8C8E8';
+const USER_DOT_SCALE = 1.05;
+const USER_DOT_GLOW_RADIUS = 9;
+const USER_DOT_GLOW_OPACITY = 0.14;
 const USER_DOT_OUTER_RING_RADIUS = 8.5;
 const USER_DOT_OUTER_RING_OPACITY = 0.18;
 
@@ -109,12 +109,14 @@ export default function UserCityDot({ city, now, width: propWidth, height: propH
         <Pressable style={styles.modalBackdrop} onPress={() => setModalVisible(false)}>
           <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalCity}>{city.city}</Text>
-            <Text style={styles.modalSunrise}>Sunrise: {sunriseFormatted}</Text>
+            <Text style={styles.modalSunrise}>Local light arrives around {sunriseFormatted}</Text>
             {hasRisen ? (
-              <Text style={styles.modalSub}>Sun has risen 🌅</Text>
+              <Text style={styles.modalSub}>Daylight has already reached you</Text>
             ) : (
               <Text style={styles.modalSub}>
-                {hoursToGo > 0 ? `${hoursToGo} hour${hoursToGo !== 1 ? 's' : ''} to go` : 'Less than an hour to go'}
+                {hoursToGo > 0
+                  ? `Morning still ${hoursToGo} hour${hoursToGo !== 1 ? 's' : ''} away`
+                  : 'Morning is approaching'}
               </Text>
             )}
             <Pressable style={styles.modalClose} onPress={() => setModalVisible(false)}>

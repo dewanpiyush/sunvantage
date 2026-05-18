@@ -9,7 +9,8 @@ import Svg, { Path, G } from 'react-native-svg';
 import { getMapProjection, getGeoPath } from '@/lib/mapProjection';
 import { Dawn } from '@/constants/theme';
 
-const LAND_COLOR = '#243350';
+/** Continents stay readable under light atmospheric tint. */
+const LAND_COLOR = '#2d4563';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TopoLand = any;
