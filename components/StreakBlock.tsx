@@ -58,9 +58,9 @@ export default function StreakBlock({ currentStreak, longestStreak, loading = fa
         </View>
       ) : longestStreak > 0 ? (
         <>
-          <Text style={styles.headerInvitation}>Ready to begin again?</Text>
+          <Text style={styles.headerInvitation}>The morning returns.</Text>
           <Text style={styles.streakSecondary}>
-            Longest: {longestStreak} {longestStreak === 1 ? 'day' : 'days'}
+            Longest {longestStreak} morning{longestStreak === 1 ? '' : 's'}
           </Text>
         </>
       ) : null}

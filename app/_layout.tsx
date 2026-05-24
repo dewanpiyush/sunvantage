@@ -1,10 +1,15 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
+import * as SystemUI from 'expo-system-ui';
 import supabase from '@/supabase';
 import { usePendingModerationRecoveryOnAppActive } from '@/hooks/use-pending-moderation-recovery-on-app-active';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { configureNotificationHandler, useNotificationOpenRouting } from '@/lib/notifications';
+
+configureNotificationHandler();
+
 import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
@@ -14,9 +19,21 @@ import posthog from '../lib/posthog';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { fetchProfileCompleteness } from '@/lib/profileGuard';
 import { Dawn } from '@/constants/theme';
+import { SPLASH_BACKGROUND } from '@/constants/startup';
 import { AppThemeProvider, useAppTheme } from '@/context/AppThemeContext';
 import { UIStateProvider } from '@/store/uiState';
 import AppBackground from '@/components/AppBackground';
+import { SunVantageDarkTheme, SunVantageLightTheme } from '@/lib/navigationTheme';
+import { ThemeProvider } from '@react-navigation/native';
+
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // Splash may already be hidden in dev; startup shell still matches native colors.
+});
+
+SplashScreen.setOptions({
+  duration: 380,
+  fade: true,
+});
 
 const PUBLIC_PATHS = new Set(['', '/', 'auth', 'onboarding']);
 let appOpenedCaptured = false;
@@ -26,7 +43,13 @@ function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.has(segment) || PUBLIC_PATHS.has(pathname);
 }
 
-function OnboardingGuard({ children }: { children: React.ReactNode }) {
+function OnboardingGuard({
+  children,
+  onReadyChange,
+}: {
+  children: React.ReactNode;
+  onReadyChange: (ready: boolean) => void;
+}) {
   const pathname = usePathname() ?? '/';
   const router = useRouter();
   const [resolving, setResolving] = useState(true);
@@ -73,6 +96,10 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
     };
   }, [pathname, router]);
 
+  useEffect(() => {
+    onReadyChange(!resolving);
+  }, [resolving, onReadyChange]);
+
   if (resolving && !isPublicPath(pathname)) {
     return (
       <View style={styles.loading}>
@@ -82,6 +109,65 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
   }
 
   return <>{children}</>;
+}
+
+function RootLayoutInner() {
+  const colorScheme = useColorScheme();
+  const { colorScheme: appScheme } = useAppTheme();
+  const scheme = appScheme ?? colorScheme;
+  const router = useRouter();
+  const [shellReady, setShellReady] = useState(false);
+  const [guardReady, setGuardReady] = useState(false);
+
+  useNotificationOpenRouting(router);
+  usePendingModerationRecoveryOnAppActive(supabase);
+
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(SPLASH_BACKGROUND).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (appOpenedCaptured) return;
+    appOpenedCaptured = true;
+    try {
+      if (posthog) posthog.capture('app_opened');
+    } catch {
+      // ignore analytics errors
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!shellReady || !guardReady) return;
+    void SplashScreen.hideAsync();
+  }, [shellReady, guardReady]);
+
+  const onGuardReadyChange = useCallback((ready: boolean) => {
+    setGuardReady(ready);
+  }, []);
+
+  const onShellLayout = useCallback(() => {
+    setShellReady(true);
+  }, []);
+
+  const navTheme = scheme === 'dark' ? SunVantageDarkTheme : SunVantageLightTheme;
+
+  return (
+    <View style={styles.shell} onLayout={onShellLayout}>
+      <ThemeProvider value={navTheme}>
+        <AppBackground>
+          <OnboardingGuard onReadyChange={onGuardReadyChange}>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: 'transparent' },
+              }}
+            />
+          </OnboardingGuard>
+        </AppBackground>
+        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+      </ThemeProvider>
+    </View>
+  );
 }
 
 export default function RootLayout() {
@@ -94,45 +180,15 @@ export default function RootLayout() {
   );
 }
 
-function RootLayoutInner() {
-  const colorScheme = useColorScheme();
-  const { colorScheme: appScheme } = useAppTheme();
-  const scheme = appScheme ?? colorScheme;
-
-  /** Pending sunrise moderation when app foregrounds (any screen), not only Home focus. */
-  usePendingModerationRecoveryOnAppActive(supabase);
-
-  // PostHog: fire exactly once when the app loads.
-  useEffect(() => {
-    if (appOpenedCaptured) return;
-    appOpenedCaptured = true;
-    try {
-      if (posthog) posthog.capture('app_opened');
-    } catch {
-      // ignore analytics errors
-    }
-  }, []);
-
-  return (
-    <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AppBackground>
-        <OnboardingGuard>
-          <Stack screenOptions={{ headerShown: false }}>
-            {/* All routes in the `app` folder (index, auth, onboarding, tabs, etc.)
-                are automatically registered by expo-router. */}
-          </Stack>
-        </OnboardingGuard>
-      </AppBackground>
-      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-    </ThemeProvider>
-  );
-}
-
 const styles = StyleSheet.create({
+  shell: {
+    flex: 1,
+    backgroundColor: SPLASH_BACKGROUND,
+  },
   loading: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Dawn.background.primary,
+    backgroundColor: SPLASH_BACKGROUND,
   },
 });

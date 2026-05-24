@@ -1100,7 +1100,6 @@ export function SunriseLog({
     if (photoUrl && hasReplacedPhoto) return; // already used the one replace for today
 
     try {
-      setUploadingPhoto(true);
       setError('');
       setPhotoMessage('');
 
@@ -1124,6 +1123,8 @@ export function SunriseLog({
 
       const asset = result.assets[0];
       if (!asset.uri) return;
+
+      setUploadingPhoto(true);
 
       const {
         data: { session },

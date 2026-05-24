@@ -26,51 +26,13 @@ import { prefetchMyMornings, prefetchWorldGallery } from '@/lib/screenDataCache'
 import { getTodayDawnCard, type DawnCard } from '../data/dawnCards';
 import { useUIState } from '@/store/uiState';
 import SunriseStateCard from '@/components/SunriseStateCard';
+import { computeStreakFromLogDates, syncProfileStreakColumns } from '@/lib/streakStats';
 
 /** Base spacing unit — home vertical rhythm (header → streak → greeting → cards). */
 const SPACE = 8;
 
 /** Bottom breathing room so short Home states still feel gently scrollable. */
 const HOME_SCROLL_BREATHING_ROOM = 112;
-
-// ----- Streak (same logic as elsewhere) -----
-const YMD_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-
-function createdAtToLocalDateString(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const y = d.getFullYear();
-  const m = d.getMonth();
-  const day = d.getDate();
-  return `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-}
-
-function getTodayLocalDateString(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = d.getMonth();
-  const day = d.getDate();
-  return `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-}
-
-function getYesterdayLocalDateString(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  const y = d.getFullYear();
-  const m = d.getMonth();
-  const day = d.getDate();
-  return `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-}
-
-function getPreviousDayString(ymd: string): string {
-  const [y, m, d] = ymd.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  date.setDate(date.getDate() - 1);
-  const y2 = date.getFullYear();
-  const m2 = date.getMonth();
-  const d2 = date.getDate();
-  return `${y2}-${String(m2 + 1).padStart(2, '0')}-${String(d2).padStart(2, '0')}`;
-}
 
 function getHourInTimeZone(timezone: string | null): number | null {
   if (!timezone || !timezone.trim()) return null;
@@ -241,40 +203,6 @@ function getSunrisePhase(minutesToSunrise: number | null, sunrisePassed: boolean
   return 'pre';
 }
 
-function computeStreakFromLogDates(
-  createdAts: string[]
-): { current: number; longest: number } {
-  const validDates = createdAts
-    .map(createdAtToLocalDateString)
-    .filter((s): s is string => Boolean(s) && YMD_REGEX.test(s));
-  if (validDates.length === 0) return { current: 0, longest: 0 };
-  const today = getTodayLocalDateString();
-  const yesterday = getYesterdayLocalDateString();
-  const dateStrings = [...new Set(validDates)].sort().reverse();
-  const lastDate = dateStrings[0];
-  const lastIsActive = lastDate === today || lastDate === yesterday;
-  let current = 0;
-  if (lastIsActive) {
-    let expected = lastDate;
-    for (const d of dateStrings) {
-      if (d !== expected) break;
-      current++;
-      expected = getPreviousDayString(expected);
-    }
-  }
-  let longest = 0;
-  let run = 1;
-  for (let i = 1; i < dateStrings.length; i++) {
-    if (getPreviousDayString(dateStrings[i - 1]) === dateStrings[i]) run++;
-    else {
-      longest = Math.max(longest, run);
-      run = 1;
-    }
-  }
-  longest = Math.max(longest, run, current);
-  return { current, longest };
-}
-
 export default function HomeScreen() {
   const router = useRouter();
   const Dawn = useDawn();
@@ -356,7 +284,8 @@ export default function HomeScreen() {
       setLogs(logRows);
       const createdAts = logRows.map((r) => r.created_at);
       const streakResult = computeStreakFromLogDates(createdAts);
-      setStreak(streakResult);
+      setStreak({ current: streakResult.current, longest: streakResult.longest });
+      void syncProfileStreakColumns(supabase, userId, streakResult);
 
       let revealToShow: BadgeDef | null = null;
       if (logRows.length > 0) {

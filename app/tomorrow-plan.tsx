@@ -11,9 +11,10 @@ import {
   Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
+import { scheduleSunriseReminder } from '@/lib/notifications';
 import supabase from '../supabase';
 import SunVantageHeader from '../components/SunVantageHeader';
 import StreakBlock from '../components/StreakBlock';
@@ -22,6 +23,7 @@ import { useMorningContext } from '../hooks/useMorningContext';
 import { useDawn } from '@/hooks/use-dawn';
 import { useAppTheme } from '@/context/AppThemeContext';
 import posthog from '@/lib/posthog';
+import { useStreakStats } from '@/hooks/useStreakStats';
 
 const TOMORROW_INTENTION_KEY = 'sunvantage_tomorrow_intention';
 export const TOMORROW_ALARM_SET_KEY = 'sunvantage_tomorrow_alarm_set';
@@ -98,21 +100,13 @@ function getPlaceLeadingEmoji(place: string): string {
   return '📍';
 }
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
-
 export default function TomorrowPlanScreen() {
   const router = useRouter();
   const Dawn = useDawn();
   const { mode } = useAppTheme();
   const styles = React.useMemo(() => makeStyles(Dawn), [Dawn, mode]);
-  const [profile, setProfile] = useState<{ city: string | null; current_streak: number; longest_streak: number } | null>(null);
-  const [streakLoading, setStreakLoading] = useState(true);
+  const [profileCity, setProfileCity] = useState<string | null>(null);
+  const { currentStreak, longestStreak, loading: streakLoading } = useStreakStats();
   const [intention, setIntention] = useState('');
   const [placeFieldFocused, setPlaceFieldFocused] = useState(false);
   const [reminderMinsBefore, setReminderMinsBefore] = useState(DEFAULT_MINS_BEFORE_SUNRISE);
@@ -121,8 +115,8 @@ export default function TomorrowPlanScreen() {
   const [showReminderUpdated, setShowReminderUpdated] = useState(false);
   const lastNextSunriseIntentKeyRef = useRef<string | null>(null);
 
-  const { sunriseToday, sunriseTomorrow, minutesToSunrise, isDawnMode, tomorrowWeather } = useMorningContext(profile?.city ?? null);
-  const cityName = profile?.city ?? null;
+  const { sunriseToday, sunriseTomorrow, minutesToSunrise, isDawnMode, tomorrowWeather } = useMorningContext(profileCity);
+  const cityName = profileCity;
 
   const isTodayMode = minutesToSunrise != null && minutesToSunrise > 0;
   const sunriseDisplay = isTodayMode ? sunriseToday : sunriseTomorrow;
@@ -132,31 +126,18 @@ export default function TomorrowPlanScreen() {
   const reminderTimeFormatted = reminderDate ? formatReminderTime(reminderDate) : null;
   const reminderHasPassed = reminderDate != null && reminderDate.getTime() <= Date.now();
 
-  const loadProfile = useCallback(async () => {
-    setStreakLoading(true);
+  const loadProfileCity = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
       if (!userId) {
-        setProfile(null);
+        setProfileCity(null);
         return;
       }
-      const { data } = await supabase
-        .from('profiles')
-        .select('city, current_streak, longest_streak')
-        .eq('user_id', userId)
-        .maybeSingle();
-      if (data) {
-        const current = typeof data.current_streak === 'number' ? data.current_streak : typeof data.current_streak === 'string' ? parseInt(data.current_streak, 10) : 0;
-        const longest = typeof data.longest_streak === 'number' ? data.longest_streak : typeof data.longest_streak === 'string' ? parseInt(data.longest_streak, 10) : 0;
-        setProfile({ city: data.city ?? null, current_streak: Number.isNaN(current) ? 0 : current, longest_streak: Number.isNaN(longest) ? 0 : longest });
-      } else {
-        setProfile(null);
-      }
+      const { data } = await supabase.from('profiles').select('city').eq('user_id', userId).maybeSingle();
+      setProfileCity(data?.city ?? null);
     } catch {
-      setProfile(null);
-    } finally {
-      setStreakLoading(false);
+      setProfileCity(null);
     }
   }, []);
 
@@ -194,18 +175,7 @@ export default function TomorrowPlanScreen() {
         Alert.alert('Permission needed', 'Enable notifications to get a sunrise reminder.');
         return;
       }
-      await Notifications.cancelAllScheduledNotificationsAsync();
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'SunVantage',
-          body: 'The morning is arriving.',
-          sound: true,
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date: reminderDate,
-        },
-      });
+      await scheduleSunriseReminder(reminderDate);
       setAlarmScheduled(true);
       if (reminderTimeFormatted) setAlarmTime(reminderTimeFormatted);
       try {
@@ -254,18 +224,7 @@ export default function TomorrowPlanScreen() {
           status = requested;
         }
         if (status !== 'granted') return;
-        await Notifications.cancelAllScheduledNotificationsAsync();
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: 'SunVantage',
-            body: 'The morning is arriving.',
-            sound: true,
-          },
-          trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.DATE,
-            date: newReminderDate,
-          },
-        });
+        await scheduleSunriseReminder(newReminderDate);
         const newTimeFormatted = formatReminderTime(newReminderDate);
         setReminderMinsBefore(newOffset);
         setAlarmScheduled(true);
@@ -298,8 +257,14 @@ export default function TomorrowPlanScreen() {
   );
 
   useEffect(() => {
-    loadProfile();
-  }, [loadProfile]);
+    loadProfileCity();
+  }, [loadProfileCity]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadProfileCity();
+    }, [loadProfileCity])
+  );
 
   useEffect(() => {
     loadIntention();
@@ -367,8 +332,8 @@ export default function TomorrowPlanScreen() {
           {/* Streak — same as Home, directly under header */}
           <View style={styles.streakWrap}>
             <StreakBlock
-              currentStreak={profile?.current_streak ?? 0}
-              longestStreak={profile?.longest_streak ?? 0}
+              currentStreak={currentStreak}
+              longestStreak={longestStreak}
               loading={streakLoading}
               style={styles.streakBlockSpacing}
             />

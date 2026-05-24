@@ -152,7 +152,8 @@ export default function SunriseLogCard({
   const [saving, setSaving] = useState(false);
   const [saveStage, setSaveStage] = useState<'idle' | 'saved' | 'processing'>('idle');
   const [error, setError] = useState('');
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  /** True only after a new image is chosen and resize/compress is running — not while the picker is open. */
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
   const processingOpacity = useRef(new Animated.Value(0.85)).current;
   const processingLoopRef = useRef<Animated.CompositeAnimation | null>(null);
   const [detectingVantageLocation, setDetectingVantageLocation] = useState(false);
@@ -416,14 +417,14 @@ export default function SunriseLogCard({
   }, []);
 
   const handleAddPhoto = useCallback(async () => {
+    setError('');
     try {
-      setUploadingPhoto(true);
-      setError('');
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         setError('We need permission to access your photos.');
         return;
       }
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: false,
@@ -432,32 +433,37 @@ export default function SunriseLogCard({
         base64: false,
       });
       if (result.canceled || !result.assets?.length) return;
+
       const asset = result.assets[0];
       if (!asset.uri) return;
-      let processedUri = asset.uri;
-      let processedMime = asset.mimeType ?? 'image/jpeg';
+
+      setIsProcessingPhoto(true);
       try {
-        const resized = await ImageManipulator.manipulateAsync(
-          asset.uri,
-          [{ resize: { width: 1080 } }],
-          {
-            compress: 0.6,
-            format: ImageManipulator.SaveFormat.JPEG,
+        let processedUri = asset.uri;
+        let processedMime = asset.mimeType ?? 'image/jpeg';
+        try {
+          const resized = await ImageManipulator.manipulateAsync(
+            asset.uri,
+            [{ resize: { width: 1080 } }],
+            {
+              compress: 0.6,
+              format: ImageManipulator.SaveFormat.JPEG,
+            }
+          );
+          if (resized?.uri) {
+            processedUri = resized.uri;
+            processedMime = 'image/jpeg';
           }
-        );
-        if (resized?.uri) {
-          processedUri = resized.uri;
-          processedMime = 'image/jpeg';
+        } catch {
+          // Fallback to original pick; keep flow resilient if manipulation fails.
         }
-      } catch {
-        // Fallback to original pick; keep flow resilient if manipulation fails.
+        setPhotoUri(processedUri);
+        setPhotoMime(processedMime);
+      } finally {
+        setIsProcessingPhoto(false);
       }
-      setPhotoUri(processedUri);
-      setPhotoMime(processedMime);
     } catch {
       setError('Something went wrong choosing a photo.');
-    } finally {
-      setUploadingPhoto(false);
     }
   }, []);
 
@@ -709,7 +715,7 @@ export default function SunriseLogCard({
               {
                 opacity: backdropOpacity.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0, 0.45],
+                  outputRange: [0, 0.62],
                 }),
               },
             ]}
@@ -897,9 +903,9 @@ export default function SunriseLogCard({
                           <Pressable
                             style={({ pressed }) => [styles.addPhotoBtn, pressed && styles.addPhotoBtnPressed]}
                             onPress={handleAddPhoto}
-                            disabled={uploadingPhoto}
+                            disabled={isProcessingPhoto}
                           >
-                            {uploadingPhoto ? (
+                            {isProcessingPhoto ? (
                               <ActivityIndicator color={Dawn.text.primary} size="small" />
                             ) : (
                               <Text style={styles.addPhotoText}>+ Add photo</Text>
@@ -913,12 +919,10 @@ export default function SunriseLogCard({
                             <Pressable
                               style={({ pressed }) => [styles.retakeBtn, pressed && styles.retakeBtnPressed]}
                               onPress={handleAddPhoto}
-                              disabled={uploadingPhoto}
+                              disabled={isProcessingPhoto}
                             >
                               <Text style={styles.retakeText}>
-                                {uploadingPhoto
-                                  ? 'Replacing…'
-                                  : 'Pick another'}
+                                {isProcessingPhoto ? 'Replacing…' : 'Pick another'}
                               </Text>
                             </Pressable>
                           </>

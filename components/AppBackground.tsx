@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet } from 'react-native';
+import { Animated, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useUIState } from '@/store/uiState';
+import { SPLASH_BACKGROUND } from '@/constants/startup';
 import { gradients, gradientLocations } from '@/theme/gradients';
 
 export default function AppBackground({ children }: { children: React.ReactNode }) {
@@ -18,6 +19,7 @@ export default function AppBackground({ children }: { children: React.ReactNode 
 
   return (
     <>
+      <View style={[StyleSheet.absoluteFill, styles.baseFill]} pointerEvents="none" />
       <LinearGradient
         colors={[...gradients.default]}
         locations={[...gradientLocations]}
@@ -38,4 +40,10 @@ export default function AppBackground({ children }: { children: React.ReactNode 
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  baseFill: {
+    backgroundColor: SPLASH_BACKGROUND,
+  },
+});
 

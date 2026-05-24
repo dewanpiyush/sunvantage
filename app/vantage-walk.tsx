@@ -28,6 +28,7 @@ import { useAppTheme } from '@/context/AppThemeContext';
 import ScreenLayout from '@/components/ScreenLayout';
 import { getTodayDawnCard, type DawnCard } from '../data/dawnCards';
 import { useUIState } from '@/store/uiState';
+import { useStreakStats } from '@/hooks/useStreakStats';
 
 type TodayLogDetails = {
   vantage_name: string | null;
@@ -88,8 +89,7 @@ export default function VantageWalkScreen() {
   const styles = React.useMemo(() => makeStyles(Dawn, isMorningLight), [Dawn, isMorningLight]);
   const [profileCity, setProfileCity] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [streak, setStreak] = useState<{ current: number; longest: number }>({ current: 0, longest: 0 });
-  const [streakLoading, setStreakLoading] = useState(true);
+  const { currentStreak, longestStreak, loading: streakLoading } = useStreakStats();
   const [logs, setLogs] = useState<{ id: string | number; created_at: string }[]>([]);
   const [todayLog, setTodayLog] = useState<TodayLogDetails | null>(null);
   const [todayPhotoDisplayUrl, setTodayPhotoDisplayUrl] = useState<string | null>(null);
@@ -135,33 +135,21 @@ export default function VantageWalkScreen() {
   }, []);
 
   const loadProfile = useCallback(async () => {
-    setStreakLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
       if (!userId) {
         setProfileCity(null);
         setCurrentUserId(null);
-        setStreak({ current: 0, longest: 0 });
         return;
       }
       setCurrentUserId(userId);
-      const { data } = await supabase
-        .from('profiles')
-        .select('city, current_streak, longest_streak')
-        .eq('user_id', userId)
-        .maybeSingle();
+      const { data } = await supabase.from('profiles').select('city').eq('user_id', userId).maybeSingle();
       const city = data?.city != null && typeof data.city === 'string' ? data.city.trim() || null : null;
       setProfileCity(city);
-      const current = typeof data?.current_streak === 'number' ? data.current_streak : typeof data?.current_streak === 'string' ? parseInt(data.current_streak, 10) : 0;
-      const longest = typeof data?.longest_streak === 'number' ? data.longest_streak : typeof data?.longest_streak === 'string' ? parseInt(data.longest_streak, 10) : 0;
-      setStreak({ current: Number.isNaN(current) ? 0 : current, longest: Number.isNaN(longest) ? 0 : longest });
     } catch {
       setProfileCity(null);
       setCurrentUserId(null);
-      setStreak({ current: 0, longest: 0 });
-    } finally {
-      setStreakLoading(false);
     }
   }, []);
 
@@ -335,8 +323,8 @@ export default function VantageWalkScreen() {
         {/* Streak — same as Witness, Header → 12px → Streak → 16px → Card */}
         <View style={styles.streakWrap}>
           <StreakBlock
-            currentStreak={streak.current}
-            longestStreak={streak.longest}
+            currentStreak={currentStreak}
+            longestStreak={longestStreak}
             loading={streakLoading}
             style={styles.streakBlockSpacing}
           />

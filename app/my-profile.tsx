@@ -21,82 +21,10 @@ import SunVantageHeader from '../components/SunVantageHeader';
 import { hasLoggedToday } from '../lib/hasLoggedToday';
 import { useDawn } from '@/hooks/use-dawn';
 import { useUIState } from '@/store/uiState';
+import { computeStreakFromLogDates, syncProfileStreakColumns } from '@/lib/streakStats';
 
 const AVATAR_BUCKET = 'avatars';
 const AVATAR_SIZE = 512;
-
-// ----- Streak computation (client-side) -----
-const YMD_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-
-function createdAtToLocalDateString(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const y = d.getFullYear();
-  const m = d.getMonth();
-  const day = d.getDate();
-  return `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-}
-
-function getTodayLocalDateString(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = d.getMonth();
-  const day = d.getDate();
-  return `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-}
-
-function getYesterdayLocalDateString(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  const y = d.getFullYear();
-  const m = d.getMonth();
-  const day = d.getDate();
-  return `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-}
-
-function getPreviousDayString(ymd: string): string {
-  const [y, m, d] = ymd.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  date.setDate(date.getDate() - 1);
-  const y2 = date.getFullYear();
-  const m2 = date.getMonth();
-  const d2 = date.getDate();
-  return `${y2}-${String(m2 + 1).padStart(2, '0')}-${String(d2).padStart(2, '0')}`;
-}
-
-function computeStreakFromLogDates(
-  createdAts: string[]
-): { current: number; longest: number; lastDate: string | null } {
-  const validDates = createdAts
-    .map(createdAtToLocalDateString)
-    .filter((s): s is string => Boolean(s) && YMD_REGEX.test(s));
-  if (validDates.length === 0) return { current: 0, longest: 0, lastDate: null };
-  const today = getTodayLocalDateString();
-  const yesterday = getYesterdayLocalDateString();
-  const dateStrings = [...new Set(validDates)].sort().reverse();
-  const lastDate = dateStrings[0];
-  const lastIsActive = lastDate === today || lastDate === yesterday;
-  let current = 0;
-  if (lastIsActive) {
-    let expected = lastDate;
-    for (const d of dateStrings) {
-      if (d !== expected) break;
-      current++;
-      expected = getPreviousDayString(expected);
-    }
-  }
-  let longest = 0;
-  let run = 1;
-  for (let i = 1; i < dateStrings.length; i++) {
-    if (getPreviousDayString(dateStrings[i - 1]) === dateStrings[i]) run++;
-    else {
-      longest = Math.max(longest, run);
-      run = 1;
-    }
-  }
-  longest = Math.max(longest, run, current);
-  return { current, longest, lastDate };
-}
 
 function formatSinceDate(iso: string): string {
   const d = new Date(iso);
@@ -229,13 +157,25 @@ export default function MyProfileScreen() {
             setError(fallbackError.message || 'Could not load your mornings.');
             return;
           }
-          setLogs((fallbackData ?? []) as LogRow[]);
+          const fallbackRows = (fallbackData ?? []) as LogRow[];
+          setLogs(fallbackRows);
+          void syncProfileStreakColumns(
+            supabase,
+            userId,
+            computeStreakFromLogDates(fallbackRows.map((r) => r.created_at))
+          );
         } else {
           setError(logsRes.error.message || 'Could not load your mornings.');
           return;
         }
       } else {
-        setLogs((logsRes.data ?? []) as LogRow[]);
+        const logRows = (logsRes.data ?? []) as LogRow[];
+        setLogs(logRows);
+        void syncProfileStreakColumns(
+          supabase,
+          userId,
+          computeStreakFromLogDates(logRows.map((r) => r.created_at))
+        );
       }
     } catch {
       setError('Something went wrong.');
