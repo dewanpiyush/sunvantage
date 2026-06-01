@@ -33,6 +33,7 @@ import { useDawn } from '@/hooks/use-dawn';
 import { useMorningContext } from '../hooks/useMorningContext';
 import { getMinutesToSunriseForCity, getCoordinatesForCity } from '../services/weatherService';
 import { invokeModerateImage } from '../lib/moderateImageInvoke';
+import { isBeforeSunriseLoggingOpens } from '@/lib/sunriseLoggingWindow';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image } from 'expo-image';
 import posthog from '@/lib/posthog';
@@ -123,6 +124,8 @@ export type SunriseLogCardProps = {
   onSaved: (result: SunriseLogSaveResult) => void;
   onModerationComplete?: () => void;
   onPlanForTomorrow?: () => void;
+  /** Fired when visible becomes true but local time is still before the logging window. */
+  onBlockedBeforeWindow?: () => void;
   city?: string | null;
   sunriseTime?: string | null;
   initialVantageName?: string | null;
@@ -135,6 +138,7 @@ export default function SunriseLogCard({
   onSaved,
   onModerationComplete,
   onPlanForTomorrow,
+  onBlockedBeforeWindow,
   city = null,
   sunriseTime = null,
   initialVantageName = null,
@@ -199,9 +203,17 @@ export default function SunriseLogCard({
 
   const sunriseLogStartedFiredRef = useRef(false);
 
+  useEffect(() => {
+    if (!visible) return;
+    if (!isBeforeSunriseLoggingOpens(minutesToSunriseCity)) return;
+    onClose();
+    onBlockedBeforeWindow?.();
+  }, [visible, minutesToSunriseCity, onClose, onBlockedBeforeWindow]);
+
   // When modal opens: subtle fade + slight upward motion (150–200ms).
   useEffect(() => {
     if (visible) {
+      if (isBeforeSunriseLoggingOpens(minutesToSunriseCity)) return;
       setError('');
       setSaveStage('idle');
       setShowMissedScreen(false);
@@ -241,7 +253,7 @@ export default function SunriseLogCard({
       cardScale.setValue(0.96);
       cardTranslateY.setValue(10);
     }
-  }, [visible, initialVantageName, logModalTone, backdropOpacity, cardOpacity, cardScale, cardTranslateY]);
+  }, [visible, initialVantageName, logModalTone, minutesToSunriseCity, backdropOpacity, cardOpacity, cardScale, cardTranslateY]);
 
   // PostHog: fire once per modal open.
   useEffect(() => {
@@ -697,7 +709,7 @@ export default function SunriseLogCard({
     }
   }, [vantageName, reflectionText, reflectionPrompt, photoUri, photoMime, onSaved, onClose, resetFormAfterSave, onModerationComplete, city, overrideCoords, source]);
 
-  if (!visible) return null;
+  if (!visible || isBeforeSunriseLoggingOpens(minutesToSunriseCity)) return null;
 
   return (
     <Modal

@@ -109,7 +109,9 @@ export default function WorldSunriseGalleryScreen() {
             onBackPress={() => router.back()}
             hasLoggedToday={false}
             screenTitle={false}
-            onHeaderPress={() => router.push('/home')}
+            showBack
+            backLabel="← Back"
+            onBackPress={() => router.back()}
           />
           <Text style={styles.headerLine}>Some recent shared mornings on SunVantage.</Text>
         </View>
@@ -143,7 +145,9 @@ export default function WorldSunriseGalleryScreen() {
           onBackPress={() => router.back()}
           hasLoggedToday={false}
           screenTitle={false}
-          onHeaderPress={() => router.push('/home')}
+          showBack
+          backLabel="← Back"
+          onBackPress={() => router.back()}
         />
         <Text style={styles.headerLine}>Some recent shared mornings on SunVantage.</Text>
       </View>

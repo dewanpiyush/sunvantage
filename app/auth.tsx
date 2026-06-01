@@ -66,7 +66,7 @@ export default function AuthScreen() {
         }
 
         const { complete } = await fetchProfileCompleteness(supabase, session.user.id);
-        router.replace((complete ? '/home' : '/onboarding') as never);
+        router.replace((complete ? '/(tabs)/today' : '/onboarding') as never);
       } catch {
         // Stay on auth if anything goes wrong
       }
@@ -148,7 +148,7 @@ export default function AuthScreen() {
           }
 
           const { complete } = await fetchProfileCompleteness(supabase, data.user.id);
-          router.replace((complete ? '/home' : '/onboarding') as never);
+          router.replace((complete ? '/(tabs)/today' : '/onboarding') as never);
         }
       }
     } catch (e) {

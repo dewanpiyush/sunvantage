@@ -9,6 +9,8 @@ import supabase from '../supabase';
 import { clearTomorrowPlan } from '../lib/clearTomorrowPlan';
 import { getWitnessSubheading } from '../lib/ritualState';
 import { useMorningContext } from '../hooks/useMorningContext';
+import { useSunriseLogOpen } from '@/hooks/useSunriseLogOpen';
+import MorningUnfoldingPause from '@/components/MorningUnfoldingPause';
 import { useDawn } from '@/hooks/use-dawn';
 import { useAppTheme } from '@/context/AppThemeContext';
 import SunVantageHeader from '../components/SunVantageHeader';
@@ -27,6 +29,14 @@ import { invokeModerateImage } from '../lib/moderateImageInvoke';
 import { getTodayDawnCard, type DawnCard } from '../data/dawnCards';
 import { useUIState } from '@/store/uiState';
 import { prefetchMyMornings } from '@/lib/screenDataCache';
+import RitualTabBarOverlay from '@/components/RitualTabBarOverlay';
+import { TAB_BAR_CLEARANCE } from '@/constants/layout';
+import {
+  getCityHourInTimezone,
+  getSunriseCardAtmosphere,
+  getSunriseCardSurfaceStyle,
+  getWitnessSunriseGlowIntensity,
+} from '@/lib/sunriseCardAtmosphere';
 
 const REFLECTION_PROMPTS = [
   'What are you grateful for this morning?',
@@ -407,7 +417,6 @@ export function SunriseLog({
   const [vantageInputValue, setVantageInputValue] = useState('');
   const [profileCity, setProfileCity] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [showLogCard, setShowLogCard] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [justLanded, setJustLanded] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
@@ -417,6 +426,7 @@ export function SunriseLog({
   const deferredRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousEarnedBadgeIdsRef = useRef<string[]>([]);
   const justLandedRef = useRef(false);
+  const lastLoadedDateRef = useRef<string | null>(null);
   const pageCardOpacity = useRef(new Animated.Value(1)).current;
   const pageCardScale = useRef(new Animated.Value(1)).current;
   const savedOpacity = useRef(new Animated.Value(1)).current;
@@ -425,7 +435,27 @@ export function SunriseLog({
   const sunriseCardGlow = useRef(new Animated.Value(0)).current;
   const breathPhase = useRef(new Animated.Value(0)).current;
 
-  const { sunriseToday, sunriseTomorrow, minutesToSunrise } = useMorningContext(profileCity ?? null);
+  const {
+    sunriseToday,
+    sunriseTomorrow,
+    minutesToSunrise,
+    cityTimezone,
+    refresh: refreshMorningContext,
+  } = useMorningContext(profileCity ?? null);
+  const witnessCityHour = getCityHourInTimezone(cityTimezone);
+  const cardAtmosphere = getSunriseCardAtmosphere(minutesToSunrise, witnessCityHour);
+  const cardSurfaceStyle = React.useMemo(
+    () => getSunriseCardSurfaceStyle(cardAtmosphere, isMorningLight),
+    [cardAtmosphere, isMorningLight]
+  );
+  const {
+    showLogCard,
+    showUnfoldingPause,
+    requestOpenLog,
+    closeLog,
+    dismissUnfoldingPause,
+    onLogBlockedEarly,
+  } = useSunriseLogOpen(minutesToSunrise);
   const sunrisePassed = minutesToSunrise != null && minutesToSunrise < 0;
   const isSunriseWindow = minutesToSunrise != null && minutesToSunrise >= -20 && minutesToSunrise <= 20;
   const showFirstLightCard = Boolean(hasLogged && revealBadge);
@@ -443,15 +473,7 @@ export function SunriseLog({
     context === 'retroactive' ||
     (sunrisePassed && minutesToSunrise != null && hoursSinceSunrise > 2);
 
-  // Glow intensity: after sunrise 0–2h strong, 2–6h medium, 6+ subtle; before sunrise very subtle
-  const glowIntensity =
-    minutesToSunrise != null && minutesToSunrise >= 0
-      ? 0.06
-      : hoursSinceSunrise <= 2
-        ? 0.35
-        : hoursSinceSunrise <= 6
-          ? 0.2
-          : 0.07;
+  const glowIntensity = getWitnessSunriseGlowIntensity(minutesToSunrise, hoursSinceSunrise);
 
   useEffect(() => {
     getReflectionInvitationAsync().then(setReflectionInvitationText);
@@ -763,6 +785,7 @@ export function SunriseLog({
       } catch (e) {
         setError('Something went wrong. Please try again later.');
       } finally {
+        lastLoadedDateRef.current = getTodayLocalDateString();
         setInitialLoading(false);
       }
     };
@@ -772,9 +795,24 @@ export function SunriseLog({
 
   useFocusEffect(
     useCallback(() => {
-      // Always refresh from source-of-truth when returning to Today.
+      const todayKey = getTodayLocalDateString();
+      const firstOpenOfDay = lastLoadedDateRef.current !== todayKey;
+      if (firstOpenOfDay) {
+        // Prevent previous-day in-memory content from flashing on first open.
+        setHasLogged(false);
+        setLogId(null);
+        setPhotoPath(null);
+        setPhotoUrl(null);
+        setOptimisticPhotoUri(null);
+        setReflectionText('');
+        setReflectionAck(false);
+        setVantageName('');
+        setVantageInputValue('');
+        setRevealBadge(null);
+      }
       setRefreshTrigger((t) => t + 1);
-    }, [])
+      void refreshMorningContext();
+    }, [refreshMorningContext])
   );
 
   const handleVantageBlurRef = useRef<() => void>(() => {});
@@ -1262,6 +1300,7 @@ export function SunriseLog({
   const backgroundColors = isMorningLight
     ? (['#EAF3FB', '#DCEAF7', '#CFE2F3'] as const)
     : (['#102A43', '#1B3554', '#243F63'] as const);
+  const showRitualTabBar = hasLogged && !keyboardVisible;
   return (
     <View style={styles.container}>
       <LinearGradient
@@ -1274,11 +1313,15 @@ export function SunriseLog({
       <View style={styles.header}>
         <SunVantageHeader
           title="Today's Sunrise"
-          subtitle={getWitnessSubheading(currentStreak, totalSunrises)}
+          subtitle={
+            hasActiveLog ? 'Made space for the first light.' : getWitnessSubheading(currentStreak, totalSunrises)
+          }
           hasLoggedToday={hasActiveLog}
           wrapperMarginBottom={0}
           screenTitle
-          onHeaderPress={() => router.push('/home')}
+          showBack
+          backLabel="← Back"
+          onBackPress={() => router.back()}
         >
           {currentStreak > 0 || longestStreak > 0 ? (
               <View style={styles.streakBlockWrap}>
@@ -1305,6 +1348,7 @@ export function SunriseLog({
           contentContainerStyle={[
             styles.scrollContent,
             keyboardVisible && { paddingBottom: 320 },
+            showRitualTabBar && !keyboardVisible && { paddingBottom: TAB_BAR_CLEARANCE + 24 },
           ]}
           bounces={false}
           showsVerticalScrollIndicator={false}
@@ -1351,8 +1395,12 @@ export function SunriseLog({
                 hasLoggedToday={hasLogged}
                 city={profileCity}
                 time={formatSunriseTime(sunriseToday)}
+                atmosphere={cardAtmosphere}
+                style={cardSurfaceStyle}
                 statusLabel={!hasLogged && isSunriseWindow ? 'NOW' : null}
-                tone={!hasLogged && isSunriseWindow ? 'context' : 'default'}
+                tone={
+                  cardAtmosphere === 'live' || cardAtmosphere === 'morning' ? 'context' : 'default'
+                }
               />
             </View>
           ) : null}
@@ -1362,7 +1410,13 @@ export function SunriseLog({
                   <ActivityIndicator color={Dawn.accent.sunrise} />
                 </View>
               ) : null}
-              {!hasLogged && sunrisePassed && (
+              {!hasLogged && isSunriseWindow && (
+                <View style={styles.reflectiveBlock}>
+                  <Text style={styles.reflectiveLead}>Take a moment.</Text>
+                  <Text style={styles.reflectivePrompt}>Where are you with this sunrise?</Text>
+                </View>
+              )}
+              {!hasLogged && sunrisePassed && !isSunriseWindow && (
                 <View style={styles.reflectiveBlock}>
                   <Text style={styles.reflectiveLead}>Take a moment.</Text>
                   <Text style={styles.reflectivePrompt}>Where were you when the light arrived?</Text>
@@ -1375,7 +1429,7 @@ export function SunriseLog({
                     !hasLogged && isSunriseWindow && styles.logThisMorningBtnLive,
                     pressed && styles.logThisMorningBtnPressed,
                   ]}
-                  onPress={() => setShowLogCard(true)}
+                  onPress={requestOpenLog}
                   accessibilityRole="button"
                   accessibilityLabel="Log this morning"
                 >
@@ -1581,10 +1635,12 @@ export function SunriseLog({
               ) : null}
 
               {hasLogged ? (
-                <DawnInvitationSection
-                  city={profileCity}
-                  sunriseTomorrow={sunriseTomorrow}
-                />
+                <View style={styles.sharedDawnSectionWrap}>
+                  <DawnInvitationSection
+                    city={profileCity}
+                    sunriseTomorrow={sunriseTomorrow}
+                  />
+                </View>
               ) : null}
             </>
           </View>
@@ -1592,9 +1648,12 @@ export function SunriseLog({
         </ScrollView>
       </KeyboardAvoidingView>
 
+      <MorningUnfoldingPause visible={showUnfoldingPause} onDismissed={dismissUnfoldingPause} />
+
       <SunriseLogCard
         visible={showLogCard}
-        onClose={() => setShowLogCard(false)}
+        onClose={closeLog}
+        onBlockedBeforeWindow={onLogBlockedEarly}
         onSaved={(result: SunriseLogSaveResult) => {
           unstable_batchedUpdates(() => {
             setHasLogged(true);
@@ -1634,13 +1693,14 @@ export function SunriseLog({
           setTimeout(() => setBackgroundMode('postLog'), 300);
         }}
         onModerationComplete={() => setRefreshTrigger((t) => t + 1)}
-        onPlanForTomorrow={() => router.push('/tomorrow-plan')}
+        onPlanForTomorrow={() => router.push('/(tabs)/tomorrow' as never)}
         city={profileCity}
         sunriseTime={sunriseToday}
         initialVantageName={initialVantageName}
         source={context === 'explorer' ? 'explorer' : context === 'retroactive' ? 'other' : 'home'}
       />
 
+      {showRitualTabBar ? <RitualTabBarOverlay activeTab="today" /> : null}
     </View>
   );
 }

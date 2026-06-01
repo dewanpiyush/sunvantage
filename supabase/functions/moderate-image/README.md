@@ -2,6 +2,11 @@
 
 Moderates an image staged in the private `uploads_pending` bucket, then publishes it to a public bucket if approved.
 
+Current moderation policy rejects:
+
+- unsafe content via SafeSearch (`adult`, `racy`, `violence` at `LIKELY`/`VERY_LIKELY`)
+- selfie-like uploads (prominent face detection and/or high-confidence selfie/portrait labels)
+
 ## Request
 
 - **Method**: `POST`

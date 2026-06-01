@@ -3,6 +3,10 @@ import { View, Text, StyleSheet, Platform, Pressable, type ViewStyle } from 'rea
 import { LinearGradient } from 'expo-linear-gradient';
 import { useDawn } from '@/hooks/use-dawn';
 import type { DawnCard } from '@/data/dawnCards';
+import {
+  SUNRISE_CARD_GRADIENTS,
+  type SunriseCardAtmosphere,
+} from '@/lib/sunriseCardAtmosphere';
 
 type Props = {
   dawnCard?: DawnCard | null;
@@ -12,6 +16,8 @@ type Props = {
   relativeTimeLabel?: string | null;
   statusLabel?: string | null;
   style?: ViewStyle | ViewStyle[];
+  /** Temporal atmosphere — drives subtle inner gradients (wrapper tint via `style`). */
+  atmosphere?: SunriseCardAtmosphere;
   tone?: 'default' | 'context';
   /** Secondary text link (not a button) — e.g. open today’s sunrise when city Explore is hidden. */
   showSeeMorningLink?: boolean;
@@ -29,21 +35,40 @@ export default function SunriseStateCard({
   relativeTimeLabel = null,
   statusLabel = null,
   style,
+  atmosphere = 'retrospective',
   tone = 'default',
   showSeeMorningLink = false,
   onPressSeeMorning,
 }: Props) {
   const Dawn = useDawn();
-  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
+  const styles = React.useMemo(() => makeStyles(Dawn, atmosphere), [Dawn, atmosphere]);
   const verb = (dawnCard?.verb || 'WITNESS').toUpperCase();
   const preText = dawnCard?.text || FALLBACK_PRE;
   const postText = dawnCard?.completion || FALLBACK_POST;
 
+  const phaseGradient =
+    atmosphere === 'live'
+      ? SUNRISE_CARD_GRADIENTS.live
+      : atmosphere === 'morning'
+        ? SUNRISE_CARD_GRADIENTS.morning
+        : null;
+
   return (
     <View style={[styles.card, tone === 'context' && styles.cardContext, style]}>
+      {phaseGradient ? (
+        <LinearGradient
+          colors={[...phaseGradient.colors]}
+          locations={[...phaseGradient.locations]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+      ) : null}
       {hasLoggedToday ? (
         <LinearGradient
-          colors={['rgba(255,179,71,0.0)', 'rgba(255,179,71,0.11)']}
+          colors={[...SUNRISE_CARD_GRADIENTS.postLog.colors]}
+          locations={[...SUNRISE_CARD_GRADIENTS.postLog.locations]}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
           style={StyleSheet.absoluteFill}
@@ -86,7 +111,20 @@ export default function SunriseStateCard({
   );
 }
 
-function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+function sunEmojiShadow(atmosphere: SunriseCardAtmosphere): string {
+  switch (atmosphere) {
+    case 'pre':
+      return 'rgba(140, 180, 255, 0.28)';
+    case 'live':
+      return 'rgba(255, 200, 120, 0.42)';
+    case 'morning':
+      return 'rgba(160, 190, 230, 0.32)';
+    default:
+      return 'rgba(255, 200, 120, 0.35)';
+  }
+}
+
+function makeStyles(Dawn: ReturnType<typeof useDawn>, atmosphere: SunriseCardAtmosphere) {
   return StyleSheet.create({
     card: {
       backgroundColor: Dawn.surface.card,
@@ -113,9 +151,9 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     },
     sunEmoji: {
       fontSize: 18,
-      textShadowColor: 'rgba(255, 200, 120, 0.35)',
+      textShadowColor: sunEmojiShadow(atmosphere),
       textShadowOffset: { width: 0, height: 0 },
-      textShadowRadius: 6,
+      textShadowRadius: atmosphere === 'live' ? 8 : 6,
     },
     title: {
       fontSize: 18,

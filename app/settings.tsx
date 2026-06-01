@@ -1,10 +1,12 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import SunVantageHeader from '@/components/SunVantageHeader';
 import { useAppTheme } from '@/context/AppThemeContext';
 import { useDawn } from '@/hooks/use-dawn';
 import ScreenLayout from '@/components/ScreenLayout';
+import supabase from '@/supabase';
 
 type Option = {
   id: 'morning-light' | 'night-calm';
@@ -21,18 +23,28 @@ export default function SettingsScreen() {
   const router = useRouter();
   const Dawn = useDawn();
   const { mode, setMode } = useAppTheme();
+  const isMorningLight = mode === 'morning-light';
   const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
+
+  const handleSignOut = React.useCallback(async () => {
+    await supabase.auth.signOut();
+    router.replace('/auth' as never);
+  }, [router]);
 
   return (
     <View style={styles.container}>
-      <View style={styles.gradientTop} pointerEvents="none" />
-      <View style={styles.gradientMid} pointerEvents="none" />
-      <View style={styles.gradientLowerWarm} pointerEvents="none" />
+      <LinearGradient
+        colors={isMorningLight ? ['#EAF3FB', '#DCEAF7', '#CFE2F3'] : ['#102A43', '#1B3554', '#243F63']}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={styles.backgroundGradient}
+        pointerEvents="none"
+      />
 
       <ScreenLayout
         header={
           <View style={styles.header}>
-            <SunVantageHeader title="Settings" screenTitle onHeaderPress={() => router.push('/home')} />
+            <SunVantageHeader title="Settings" screenTitle showBack backLabel="← Back" onBackPress={() => router.back()} />
             <Text style={styles.headerEmoji} accessibilityLabel="Settings">
               ⚙️
             </Text>
@@ -69,6 +81,15 @@ export default function SettingsScreen() {
             })}
           </View>
         </View>
+
+        <Pressable
+          style={({ pressed }) => [styles.signOutWrap, pressed && styles.signOutPressed]}
+          onPress={handleSignOut}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
+        >
+          <Text style={styles.signOutText}>Sign out</Text>
+        </Pressable>
       </ScreenLayout>
     </View>
   );
@@ -80,26 +101,8 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
       flex: 1,
       backgroundColor: Dawn.background.primary,
     },
-    gradientTop: {
+    backgroundGradient: {
       ...StyleSheet.absoluteFillObject,
-      height: '50%',
-      backgroundColor: Dawn.background.primary,
-    },
-    gradientMid: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      top: '35%',
-      height: '30%',
-      backgroundColor: 'rgba(148, 163, 184, 0.055)',
-    },
-    gradientLowerWarm: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      top: '50%',
-      bottom: 0,
-      backgroundColor: 'rgba(255, 179, 71, 0.058)',
     },
     header: { marginBottom: 20, position: 'relative' },
     headerEmoji: {
@@ -111,7 +114,7 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     },
     scrollContent: {
       paddingHorizontal: 24,
-      paddingBottom: 48,
+      paddingBottom: 120,
     },
     sectionCard: {
       backgroundColor: Dawn.surface.card,
@@ -175,6 +178,23 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
       height: 10,
       borderRadius: 5,
       backgroundColor: Dawn.accent.sunrise,
+    },
+    signOutWrap: {
+      marginTop: 34,
+      marginBottom: 10,
+      paddingVertical: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    signOutPressed: {
+      opacity: 0.8,
+    },
+    signOutText: {
+      fontSize: 13,
+      fontWeight: '500',
+      color: Dawn.text.secondary,
+      opacity: 0.72,
+      letterSpacing: 0.2,
     },
   });
 }

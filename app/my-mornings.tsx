@@ -382,7 +382,9 @@ export default function MyMorningsScreen() {
             subtitle="Your mornings, gathered over time."
             hasLoggedToday={false}
             screenTitle
-            onHeaderPress={() => router.push('/home')}
+            showBack
+            backLabel="← Back"
+            onBackPress={() => router.back()}
           />
         </View>
         <View style={styles.skeletonWrap}>
@@ -421,7 +423,9 @@ export default function MyMorningsScreen() {
           subtitle="Your mornings, gathered over time."
           hasLoggedToday={hasLoggedToday(logs)}
           screenTitle
-          onHeaderPress={() => router.push('/home')}
+          showBack
+          backLabel="← Back"
+          onBackPress={() => router.back()}
         />
       </View>
 

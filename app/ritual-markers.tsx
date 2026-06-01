@@ -18,6 +18,7 @@ import {
   YMD_REGEX,
   createdAtToLocalDateString,
   computeStreakFromLogDates,
+  getPreviousDayString,
 } from '@/lib/streakStats';
 
 // ----- Badge registry (v1) -----
@@ -165,8 +166,6 @@ export function computeEarnedAtByBadge(
   const createdAts = [...new Set(logs.map((r) => createdAtToLocalDateString(r.created_at)))].filter(
     (s): s is string => Boolean(s) && YMD_REGEX.test(s)
   ).sort();
-  const today = getTodayLocalDateString();
-  const yesterday = getYesterdayLocalDateString();
 
   if (stats.totalLogs >= 1 && logs.length > 0) {
     const first = logs.reduce((a, b) => (a.created_at < b.created_at ? a : b));
@@ -350,7 +349,9 @@ export default function RitualMarkersScreen() {
           subtitle="Moments your mornings have shaped."
           hasLoggedToday={hasLoggedToday(logs)}
           screenTitle
-          onHeaderPress={() => router.push('/home')}
+          showBack
+          backLabel="← Back"
+          onBackPress={() => router.back()}
         />
       </View>
 

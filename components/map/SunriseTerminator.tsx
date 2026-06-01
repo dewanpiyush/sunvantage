@@ -6,7 +6,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, useWindowDimensions, StyleSheet, Platform } from 'react-native';
+import { View, useWindowDimensions, StyleSheet } from 'react-native';
 import Svg, { Path, G, Defs, ClipPath, Rect, Stop, LinearGradient } from 'react-native-svg';
 import {
   getMorningArrivedRegionGeometry,
@@ -15,20 +15,19 @@ import {
 } from '@/lib/sunriseProgression';
 import { getMapProjection, getGeoPath } from '@/lib/mapProjection';
 
-const FRONTIER_STROKE = '#B8D4F0';
-const OUTER_GLOW_WIDTH = 10;
-const OUTER_GLOW_OPACITY = 0.07;
-const MID_GLOW_WIDTH = 5;
-const MID_GLOW_OPACITY = 0.14;
-const CORE_STROKE_WIDTH = 1.2;
-const CORE_STROKE_OPACITY = 0.38;
+const FRONTIER_STROKE = '#C8DCF4';
+const OUTER_GLOW_WIDTH = 12;
+const OUTER_GLOW_OPACITY = 0.14;
+const MID_GLOW_WIDTH = 6;
+const MID_GLOW_OPACITY = 0.26;
+const CORE_STROKE_WIDTH = 1.4;
+const CORE_STROKE_OPACITY = 0.58;
 
-/** Very light — continents must read through. */
-const MORNING_ARRIVED_FILL = 'rgba(88, 140, 195, 0.07)';
-const MORNING_AWAITING_FILL = 'rgba(6, 14, 30, 0.1)';
+/** Readable split — continents still show through. */
+const MORNING_ARRIVED_FILL = 'rgba(92, 150, 210, 0.11)';
+const MORNING_AWAITING_FILL = 'rgba(4, 10, 26, 0.44)';
 
-const VIEWPORT_INSET = 10;
-const TOP_INSET_EXTRA = Platform.OS === 'ios' ? 84 : 32;
+const VIEWPORT_INSET = 8;
 
 type Props = {
   date: Date;
@@ -57,11 +56,10 @@ export default function SunriseTerminator({ date, width: propWidth, height: prop
   if (!frontierPath && !arrivedPath) return null;
 
   const inset = VIEWPORT_INSET;
-  const topInset = inset + TOP_INSET_EXTRA + OUTER_GLOW_WIDTH;
   const clipX = inset;
-  const clipY = topInset;
+  const clipY = inset;
   const clipW = width - 2 * inset;
-  const clipH = height - inset - topInset;
+  const clipH = height - 2 * inset;
 
   return (
     <View style={[StyleSheet.absoluteFill, styles.overlay]} pointerEvents="none">

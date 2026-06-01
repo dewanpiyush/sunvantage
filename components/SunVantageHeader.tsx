@@ -1,11 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, Pressable, StyleSheet, Animated, type TextStyle } from 'react-native';
+import React from 'react';
+import { View, Text, Pressable, StyleSheet, type TextStyle } from 'react-native';
 import { useRouter } from 'expo-router';
-import supabase from '../supabase';
 import { useDawn } from '@/hooks/use-dawn';
-import NavigationOverlay from './NavigationOverlay';
+import { ROUTES } from '@/lib/routes';
 
-const ARROW_ROTATION_DURATION = 180;
 const SPACE = 8;
 const TITLE_TO_TAGLINE = 6;
 const TAGLINE_TO_ARROW = 6;
@@ -58,118 +56,24 @@ export default function SunVantageHeader({
   subtitle,
   tagline,
   children,
-  hasLoggedToday = false,
-  hasEverLogged,
-  hideMenu = false,
+  hideMenu = true,
   showBranding = false,
-  showMyCitySunrises = false,
   wrapperMarginBottom,
   backLabel,
   onBackPress,
   screenTitle = false,
   onHeaderPress,
   hideHeaderEmoji = false,
-  openNavOnMount = false,
-  highlightChevronHint = false,
-  onNavOpen,
   subtitleStyle,
 }: Props) {
   const router = useRouter();
   const Dawn = useDawn();
-  const [navVisible, setNavVisible] = useState(false);
-  const [hasEverLoggedDerived, setHasEverLoggedDerived] = useState<boolean>(Boolean(hasEverLogged));
-  const arrowRotation = useRef(new Animated.Value(0)).current;
-  const chevronHintOpacity = useRef(new Animated.Value(1)).current;
-  const hasAppliedInitialOpen = useRef(false);
-
-  useEffect(() => {
-    if (!openNavOnMount || hasAppliedInitialOpen.current) return;
-    hasAppliedInitialOpen.current = true;
-    arrowRotation.setValue(1);
-    setNavVisible(true);
-  }, [arrowRotation, openNavOnMount]);
-
-  useEffect(() => {
-    setHasEverLoggedDerived(Boolean(hasEverLogged));
-  }, [hasEverLogged]);
-
-  useEffect(() => {
-    if (hasEverLogged !== undefined) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const { data: userRes } = await supabase.auth.getUser();
-        const userId = userRes?.user?.id;
-        if (!userId) return;
-        const { data } = await supabase
-          .from('profiles')
-          .select('current_streak,last_witness_date')
-          .eq('user_id', userId)
-          .maybeSingle();
-        if (cancelled) return;
-        const current = typeof data?.current_streak === 'number' ? data.current_streak : 0;
-        const lastDate = typeof data?.last_witness_date === 'string' ? data.last_witness_date : null;
-        setHasEverLoggedDerived(Boolean(lastDate) || current > 0);
-      } catch {
-        // ignore
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [hasEverLogged]);
-
-  useEffect(() => {
-    if (!navVisible) {
-      Animated.timing(arrowRotation, {
-        toValue: 0,
-        duration: ARROW_ROTATION_DURATION,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [navVisible]);
-
-  useEffect(() => {
-    if (!highlightChevronHint || navVisible) {
-      chevronHintOpacity.stopAnimation();
-      chevronHintOpacity.setValue(1);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(chevronHintOpacity, { toValue: 0.32, duration: 320, useNativeDriver: true }),
-        Animated.timing(chevronHintOpacity, { toValue: 1, duration: 360, useNativeDriver: true }),
-      ]),
-      { iterations: 3 }
-    );
-    loop.start();
-    return () => {
-      loop.stop();
-      chevronHintOpacity.setValue(1);
-    };
-  }, [highlightChevronHint, navVisible, chevronHintOpacity]);
 
   const handleHeaderPress = () => {
-    if (onHeaderPress) {
-      onHeaderPress();
-      return;
-    }
-    Animated.timing(arrowRotation, {
-      toValue: 1,
-      duration: ARROW_ROTATION_DURATION,
-      useNativeDriver: true,
-    }).start(() => {
-      setNavVisible(true);
-      onNavOpen?.();
-    });
+    onHeaderPress?.();
   };
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.replace('/auth' as never);
-  };
-
-  const handleBackPress = onBackPress ?? (() => { router.push('/home'); });
+  const handleBackPress = onBackPress ?? (() => { router.push(ROUTES.today as never); });
   const isBackWithBrandingRow = Boolean(showBack && hideMenu && showBranding);
   const displayBackLabel = backLabel ?? (isBackWithBrandingRow ? '‹' : hideMenu ? '← Home' : '‹ SunVantage Home');
 
@@ -201,45 +105,34 @@ export default function SunVantageHeader({
                 <Text style={[styles.backControlText, { color: Dawn.text.secondary }]}>{displayBackLabel}</Text>
               </Pressable>
             )}
-            {!hideMenu && (
+            {!hideMenu ? (
               <Pressable
                 style={({ pressed }) => [styles.headerBlock, pressed && { opacity: 0.78 }]}
                 onPress={handleHeaderPress}
               >
                 <View style={styles.headerRow}>
-                  {!tagline ? <Text style={[styles.chevron, { color: Dawn.text.secondary }]}>‹</Text> : null}
                   <Text style={[styles.appName, { color: Dawn.text.primary }]}>SunVantage</Text>
                   {!hideHeaderEmoji ? (
                     <Text style={styles.headerEmoji}>{'\u{1F305}'}</Text>
                   ) : null}
                 </View>
                 {tagline ? (
-                  <>
-                    <Text style={[styles.tagline, { color: Dawn.text.secondary, opacity: 0.75 }]}>{tagline}</Text>
-                    <Animated.Text
-                      style={[
-                        styles.arrowIndicator,
-                        { color: Dawn.text.secondary, opacity: chevronHintOpacity },
-                        {
-                          transform: [
-                            {
-                              rotate: arrowRotation.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: ['0deg', '90deg'],
-                              }),
-                            },
-                          ],
-                        },
-                      ]}
-                    >
-                      ⌄
-                    </Animated.Text>
-                  </>
+                  <Text style={[styles.tagline, { color: Dawn.text.secondary, opacity: 0.75 }]}>{tagline}</Text>
                 ) : null}
               </Pressable>
-            )}
+            ) : null}
             {hideMenu && showBranding && !showBack ? (
-              <Text style={[styles.appName, { color: Dawn.text.primary }]}>SunVantage</Text>
+              <>
+                <View style={styles.headerRow}>
+                  <Text style={[styles.appName, { color: Dawn.text.primary }]}>SunVantage</Text>
+                  {!hideHeaderEmoji ? (
+                    <Text style={styles.headerEmoji}>{'\u{1F305}'}</Text>
+                  ) : null}
+                </View>
+                {tagline ? (
+                  <Text style={[styles.tagline, { color: Dawn.text.secondary, opacity: 0.75 }]}>{tagline}</Text>
+                ) : null}
+              </>
             ) : null}
           </>
         )}
@@ -270,15 +163,6 @@ export default function SunVantageHeader({
         {children}
       </View>
 
-      <NavigationOverlay
-        visible={navVisible}
-        onClose={() => setNavVisible(false)}
-        instantOpen={openNavOnMount}
-        hasLoggedToday={hasLoggedToday}
-        hasEverLogged={hasEverLoggedDerived}
-        showMyCitySunrises={showMyCitySunrises}
-        onSignOut={handleSignOut}
-      />
     </>
   );
 }

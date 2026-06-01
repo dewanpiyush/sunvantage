@@ -86,7 +86,7 @@ export default function NavigationOverlay({
       route: '/witness',
       emphasis: 'lead',
     },
-    { emoji: '🌅', label: 'Plan Tomorrow', route: '/tomorrow-plan' },
+    { emoji: '🌅', label: 'Plan Tomorrow', route: '/(tabs)/tomorrow' },
     { emoji: '📷', label: 'My Mornings', route: '/my-mornings', show: hasEverLogged },
   ];
 

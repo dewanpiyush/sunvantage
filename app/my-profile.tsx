@@ -442,7 +442,9 @@ export default function MyProfileScreen() {
           title="Profile"
           hasLoggedToday={hasLoggedToday(logs)}
           screenTitle
-          onHeaderPress={() => router.push('/home')}
+          showBack
+          backLabel="← Back"
+          onBackPress={() => router.back()}
         />
       </View>
 

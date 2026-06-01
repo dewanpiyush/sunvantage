@@ -20,9 +20,7 @@ export default function DawnInvitationNudgeCard({ onPress }: Props) {
             <Text style={styles.title}>Dawn Invitation</Text>
           </View>
 
-          <Text style={styles.description}>
-            Invite someone to greet tomorrow&apos;s sunrise with you.
-          </Text>
+          <Text style={styles.description}>Welcome the sunrise together.</Text>
 
           <Pressable style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]} onPress={onPress}>
             <Text style={styles.ctaText}>Send invitation</Text>

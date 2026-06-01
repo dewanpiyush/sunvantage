@@ -1,6 +1,5 @@
 /**
- * Global Sunrise Map: symbolic progression of daylight today and where users welcomed the morning.
- * Dots = today's sunrise logs. Terminator = soft boundary between daylight-arrived vs still-awaiting.
+ * Global Sunrise Map: where today's local sunrise has passed vs still awaits; dots = logs today.
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -89,6 +88,12 @@ export default function GlobalSunriseMapScreen() {
     return () => clearInterval(id);
   }, [loadData]);
 
+  /** Progression curve moves with local sunrise times — refresh more often than log aggregates. */
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 2 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
   const userWitnessedToday = aggregate.userWitnessedToday;
   const isUserFirstWitness = userWitnessedToday && aggregate.totalWitnesses === 1;
 
@@ -109,7 +114,7 @@ export default function GlobalSunriseMapScreen() {
     return () => pulse.stop();
   }, [arcPulse]);
 
-  const arcOpacity = arcPulse.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] });
+  const arcOpacity = arcPulse.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] });
 
   return (
     <View style={[styles.safe, { paddingTop: insets.top + TOP_SAFE_EXTRA, paddingBottom: insets.bottom }]}>
@@ -119,11 +124,11 @@ export default function GlobalSunriseMapScreen() {
           hideMenu
           showBranding
           title="Global Sunrise Map"
-          subtitle="How daylight and morning ritual move across the world"
+          subtitle="Where today's sunrise has passed — and where it still awaits"
           screenTitle
           wrapperMarginBottom={0}
           subtitleStyle={styles.headerSubtitleSoft}
-          onBackPress={() => router.push('/home')}
+          onBackPress={() => router.back()}
         />
       </View>
 
@@ -225,12 +230,14 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     borderRadius: 5,
   },
   legendSwatchDay: {
-    backgroundColor: 'rgba(100, 155, 210, 0.85)',
+    backgroundColor: 'rgba(92, 150, 210, 0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(160, 200, 240, 0.35)',
   },
   legendSwatchNight: {
-    backgroundColor: 'rgba(12, 24, 48, 0.95)',
+    backgroundColor: 'rgba(6, 12, 28, 0.92)',
     borderWidth: 1,
-    borderColor: 'rgba(140, 170, 210, 0.25)',
+    borderColor: 'rgba(100, 130, 170, 0.35)',
   },
   legendSwatchDot: {
     backgroundColor: 'rgba(212, 184, 122, 0.9)',

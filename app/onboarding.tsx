@@ -121,7 +121,7 @@ export default function OnboardingScreen() {
         return;
       }
 
-      router.replace('/home' as never);
+      router.replace('/(tabs)/today' as never);
     } catch (e) {
       setError('Something went wrong. Please try again.');
     } finally {

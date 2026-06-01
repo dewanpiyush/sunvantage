@@ -2,7 +2,7 @@
   "expo": {
     "name": "SunVantage",
     "slug": "SunVantage",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/sunvantage-app-icon-1024.png",
     "scheme": "sunvantage",
@@ -16,7 +16,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
-      "buildNumber": "7",
+      "buildNumber": "9",
       "bundleIdentifier": "com.sunvantage.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -27,7 +27,7 @@
       }
     },
     "android": {
-      "versionCode": 7,
+      "versionCode": 9,
       "statusBar": {
         "backgroundColor": "#0E223D",
         "barStyle": "light-content"
@@ -101,6 +101,11 @@
     },
     "extra": {
       "router": {},
+      "storeLinks": {
+        "ios": "",
+        "android": "",
+        "landing": "https://www.sunvantage.app/"
+      },
       "eas": {
         "projectId": "e31f8162-a0b1-451c-aadb-b05b056ef9a8"
       }

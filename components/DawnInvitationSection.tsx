@@ -20,6 +20,7 @@ import Animated, {
 import { Dawn } from '@/constants/theme';
 import { formatSunriseTime } from '@/lib/formatSunriseTime';
 import { buildDawnInviteLink, getTomorrowLocalYmd } from '@/lib/inviteLink';
+import { buildShareInstallLinksText, getConfiguredStoreLinks } from '@/lib/storeLinks';
 import DawnInviteShareCard from './DawnInviteShareCard';
 import DawnInvitationNudgeCard from './DawnInvitationNudgeCard';
 
@@ -33,11 +34,24 @@ function getShareMessage(city: string | null | undefined, sunriseTomorrow: strin
   const sunriseHHmm = sunriseTomorrow ?? '—';
   const formattedTime = formatSunriseTime(sunriseTomorrow);
   const dateYmd = getTomorrowLocalYmd();
-  const link =
+
+  // Default: atmospheric invite landing link (works even if stores are private).
+  const defaultInviteLink =
     sunriseTomorrow && /^\d{1,2}:\d{2}$/.test(sunriseTomorrow)
       ? buildDawnInviteLink({ city: displayCity, sunriseHHmm, dateYmd })
       : `https://sunvantage.app/invite?city=${encodeURIComponent(displayCity)}&date=${encodeURIComponent(dateYmd)}`;
-  return `Tomorrow's sunrise in ${displayCity} is at ${formattedTime}.\n\nI'll be there at dawn.\nJoin me in greeting the first light.\n\n${link}`;
+
+  // Preferred when available: share install links (TestFlight / Play internal testing).
+  const installLinks = buildShareInstallLinksText();
+  const landingOverride = getConfiguredStoreLinks().landing;
+
+  const linkBlock = installLinks ?? (landingOverride ?? defaultInviteLink);
+
+  if (landingOverride && !installLinks) {
+    return `Tomorrow's sunrise in ${displayCity} is at ${formattedTime}.\n\nI'll be there at dawn.\nJoin me in greeting the first light.\n\nRequest test access:\n${linkBlock}`;
+  }
+
+  return `Tomorrow's sunrise in ${displayCity} is at ${formattedTime}.\n\nI'll be there at dawn.\nJoin me in greeting the first light.\n\n${linkBlock}`;
 }
 
 export default function DawnInvitationSection({

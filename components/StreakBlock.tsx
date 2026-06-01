@@ -44,7 +44,7 @@ export default function StreakBlock({ currentStreak, longestStreak, loading = fa
   }
 
   const { primary, secondary, secondaryCompact } = getStreakLines(currentStreak, longestStreak);
-  const showLongest = !(hideLongestWhenFirst && currentStreak === 1);
+  const showLongest = !(hideLongestWhenFirst && currentStreak === 1) && longestStreak >= 2;
 
   return (
     <View style={blockStyle}>
@@ -56,13 +56,10 @@ export default function StreakBlock({ currentStreak, longestStreak, loading = fa
             {showLongest ? ` · ${secondaryCompact}` : ''}
           </Text>
         </View>
-      ) : longestStreak > 0 ? (
-        <>
-          <Text style={styles.headerInvitation}>The morning returns.</Text>
-          <Text style={styles.streakSecondary}>
-            Longest {longestStreak} morning{longestStreak === 1 ? '' : 's'}
-          </Text>
-        </>
+      ) : longestStreak >= 2 ? (
+        <Text style={styles.streakSecondary}>
+          Longest {longestStreak} mornings
+        </Text>
       ) : null}
     </View>
   );
@@ -94,11 +91,6 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     fontSize: 13,
     color: Dawn.text.secondary,
     opacity: 0.9,
-  },
-  headerInvitation: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: Dawn.text.primary,
   },
   });
 }

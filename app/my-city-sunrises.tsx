@@ -130,15 +130,11 @@ export default function MyCitySunrisesScreen() {
 
       <View style={styles.header}>
         <SunVantageHeader
-          showBack={fromWitness}
-          hideMenu={fromWitness}
-          showBranding={fromWitness}
+          showBack
           title="My City's Sunrises"
-          backLabel={fromWitness ? '← Back' : undefined}
-          onBackPress={fromWitness ? () => router.back() : undefined}
-          hasLoggedToday={false}
-          screenTitle={!fromWitness}
-          onHeaderPress={!fromWitness ? () => router.push('/home') : undefined}
+          backLabel="← Back"
+          onBackPress={() => router.back()}
+          screenTitle
         />
         {cityName ? (
           <Text style={styles.headerLine}>

@@ -19,6 +19,10 @@ import SharedDawnPreview from '../components/SharedDawnPreview';
 import DawnInvitationSection from '../components/DawnInvitationSection';
 import SunriseStateCard from '@/components/SunriseStateCard';
 import { useMorningContext } from '../hooks/useMorningContext';
+import { useSunriseLogOpen } from '@/hooks/useSunriseLogOpen';
+import MorningUnfoldingPause from '@/components/MorningUnfoldingPause';
+import RitualTabBarOverlay from '@/components/RitualTabBarOverlay';
+import { TAB_BAR_CLEARANCE } from '@/constants/layout';
 import { hasLoggedToday, isTodayLocal } from '../lib/hasLoggedToday';
 import { computeBadgeStats, getEarnedBadges, computeEarnedAtByBadge, type BadgeDef } from './ritual-markers';
 import { dismissBadgeReveal } from '../lib/ritualReveal';
@@ -29,6 +33,7 @@ import ScreenLayout from '@/components/ScreenLayout';
 import { getTodayDawnCard, type DawnCard } from '../data/dawnCards';
 import { useUIState } from '@/store/uiState';
 import { useStreakStats } from '@/hooks/useStreakStats';
+import { getTodayLocalDateString } from '@/lib/streakStats';
 
 type TodayLogDetails = {
   vantage_name: string | null;
@@ -96,7 +101,6 @@ export default function VantageWalkScreen() {
   const [todayPhotoError, setTodayPhotoError] = useState(false);
   const [revealBadge, setRevealBadge] = useState<BadgeDef | null>(null);
   const [walkStarted, setWalkStarted] = useState(false);
-  const [showLogCard, setShowLogCard] = useState(false);
   const router = useRouter();
   const previousEarnedBadgeIdsRef = useRef<string[]>([]);
   const justSavedRef = useRef(false);
@@ -110,8 +114,23 @@ export default function VantageWalkScreen() {
   const savedOpacity = useRef(new Animated.Value(1)).current;
   const memorySettleY = useRef(new Animated.Value(0)).current;
   const savedFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastLoadedDateRef = useRef<string | null>(null);
 
-  const { sunriseToday, sunriseTomorrow, sunrisePassed } = useMorningContext(profileCity ?? null);
+  const {
+    sunriseToday,
+    sunriseTomorrow,
+    sunrisePassed,
+    minutesToSunrise,
+    refresh: refreshMorningContext,
+  } = useMorningContext(profileCity ?? null);
+  const {
+    showLogCard,
+    showUnfoldingPause,
+    requestOpenLog,
+    closeLog,
+    dismissUnfoldingPause,
+    onLogBlockedEarly,
+  } = useSunriseLogOpen(minutesToSunrise);
   const loggedToday = hasLoggedToday(logs);
   const isPostSunriseRetrospective = sunrisePassed === true && !loggedToday;
 
@@ -219,6 +238,8 @@ export default function VantageWalkScreen() {
       setLogs([]);
       setTodayLog(null);
       setRevealBadge(null);
+    } finally {
+      lastLoadedDateRef.current = getTodayLocalDateString();
     }
   }, []);
 
@@ -248,11 +269,21 @@ export default function VantageWalkScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      const todayKey = getTodayLocalDateString();
+      const firstOpenOfDay = lastLoadedDateRef.current !== todayKey;
+      if (firstOpenOfDay) {
+        // Avoid showing previous-day logs while refetching on first open.
+        setLogs([]);
+        setTodayLog(null);
+        setRevealBadge(null);
+        setTodayPhotoDisplayUrl(null);
+      }
       const refresh = async () => {
         await loadLogs();
       };
       void refresh();
-    }, [loadLogs])
+      void refreshMorningContext();
+    }, [loadLogs, refreshMorningContext])
   );
 
   useEffect(() => {
@@ -284,7 +315,7 @@ export default function VantageWalkScreen() {
   };
 
   const handleOpenLogCard = () => {
-    setShowLogCard(true);
+    requestOpenLog();
   };
 
   const handleLogCardSaved = useCallback((_result: SunriseLogSaveResult) => {
@@ -314,10 +345,15 @@ export default function VantageWalkScreen() {
             subtitle="Walk toward somewhere new."
             hasLoggedToday={false}
             screenTitle
-            onHeaderPress={() => router.push('/home')}
+            showBack
+            backLabel="← Back"
+            onBackPress={() => router.back()}
           />
         }
-        scrollContentContainerStyle={styles.scrollContent}
+        scrollContentContainerStyle={[
+          styles.scrollContent,
+          loggedToday && { paddingBottom: TAB_BAR_CLEARANCE + 24 },
+        ]}
       >
 
         {/* Streak — same as Witness, Header → 12px → Streak → 16px → Card */}
@@ -490,17 +526,21 @@ export default function VantageWalkScreen() {
         )}
       </ScreenLayout>
 
+      <MorningUnfoldingPause visible={showUnfoldingPause} onDismissed={dismissUnfoldingPause} />
+
       <SunriseLogCard
         visible={showLogCard}
-        onClose={() => setShowLogCard(false)}
+        onClose={closeLog}
+        onBlockedBeforeWindow={onLogBlockedEarly}
         onSaved={handleLogCardSaved}
-        onPlanForTomorrow={() => router.push('/tomorrow-plan')}
+        onPlanForTomorrow={() => router.push('/(tabs)/tomorrow' as never)}
         city={profileCity}
         sunriseTime={sunriseToday}
         initialVantageName={null}
         source="explorer"
       />
 
+      {loggedToday ? <RitualTabBarOverlay activeTab="today" /> : null}
     </View>
   );
 }

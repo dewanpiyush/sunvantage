@@ -21,6 +21,15 @@ type Likelihood =
   | "LIKELY"
   | "VERY_LIKELY";
 
+type LabelAnnotation = {
+  description?: string;
+  score?: number;
+};
+
+type FaceAnnotation = {
+  detectionConfidence?: number;
+};
+
 function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status,
@@ -40,6 +49,28 @@ function base64FromBytes(bytes: Uint8Array): string {
 
 function isHigh(l: Likelihood | undefined): boolean {
   return l === "LIKELY" || l === "VERY_LIKELY";
+}
+
+function toNum(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function isSelfieLikeLabel(label: LabelAnnotation): boolean {
+  const desc = (label.description ?? "").trim().toLowerCase();
+  const score = toNum(label.score);
+  if (score < 0.7) return false;
+
+  // Keep this intentionally narrow to avoid over-blocking normal sunrise scenes with distant people.
+  const selfieTerms = [
+    "selfie",
+    "portrait",
+    "portrait photography",
+    "headshot",
+    "close-up",
+    "closeup",
+    "facial expression",
+  ];
+  return selfieTerms.some((term) => desc.includes(term));
 }
 
 function sanitizePath(p: string): string | null {
@@ -149,7 +180,11 @@ serve(async (req) => {
     requests: [
       {
         image: { content: base64FromBytes(bytes) },
-        features: [{ type: "SAFE_SEARCH_DETECTION" }],
+        features: [
+          { type: "SAFE_SEARCH_DETECTION" },
+          { type: "FACE_DETECTION", maxResults: 5 },
+          { type: "LABEL_DETECTION", maxResults: 20 },
+        ],
       },
     ],
   };
@@ -185,7 +220,26 @@ serve(async (req) => {
     | { adult?: Likelihood; racy?: Likelihood; violence?: Likelihood }
     | undefined;
 
-  const reject = isHigh(ann?.adult) || isHigh(ann?.racy) || isHigh(ann?.violence);
+  const faceAnnotations = (visionJson?.responses?.[0]?.faceAnnotations ?? []) as FaceAnnotation[];
+  const labelAnnotations = (visionJson?.responses?.[0]?.labelAnnotations ?? []) as LabelAnnotation[];
+
+  const hasProminentFace = faceAnnotations.some((f) => toNum(f.detectionConfidence) >= 0.85);
+  const hasSelfieLikeContent = labelAnnotations.some(isSelfieLikeLabel);
+
+  const rejectSafety = isHigh(ann?.adult) || isHigh(ann?.racy) || isHigh(ann?.violence);
+  const rejectSelfie = hasProminentFace || hasSelfieLikeContent;
+  const reject = rejectSafety || rejectSelfie;
+
+  console.log("MODERATION DECISION:", {
+    reject,
+    rejectSafety,
+    rejectSelfie,
+    faceCount: faceAnnotations.length,
+    topLabels: labelAnnotations.slice(0, 5).map((l) => ({
+      description: l.description ?? "",
+      score: toNum(l.score),
+    })),
+  });
 
   if (reject) {
     // Reject: update DB first (must succeed), then delete staging — same rule as approve.

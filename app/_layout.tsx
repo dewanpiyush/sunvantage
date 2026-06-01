@@ -24,6 +24,7 @@ import { AppThemeProvider, useAppTheme } from '@/context/AppThemeContext';
 import { UIStateProvider } from '@/store/uiState';
 import AppBackground from '@/components/AppBackground';
 import { SunVantageDarkTheme, SunVantageLightTheme } from '@/lib/navigationTheme';
+import { ROUTES } from '@/lib/routes';
 import { ThemeProvider } from '@react-navigation/native';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -83,9 +84,9 @@ function OnboardingGuard({
       }
 
       if (complete && (pathname === '/' || pathname === '/auth' || pathname === 'auth')) {
-        router.replace('/home');
+        router.replace(ROUTES.today as never);
       } else if (complete && (pathname === '/onboarding' || pathname === 'onboarding')) {
-        router.replace('/home');
+        router.replace(ROUTES.today as never);
       }
 
       setResolving(false);
