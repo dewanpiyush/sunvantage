@@ -35,14 +35,7 @@ export default function YouHubScreen() {
           route: ROUTES.ritualMarkers,
         },
       ]}
-      secondaryItems={[
-        {
-          emoji: '⚙️',
-          title: 'Settings',
-          subtitle: 'Preferences.',
-          route: ROUTES.settings,
-        },
-      ]}
+      showAppearanceToggle
       signOutLabel="Sign out"
       onSignOut={handleSignOut}
     />

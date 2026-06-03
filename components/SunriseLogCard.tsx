@@ -194,6 +194,7 @@ export default function SunriseLogCard({
   }, [minutesToSunriseCity]);
 
   const logCopy = LOG_MODAL_COPY[logModalTone];
+  const canCaptureLivePhoto = logModalTone === 'live';
   /** Opening confirmation — retrospective logging only (live / pre start at step 1). */
   const hasRetroStep0 = logModalTone === 'retro';
 
@@ -428,6 +429,36 @@ export default function SunriseLogCard({
     }
   }, []);
 
+  const processPickedAsset = useCallback(async (asset: ImagePicker.ImagePickerAsset | null | undefined) => {
+    if (!asset?.uri) return;
+
+    setIsProcessingPhoto(true);
+    try {
+      let processedUri = asset.uri;
+      let processedMime = asset.mimeType ?? 'image/jpeg';
+      try {
+        const resized = await ImageManipulator.manipulateAsync(
+          asset.uri,
+          [{ resize: { width: 1080 } }],
+          {
+            compress: 0.6,
+            format: ImageManipulator.SaveFormat.JPEG,
+          }
+        );
+        if (resized?.uri) {
+          processedUri = resized.uri;
+          processedMime = 'image/jpeg';
+        }
+      } catch {
+        // Fallback to original pick; keep flow resilient if manipulation fails.
+      }
+      setPhotoUri(processedUri);
+      setPhotoMime(processedMime);
+    } finally {
+      setIsProcessingPhoto(false);
+    }
+  }, []);
+
   const handleAddPhoto = useCallback(async () => {
     setError('');
     try {
@@ -446,38 +477,35 @@ export default function SunriseLogCard({
       });
       if (result.canceled || !result.assets?.length) return;
 
-      const asset = result.assets[0];
-      if (!asset.uri) return;
-
-      setIsProcessingPhoto(true);
-      try {
-        let processedUri = asset.uri;
-        let processedMime = asset.mimeType ?? 'image/jpeg';
-        try {
-          const resized = await ImageManipulator.manipulateAsync(
-            asset.uri,
-            [{ resize: { width: 1080 } }],
-            {
-              compress: 0.6,
-              format: ImageManipulator.SaveFormat.JPEG,
-            }
-          );
-          if (resized?.uri) {
-            processedUri = resized.uri;
-            processedMime = 'image/jpeg';
-          }
-        } catch {
-          // Fallback to original pick; keep flow resilient if manipulation fails.
-        }
-        setPhotoUri(processedUri);
-        setPhotoMime(processedMime);
-      } finally {
-        setIsProcessingPhoto(false);
-      }
+      await processPickedAsset(result.assets[0]);
     } catch {
       setError('Something went wrong choosing a photo.');
     }
-  }, []);
+  }, [processPickedAsset]);
+
+  const handleCapturePhoto = useCallback(async () => {
+    setError('');
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        setError('We need camera permission to capture this moment.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        aspect: [4, 3],
+        quality: 0.6,
+        base64: false,
+      });
+      if (result.canceled || !result.assets?.length) return;
+
+      await processPickedAsset(result.assets[0]);
+    } catch {
+      setError('Something went wrong opening the camera.');
+    }
+  }, [processPickedAsset]);
 
   const resetFormAfterSave = useCallback(() => {
     setStep(logModalTone === 'retro' ? 0 : 1);
@@ -912,31 +940,53 @@ export default function SunriseLogCard({
                       <Animated.View style={[styles.stepInner, { opacity: stepOpacity }]}>
                         <Text style={styles.sectionLabel}>{logCopy.step2}</Text>
                         {!photoUri ? (
-                          <Pressable
-                            style={({ pressed }) => [styles.addPhotoBtn, pressed && styles.addPhotoBtnPressed]}
-                            onPress={handleAddPhoto}
-                            disabled={isProcessingPhoto}
-                          >
-                            {isProcessingPhoto ? (
-                              <ActivityIndicator color={Dawn.text.primary} size="small" />
-                            ) : (
-                              <Text style={styles.addPhotoText}>+ Add photo</Text>
-                            )}
-                          </Pressable>
+                          <>
+                            <Pressable
+                              style={({ pressed }) => [styles.addPhotoBtn, pressed && styles.addPhotoBtnPressed]}
+                              onPress={handleAddPhoto}
+                              disabled={isProcessingPhoto}
+                            >
+                              {isProcessingPhoto ? (
+                                <ActivityIndicator color={Dawn.text.primary} size="small" />
+                              ) : (
+                                <Text style={styles.addPhotoText}>+ Add photo</Text>
+                              )}
+                            </Pressable>
+                            {canCaptureLivePhoto ? (
+                              <Pressable
+                                style={({ pressed }) => [styles.liveCaptureBtn, pressed && styles.retakeBtnPressed]}
+                                onPress={handleCapturePhoto}
+                                disabled={isProcessingPhoto}
+                              >
+                                <Text style={styles.liveCaptureText}>Take live photo</Text>
+                              </Pressable>
+                            ) : null}
+                          </>
                         ) : (
                           <>
                             <View style={styles.photoPreviewClip}>
                               <Image source={{ uri: photoUri }} style={styles.photoPreviewImage} contentFit="cover" transition={200} />
                             </View>
-                            <Pressable
-                              style={({ pressed }) => [styles.retakeBtn, pressed && styles.retakeBtnPressed]}
-                              onPress={handleAddPhoto}
-                              disabled={isProcessingPhoto}
-                            >
-                              <Text style={styles.retakeText}>
-                                {isProcessingPhoto ? 'Replacing…' : 'Pick another'}
-                              </Text>
-                            </Pressable>
+                            <View style={styles.retakeRow}>
+                              <Pressable
+                                style={({ pressed }) => [styles.retakeBtn, pressed && styles.retakeBtnPressed]}
+                                onPress={handleAddPhoto}
+                                disabled={isProcessingPhoto}
+                              >
+                                <Text style={styles.retakeText}>
+                                  {isProcessingPhoto ? 'Replacing…' : 'Pick another'}
+                                </Text>
+                              </Pressable>
+                              {canCaptureLivePhoto ? (
+                                <Pressable
+                                  style={({ pressed }) => [styles.retakeBtn, pressed && styles.retakeBtnPressed]}
+                                  onPress={handleCapturePhoto}
+                                  disabled={isProcessingPhoto}
+                                >
+                                  <Text style={styles.retakeText}>Capture now</Text>
+                                </Pressable>
+                              ) : null}
+                            </View>
                           </>
                         )}
                         <Text style={styles.helper}>Some mornings deserve a frame.</Text>
@@ -1467,12 +1517,33 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     paddingVertical: 10,
     alignItems: 'center',
   },
+  retakeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
   retakeBtnPressed: {
     opacity: 0.8,
   },
   retakeText: {
     fontSize: 13,
     color: Dawn.text.secondary,
+  },
+  liveCaptureBtn: {
+    alignSelf: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: Dawn.border.subtle,
+    marginBottom: 8,
+  },
+  liveCaptureText: {
+    fontSize: 12.5,
+    fontWeight: '500',
+    color: Dawn.text.secondary,
+    opacity: 0.9,
   },
   errorText: {
     fontSize: 13,

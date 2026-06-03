@@ -10,7 +10,6 @@ export const ROUTES = {
   onboarding: '/onboarding',
   witness: '/witness',
   sunrise: '/sunrise',
-  settings: '/settings',
   myMornings: '/my-mornings',
   profile: '/profile',
   ritualMarkers: '/ritual-markers',

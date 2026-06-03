@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppTheme } from '@/context/AppThemeContext';
 import { useDawn } from '@/hooks/use-dawn';
 
 export const RITUAL_TAB_ORDER = ['today', 'tomorrow', 'community', 'you'] as const;
@@ -33,7 +34,9 @@ export type RitualTabBarDockProps = {
 export function RitualTabBarDock({ activeTab, onTabPress, accessibilityLabels }: RitualTabBarDockProps) {
   const insets = useSafeAreaInsets();
   const Dawn = useDawn();
-  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
+  const { mode } = useAppTheme();
+  const isMorningLight = mode === 'morning-light';
+  const styles = React.useMemo(() => makeStyles(Dawn, isMorningLight), [Dawn, isMorningLight]);
 
   return (
     <View style={[styles.outer, { paddingBottom: Math.max(insets.bottom, 10) }]} pointerEvents="box-none">
@@ -61,7 +64,7 @@ export function RitualTabBarDock({ activeTab, onTabPress, accessibilityLabels }:
   );
 }
 
-function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   return StyleSheet.create({
     outer: {
       position: 'absolute',
@@ -79,17 +82,17 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
       borderRadius: 28,
       paddingVertical: 10,
       paddingHorizontal: 8,
-      backgroundColor: 'rgba(14, 34, 61, 0.88)',
+      backgroundColor: isMorningLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(14, 34, 61, 0.88)',
       borderWidth: StyleSheet.hairlineWidth,
-      borderColor: 'rgba(255, 179, 71, 0.12)',
+      borderColor: isMorningLight ? Dawn.border.subtle : 'rgba(255, 179, 71, 0.12)',
       ...Platform.select({
         ios: {
-          shadowColor: '#000',
+          shadowColor: isMorningLight ? 'rgba(31, 42, 55, 0.18)' : '#000',
           shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.28,
-          shadowRadius: 16,
+          shadowOpacity: isMorningLight ? 0.14 : 0.28,
+          shadowRadius: isMorningLight ? 12 : 16,
         },
-        android: { elevation: 10 },
+        android: { elevation: isMorningLight ? 6 : 10 },
       }),
     },
     tab: {
@@ -105,12 +108,12 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     },
     activeGlow: {
       ...StyleSheet.absoluteFillObject,
-      backgroundColor: 'rgba(255, 179, 71, 0.1)',
+      backgroundColor: isMorningLight ? 'rgba(245, 166, 35, 0.14)' : 'rgba(255, 179, 71, 0.1)',
       borderRadius: 20,
     },
     icon: {
       fontSize: 17,
-      opacity: 0.55,
+      opacity: isMorningLight ? 0.5 : 0.55,
       marginBottom: 3,
     },
     iconActive: {

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, Pressable, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, TextInput, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, Animated, Easing, unstable_batchedUpdates } from 'react-native';
+import { View, Text, Pressable, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, TextInput, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, Animated, Easing, unstable_batchedUpdates, useWindowDimensions } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
@@ -458,6 +458,18 @@ export function SunriseLog({
   } = useSunriseLogOpen(minutesToSunrise);
   const sunrisePassed = minutesToSunrise != null && minutesToSunrise < 0;
   const isSunriseWindow = minutesToSunrise != null && minutesToSunrise >= -20 && minutesToSunrise <= 20;
+  /** Pre-sunrise or live window — spacious CTA rhythm (not post/retrospective). */
+  const isWitnessAnticipatoryLayout =
+    !hasLogged && minutesToSunrise != null && minutesToSunrise > -20;
+  const { height: windowHeight } = useWindowDimensions();
+  const anticipatoryLayoutMetrics = React.useMemo(() => {
+    if (!isWitnessAnticipatoryLayout) return null;
+    const spacerMinHeight = Math.max(128, Math.round(windowHeight * 0.24));
+    return {
+      scrollMinHeight: windowHeight - 96,
+      spacerMinHeight,
+    };
+  }, [isWitnessAnticipatoryLayout, windowHeight]);
   const showFirstLightCard = Boolean(hasLogged && revealBadge);
   const [reflectionInvitationText, setReflectionInvitationText] = useState<string | null>(null);
   const reflectionBlockYRef = useRef(0);
@@ -1347,6 +1359,7 @@ export function SunriseLog({
           style={styles.scroll}
           contentContainerStyle={[
             styles.scrollContent,
+            anticipatoryLayoutMetrics && { minHeight: anticipatoryLayoutMetrics.scrollMinHeight },
             keyboardVisible && { paddingBottom: 320 },
             showRitualTabBar && !keyboardVisible && { paddingBottom: TAB_BAR_CLEARANCE + 24 },
           ]}
@@ -1355,7 +1368,12 @@ export function SunriseLog({
           keyboardShouldPersistTaps="handled"
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-            <View style={styles.centerContent}>
+            <View
+              style={[
+                styles.centerContent,
+                isWitnessAnticipatoryLayout && styles.centerContentAnticipatory,
+              ]}
+            >
           {hasLogged && revealBadge && (
             <RitualRevealCard
               visible={true}
@@ -1410,38 +1428,75 @@ export function SunriseLog({
                   <ActivityIndicator color={Dawn.accent.sunrise} />
                 </View>
               ) : null}
-              {!hasLogged && isSunriseWindow && (
-                <View style={styles.reflectiveBlock}>
-                  <Text style={styles.reflectiveLead}>Take a moment.</Text>
-                  <Text style={styles.reflectivePrompt}>Where are you with this sunrise?</Text>
-                </View>
-              )}
-              {!hasLogged && sunrisePassed && !isSunriseWindow && (
-                <View style={styles.reflectiveBlock}>
-                  <Text style={styles.reflectiveLead}>Take a moment.</Text>
-                  <Text style={styles.reflectivePrompt}>Where were you when the light arrived?</Text>
-                </View>
-              )}
-              {!hasLogged && (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.logThisMorningBtn,
-                    !hasLogged && isSunriseWindow && styles.logThisMorningBtnLive,
-                    pressed && styles.logThisMorningBtnPressed,
-                  ]}
-                  onPress={requestOpenLog}
-                  accessibilityRole="button"
-                  accessibilityLabel="Log this morning"
-                >
-                  <Text style={styles.logThisMorningBtnText}>Log this morning</Text>
-                </Pressable>
-              )}
-              {!hasLogged && sunrisePassed && (
-                <Text style={styles.witnessFooter}>
-                  {isRetrospectiveLog
-                    ? 'The sunrise has passed.\nThe moment still counts.'
-                    : "You don't have to capture it.\nJust mark the moment."}
-                </Text>
+              {!hasLogged && isWitnessAnticipatoryLayout ? (
+                <>
+                  <View
+                    style={[
+                      styles.witnessAnticipatorySpacer,
+                      anticipatoryLayoutMetrics && {
+                        minHeight: anticipatoryLayoutMetrics.spacerMinHeight,
+                      },
+                    ]}
+                  />
+                  <View style={styles.witnessActionZone}>
+                    {isSunriseWindow ? (
+                      <View style={[styles.reflectiveBlock, styles.reflectiveBlockAnticipatory]}>
+                        <Text style={styles.reflectiveLead}>Take a moment.</Text>
+                        <Text style={styles.reflectivePrompt}>Where are you with this sunrise?</Text>
+                      </View>
+                    ) : null}
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.logThisMorningBtn,
+                        styles.logThisMorningBtnAnticipatory,
+                        isSunriseWindow && styles.logThisMorningBtnLive,
+                        pressed && styles.logThisMorningBtnPressed,
+                      ]}
+                      onPress={requestOpenLog}
+                      accessibilityRole="button"
+                      accessibilityLabel="Log this morning"
+                    >
+                      <Text style={styles.logThisMorningBtnText}>Log this morning</Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : (
+                <>
+                  {!hasLogged && isSunriseWindow && (
+                    <View style={styles.reflectiveBlock}>
+                      <Text style={styles.reflectiveLead}>Take a moment.</Text>
+                      <Text style={styles.reflectivePrompt}>Where are you with this sunrise?</Text>
+                    </View>
+                  )}
+                  {!hasLogged && sunrisePassed && !isSunriseWindow && (
+                    <View style={styles.reflectiveBlock}>
+                      <Text style={styles.reflectiveLead}>Take a moment.</Text>
+                      <Text style={styles.reflectivePrompt}>Where were you when the light arrived?</Text>
+                    </View>
+                  )}
+                  {!hasLogged && (
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.logThisMorningBtn,
+                        isSunriseWindow && styles.logThisMorningBtnLive,
+                        isSunriseWindow && styles.logThisMorningBtnPostAttach,
+                        pressed && styles.logThisMorningBtnPressed,
+                      ]}
+                      onPress={requestOpenLog}
+                      accessibilityRole="button"
+                      accessibilityLabel="Log this morning"
+                    >
+                      <Text style={styles.logThisMorningBtnText}>Log this morning</Text>
+                    </Pressable>
+                  )}
+                  {!hasLogged && sunrisePassed && (
+                    <Text style={styles.witnessFooter}>
+                      {isRetrospectiveLog
+                        ? 'The sunrise has passed.\nThe moment still counts.'
+                        : "You don't have to capture it.\nJust mark the moment."}
+                    </Text>
+                  )}
+                </>
               )}
 
               {hasActiveLog && (
@@ -1629,7 +1684,14 @@ export function SunriseLog({
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
               {!hasLogged ? (
-                <View style={[styles.sharedDawnSectionWrap, !hasLogged && isSunriseWindow && styles.sharedDawnSectionWrapLive]}>
+                <View
+                  style={[
+                    styles.sharedDawnSectionWrap,
+                    isWitnessAnticipatoryLayout
+                      ? styles.sharedDawnSectionWrapAnticipatory
+                      : !hasLogged && isSunriseWindow && styles.sharedDawnSectionWrapLive,
+                  ]}
+                >
                   <SharedDawnPreview city={profileCity} currentUserId={currentUserId} fromScreen="witness" />
                 </View>
               ) : null}
@@ -1938,6 +2000,23 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   centerContent: {
     alignItems: 'center',
   },
+  centerContentAnticipatory: {
+    flexGrow: 1,
+    alignSelf: 'stretch',
+  },
+  witnessAnticipatorySpacer: {
+    flexGrow: 1,
+    alignSelf: 'stretch',
+  },
+  witnessActionZone: {
+    width: '100%',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+  },
+  reflectiveBlockAnticipatory: {
+    marginTop: 0,
+    marginBottom: 22,
+  },
   keyboardAvoid: {
     flex: 1,
   },
@@ -2052,8 +2131,10 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     borderRadius: 999,
     backgroundColor: 'rgba(255, 179, 71, 0.86)',
   },
+  logThisMorningBtnAnticipatory: {
+    marginTop: 0,
+  },
   logThisMorningBtnLive: {
-    marginTop: 24,
     paddingVertical: Platform.OS === 'android' ? 11 : 13,
     paddingHorizontal: 30,
     backgroundColor: 'rgba(255, 190, 92, 0.92)',
@@ -2066,6 +2147,9 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
       },
       android: { elevation: 3 },
     }),
+  },
+  logThisMorningBtnPostAttach: {
+    marginTop: 24,
   },
   logThisMorningBtnPressed: {
     opacity: 0.9,
@@ -2081,6 +2165,10 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   },
   sharedDawnSectionWrapLive: {
     marginTop: 44,
+  },
+  sharedDawnSectionWrapAnticipatory: {
+    marginTop: 36,
+    marginBottom: 12,
   },
   witnessFooter: {
     marginTop: 18,

@@ -186,14 +186,22 @@ function getNewUserLogCtaCopy(minutesToSunrise: number | null): { title: string;
   };
 }
 
-function getPreSunriseRelativeLabel(minutesToSunrise: number | null): string | null {
+/** Countdown on the sunrise card during pre-window only (no ~ approximation). */
+function getPreSunriseCountdownLabel(minutesToSunrise: number | null): string | null {
   if (minutesToSunrise == null || minutesToSunrise <= 0) return null;
-  if (minutesToSunrise >= 60) {
-    const roundedHours = Math.max(1, Math.round(minutesToSunrise / 60));
-    return `In ~${roundedHours} hour${roundedHours === 1 ? '' : 's'}`;
+  if (minutesToSunrise > 60) {
+    const hours = Math.max(1, Math.ceil(minutesToSunrise / 60));
+    return `In ${hours} hour${hours === 1 ? '' : 's'}`;
   }
-  const roundedMinutes = Math.max(5, Math.round(minutesToSunrise / 5) * 5);
-  return `In ~${roundedMinutes} minutes`;
+  const minutes = Math.max(1, Math.ceil(minutesToSunrise));
+  return `In ${minutes} minute${minutes === 1 ? '' : 's'}`;
+}
+
+/** Mid-screen lead for returning users — pre uses anticipatory copy only. */
+function getReturningCenterLead(sunrisePhase: SunrisePhase): string | null {
+  if (sunrisePhase === 'pre') return 'The light is waiting.';
+  if (sunrisePhase === 'post') return 'Did you meet the light today?';
+  return 'How will you meet the light today?';
 }
 
 type SunrisePhase = 'pre' | 'live' | 'post';
@@ -250,9 +258,16 @@ export default function HomeScreen() {
     refresh: refreshMorningContext,
   } = useMorningContext(profile?.city ?? null);
   const cityHour = React.useMemo(() => getHourInTimeZone(cityTimezone), [cityTimezone]);
+  const [minuteTick, setMinuteTick] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setMinuteTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   const minutesToSunriseFromCityClock = React.useMemo(
     () => getMinutesToSunriseFromCityClock(sunriseToday, cityTimezone),
-    [sunriseToday, cityTimezone]
+    [sunriseToday, cityTimezone, minuteTick]
   );
   // Prefer city-clock recomputation for phase-sensitive UI edges (e.g. exact sunrise minute),
   // fallback to fetched minutes when unavailable.
@@ -383,7 +398,7 @@ export default function HomeScreen() {
     [effectiveMinutesToSunrise]
   );
   const preSunriseRelativeLabel = React.useMemo(
-    () => (sunrisePhase === 'pre' ? getPreSunriseRelativeLabel(effectiveMinutesToSunrise) : null),
+    () => (sunrisePhase === 'pre' ? getPreSunriseCountdownLabel(effectiveMinutesToSunrise) : null),
     [effectiveMinutesToSunrise, sunrisePhase]
   );
 
@@ -571,9 +586,6 @@ export default function HomeScreen() {
                     ? `${greeting}${firstName ? ` ${firstName}.` : '.'}`
                     : `${greeting}${firstName ? ` ${firstName}.` : '.'}`}
               </Text>
-              {loggedToday ? null : sunrisePhase === 'pre' ? (
-                <Text style={styles.anchorLine2}>The light is waiting.</Text>
-              ) : null}
             </View>
             {revealBadge ? (
               <RitualRevealCard
@@ -733,7 +745,7 @@ export default function HomeScreen() {
           /* STATE 1b — First-time user, pre/live: single primary witness action */
           <>
             {sunrisePhase === 'pre' ? (
-              <Text style={[styles.centerQuestion, styles.centerQuestionHeadline]}>Be there when it begins.</Text>
+              <Text style={[styles.centerQuestion, styles.centerQuestionHeadline]}>The light is waiting.</Text>
             ) : null}
             <View style={[styles.cardsBlock, sunrisePhase === 'live' && styles.cardsBlockLive]}>
               <View style={[styles.modeCard, styles.modeCardTightBottom]}>
@@ -800,11 +812,17 @@ export default function HomeScreen() {
         ) : (
           /* State A — Returning user, not yet logged today */
           <>
-            {sunrisePhase === 'live' ? null : (
-              <Text style={[styles.centerQuestion, styles.centerQuestionHeadline, sunrisePhase === 'post' && styles.centerQuestionPost]}>
-                {sunrisePhase === 'post' ? 'Did you meet the light today?' : 'How will you meet the light today?'}
+            {sunrisePhase === 'live' ? null : getReturningCenterLead(sunrisePhase) ? (
+              <Text
+                style={[
+                  styles.centerQuestion,
+                  styles.centerQuestionHeadline,
+                  sunrisePhase === 'post' && styles.centerQuestionPost,
+                ]}
+              >
+                {getReturningCenterLead(sunrisePhase)}
               </Text>
-            )}
+            ) : null}
             <View style={[styles.cardsBlock, sunrisePhase === 'post' && styles.cardsBlockPost]}>
               <View
                 style={[

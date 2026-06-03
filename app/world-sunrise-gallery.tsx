@@ -8,7 +8,6 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import supabase from '../supabase';
 import SunVantageHeader from '../components/SunVantageHeader';
 import CitySunriseGallery, { type CitySunriseGalleryRow } from '../components/CitySunriseGallery';
-import { Dawn } from '../constants/theme';
 import { useDawn } from '@/hooks/use-dawn';
 import { getWorldGalleryCache, isWorldGalleryCacheFresh, prefetchWorldGallery } from '@/lib/screenDataCache';
 
@@ -16,7 +15,8 @@ const GALLERY_LIMIT = 30;
 
 export default function WorldSunriseGalleryScreen() {
   const router = useRouter();
-  const DawnHook = useDawn();
+  const Dawn = useDawn();
+  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -94,27 +94,28 @@ export default function WorldSunriseGalleryScreen() {
     }
   }, [load]);
 
+  const headerBlock = (
+    <View style={styles.header}>
+      <SunVantageHeader
+        showBack
+        hideMenu
+        showBranding
+        title="Global Sunrises Welcomed"
+        backLabel="← Back"
+        onBackPress={() => router.back()}
+        screenTitle
+      />
+      <Text style={styles.headerLine}>Some recent shared mornings on SunVantage.</Text>
+    </View>
+  );
+
   if (loading) {
     return (
       <View style={styles.container}>
         <View style={styles.gradientTop} pointerEvents="none" />
         <View style={styles.gradientMid} pointerEvents="none" />
         <View style={styles.gradientLowerWarm} pointerEvents="none" />
-        <View style={styles.header}>
-          <SunVantageHeader
-            showBack
-            hideMenu
-            showBranding
-            title="Global Sunrises Welcomed"
-            onBackPress={() => router.back()}
-            hasLoggedToday={false}
-            screenTitle={false}
-            showBack
-            backLabel="← Back"
-            onBackPress={() => router.back()}
-          />
-          <Text style={styles.headerLine}>Some recent shared mornings on SunVantage.</Text>
-        </View>
+        {headerBlock}
         <View style={styles.skeletonWrap}>
           <View style={styles.skeletonGrid}>
             <View style={styles.skeletonTile} />
@@ -136,21 +137,7 @@ export default function WorldSunriseGalleryScreen() {
       <View style={styles.gradientMid} pointerEvents="none" />
       <View style={styles.gradientLowerWarm} pointerEvents="none" />
 
-      <View style={styles.header}>
-        <SunVantageHeader
-          showBack
-          hideMenu
-          showBranding
-          title="Global Sunrises Welcomed"
-          onBackPress={() => router.back()}
-          hasLoggedToday={false}
-          screenTitle={false}
-          showBack
-          backLabel="← Back"
-          onBackPress={() => router.back()}
-        />
-        <Text style={styles.headerLine}>Some recent shared mornings on SunVantage.</Text>
-      </View>
+      {headerBlock}
 
       {error ? (
         <View style={styles.centered}>
@@ -166,11 +153,7 @@ export default function WorldSunriseGalleryScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={DawnHook.accent.sunrise}
-            />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Dawn.accent.sunrise} />
           }
         >
           <CitySunriseGallery
@@ -186,94 +169,99 @@ export default function WorldSunriseGalleryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Dawn.background.primary,
-    paddingTop: 52,
-  },
-  gradientTop: {
-    ...StyleSheet.absoluteFillObject,
-    height: '50%',
-    backgroundColor: Dawn.background.primary,
-  },
-  gradientMid: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '35%',
-    height: '30%',
-    backgroundColor: 'rgba(148, 163, 184, 0.055)',
-  },
-  gradientLowerWarm: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '50%',
-    bottom: 0,
-    backgroundColor: 'rgba(255, 179, 71, 0.058)',
-  },
-  header: {
-    paddingHorizontal: 24,
-    marginBottom: 20,
-  },
-  headerLine: {
-    marginTop: 10,
-    fontSize: 13,
-    color: 'rgba(231, 238, 247, 0.65)',
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 24,
-    paddingBottom: 48,
-  },
-  footerLine: {
-    marginTop: 14,
-    fontSize: 13,
-    color: 'rgba(231, 238, 247, 0.65)',
-    textAlign: 'center',
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  skeletonWrap: {
-    paddingHorizontal: 24,
-    paddingBottom: 48,
-  },
-  skeletonGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 18,
-  },
-  skeletonTile: {
-    width: '31%',
-    aspectRatio: 1,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    marginBottom: 10,
-  },
-  skeletonFooterLine: {
-    width: '72%',
-    height: 12,
-    borderRadius: 7,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    alignSelf: 'center',
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#FCA5A5',
-    textAlign: 'center',
-  },
-  emptyText: {
-    fontSize: 15,
-    color: Dawn.text.secondary,
-    textAlign: 'center',
-  },
-});
-
+function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: Dawn.background.primary,
+      paddingTop: 52,
+    },
+    gradientTop: {
+      ...StyleSheet.absoluteFillObject,
+      height: '50%',
+      backgroundColor: Dawn.background.primary,
+    },
+    gradientMid: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      top: '35%',
+      height: '30%',
+      backgroundColor: 'rgba(148, 163, 184, 0.055)',
+    },
+    gradientLowerWarm: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      top: '50%',
+      bottom: 0,
+      backgroundColor: 'rgba(255, 179, 71, 0.058)',
+    },
+    header: {
+      paddingHorizontal: 24,
+      marginBottom: 20,
+    },
+    headerLine: {
+      marginTop: 10,
+      fontSize: 13,
+      color: Dawn.text.secondary,
+      opacity: 0.85,
+    },
+    scroll: {
+      flex: 1,
+    },
+    scrollContent: {
+      paddingHorizontal: 24,
+      paddingBottom: 48,
+    },
+    footerLine: {
+      marginTop: 14,
+      fontSize: 13,
+      color: Dawn.text.secondary,
+      textAlign: 'center',
+      opacity: 0.85,
+    },
+    centered: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 24,
+    },
+    skeletonWrap: {
+      paddingHorizontal: 24,
+      paddingBottom: 48,
+    },
+    skeletonGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+      marginBottom: 18,
+    },
+    skeletonTile: {
+      width: '31%',
+      aspectRatio: 1,
+      borderRadius: 10,
+      backgroundColor: Dawn.surfaceSecondary.subtle,
+      opacity: 0.72,
+      marginBottom: 10,
+    },
+    skeletonFooterLine: {
+      width: '72%',
+      height: 12,
+      borderRadius: 7,
+      backgroundColor: Dawn.surfaceSecondary.subtle,
+      opacity: 0.72,
+      alignSelf: 'center',
+    },
+    errorText: {
+      fontSize: 14,
+      color: '#FCA5A5',
+      textAlign: 'center',
+    },
+    emptyText: {
+      fontSize: 15,
+      color: Dawn.text.secondary,
+      textAlign: 'center',
+    },
+  });
+}

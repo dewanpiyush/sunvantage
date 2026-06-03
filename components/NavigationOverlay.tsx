@@ -19,6 +19,7 @@ import {
 import { useRouter, usePathname } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDawn } from '@/hooks/use-dawn';
+import { ROUTES } from '@/lib/routes';
 
 const PANEL_WIDTH_RATIO = 0.62;
 const PANEL_PADDING_H = 24;
@@ -105,7 +106,7 @@ export default function NavigationOverlay({
     { emoji: '✨', label: 'Ritual Markers', route: '/ritual-markers', emphasis: 'lead' },
     { emoji: '✨', label: 'Morning Fragments', route: '/morning-fragments' },
     { emoji: '👤', label: 'Profile', route: '/profile' },
-    { emoji: '⚙️', label: 'Settings', route: '/settings' },
+    { emoji: '👤', label: 'You', route: ROUTES.you },
   ];
 
   useEffect(() => {

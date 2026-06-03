@@ -3,6 +3,8 @@ import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import SunVantageHeader from '@/components/SunVantageHeader';
+import AppearanceModeToggle from '@/components/AppearanceModeToggle';
+import { useAppTheme } from '@/context/AppThemeContext';
 import { useDawn } from '@/hooks/use-dawn';
 import { TAB_BAR_CLEARANCE } from '@/constants/layout';
 
@@ -18,6 +20,8 @@ type Props = {
   subtitle?: string;
   items: NavHubItem[];
   secondaryItems?: NavHubItem[];
+  /** Morning Light / Night Calm toggle below main items (You tab). */
+  showAppearanceToggle?: boolean;
   signOutLabel?: string;
   onSignOut?: () => void;
 };
@@ -27,17 +31,25 @@ export default function NavHubScreen({
   subtitle,
   items,
   secondaryItems = [],
+  showAppearanceToggle = false,
   signOutLabel,
   onSignOut,
 }: Props) {
   const router = useRouter();
   const Dawn = useDawn();
+  const { mode } = useAppTheme();
+  const isMorningLight = mode === 'morning-light';
   const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
+  const showUtilityFooter = showAppearanceToggle || secondaryItems.length > 0 || (signOutLabel && onSignOut);
 
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={['#102A43', '#1B3554', '#243F63']}
+        colors={
+          isMorningLight
+            ? (['#EAF3FB', '#DCEAF7', '#CFE2F3'] as const)
+            : (['#102A43', '#1B3554', '#243F63'] as const)
+        }
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={styles.backgroundGradient}
@@ -68,8 +80,14 @@ export default function NavHubScreen({
           </Pressable>
         ))}
 
-        {secondaryItems.length > 0 || (signOutLabel && onSignOut) ? (
+        {showUtilityFooter ? (
           <View style={styles.utilityFooter}>
+            {showAppearanceToggle || secondaryItems.length > 0 ? (
+              <View style={styles.hubSectionDivider} />
+            ) : null}
+
+            {showAppearanceToggle ? <AppearanceModeToggle /> : null}
+
             {secondaryItems.map((item) => (
               <Pressable
                 key={item.route}
@@ -87,7 +105,9 @@ export default function NavHubScreen({
 
             {signOutLabel && onSignOut ? (
               <>
-                {secondaryItems.length > 0 ? <View style={styles.utilityDivider} /> : null}
+                {showAppearanceToggle || secondaryItems.length > 0 ? (
+                  <View style={styles.utilityDivider} />
+                ) : null}
                 <Pressable
                   style={({ pressed }) => [styles.signOutWrap, pressed && styles.signOutPressed]}
                   onPress={onSignOut}
@@ -166,8 +186,13 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
       marginLeft: 8,
     },
     utilityFooter: {
-      marginTop: 4,
-      gap: 8,
+      marginTop: 14,
+      gap: 10,
+    },
+    hubSectionDivider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: 'rgba(255, 220, 180, 0.14)',
+      marginBottom: 2,
     },
     utilityDivider: {
       height: StyleSheet.hairlineWidth,
