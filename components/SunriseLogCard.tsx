@@ -36,6 +36,7 @@ import { useMorningContext } from '../hooks/useMorningContext';
 import { getMinutesToSunriseForCity, getCoordinatesForCity } from '../services/weatherService';
 import { invokeModerateImage } from '../lib/moderateImageInvoke';
 import { isBeforeSunriseLoggingOpens } from '@/lib/sunriseLoggingWindow';
+import type { HuntMovementMode } from '@/lib/vantageHunt';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image } from 'expo-image';
 import posthog from '@/lib/posthog';
@@ -131,7 +132,15 @@ export type SunriseLogCardProps = {
   city?: string | null;
   sunriseTime?: string | null;
   initialVantageName?: string | null;
-  source?: 'home' | 'explorer' | 'other';
+  /** Vantage Hunt metadata — stored quietly on the log row. */
+  huntMetadata?: {
+    movementMode: HuntMovementMode;
+    displacementMeters: number;
+    vantageLabel?: string | null;
+    predawnImageUri?: string | null;
+  } | null;
+  initialCoords?: { latitude: number; longitude: number } | null;
+  source?: 'home' | 'explorer' | 'hunt' | 'other';
 };
 
 export default function SunriseLogCard({
@@ -144,6 +153,8 @@ export default function SunriseLogCard({
   city = null,
   sunriseTime = null,
   initialVantageName = null,
+  huntMetadata = null,
+  initialCoords = null,
   source = 'other',
 }: SunriseLogCardProps) {
   const Dawn = useDawn();
@@ -197,8 +208,8 @@ export default function SunriseLogCard({
 
   const logCopy = LOG_MODAL_COPY[logModalTone];
   const canCaptureLivePhoto = logModalTone === 'live';
-  /** Opening confirmation — retrospective logging only (live / pre start at step 1). */
-  const hasRetroStep0 = logModalTone === 'retro';
+  /** Opening confirmation — retrospective logging only; hunt flow skips step 0. */
+  const hasRetroStep0 = logModalTone === 'retro' && source !== 'hunt';
 
   const showUseCurrentLocation =
     minutesToSunriseCity != null &&
@@ -220,9 +231,12 @@ export default function SunriseLogCard({
       setError('');
       setSaveStage('idle');
       setShowMissedScreen(false);
-      setStep(logModalTone === 'retro' ? 0 : 1);
+      setStep(hasRetroStep0 ? 0 : 1);
       if (vantageName === '' && initialVantageName?.trim()) {
         setVantageName(initialVantageName.trim());
+      }
+      if (initialCoords) {
+        setOverrideCoords(initialCoords);
       }
       getNextReflectionPrompt().then(setReflectionPrompt);
       cardOpacity.setValue(0);
@@ -256,7 +270,7 @@ export default function SunriseLogCard({
       cardScale.setValue(0.96);
       cardTranslateY.setValue(10);
     }
-  }, [visible, initialVantageName, logModalTone, minutesToSunriseCity, backdropOpacity, cardOpacity, cardScale, cardTranslateY]);
+  }, [visible, initialVantageName, hasRetroStep0, minutesToSunriseCity, backdropOpacity, cardOpacity, cardScale, cardTranslateY]);
 
   // PostHog: fire once per modal open.
   useEffect(() => {
@@ -510,12 +524,12 @@ export default function SunriseLogCard({
   }, [processPickedAsset]);
 
   const resetFormAfterSave = useCallback(() => {
-    setStep(logModalTone === 'retro' ? 0 : 1);
+    setStep(hasRetroStep0 ? 0 : 1);
     setVantageName('');
     setReflectionText('');
     setPhotoUri(null);
     setOverrideCoords(null);
-  }, [logModalTone]);
+  }, [hasRetroStep0]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -583,6 +597,9 @@ export default function SunriseLogCard({
         vantage_category?: string;
         reflection_text?: string | null;
         moderation_status?: 'pending';
+        hunt_movement_mode?: string;
+        hunt_displacement_meters?: number;
+        hunt_vantage_label?: string;
       } = {
         user_id: userId,
         created_at: createdAt,
@@ -604,13 +621,37 @@ export default function SunriseLogCard({
       }
       const reflectionTrim = reflectionText.trim();
       if (reflectionTrim) insertPayload.reflection_text = reflectionTrim;
+      if (huntMetadata) {
+        insertPayload.hunt_movement_mode = huntMetadata.movementMode;
+        insertPayload.hunt_displacement_meters = huntMetadata.displacementMeters;
+        if (huntMetadata.vantageLabel?.trim()) {
+          insertPayload.hunt_vantage_label = huntMetadata.vantageLabel.trim();
+        }
+      }
+      if (overrideCoords) {
+        insertPayload.latitude = overrideCoords.latitude;
+        insertPayload.longitude = overrideCoords.longitude;
+      }
       // Do not set moderation_status here when a photo will be uploaded — it is set only after storage upload succeeds.
 
-      const { data: insertData, error: insertError } = await supabase
+      let insertData: { id: number }[] | null = null;
+      let insertError: { message?: string } | null = null;
+      const firstAttempt = await supabase
         .from('sunrise_logs')
         .insert(insertPayload)
         .select('id')
         .limit(1);
+      insertData = firstAttempt.data as { id: number }[] | null;
+      insertError = firstAttempt.error;
+
+      if (insertError && huntMetadata && /column.*does not exist|hunt_/i.test(insertError.message ?? '')) {
+        delete insertPayload.hunt_movement_mode;
+        delete insertPayload.hunt_displacement_meters;
+        delete insertPayload.hunt_vantage_label;
+        const retry = await supabase.from('sunrise_logs').insert(insertPayload).select('id').limit(1);
+        insertData = retry.data as { id: number }[] | null;
+        insertError = retry.error;
+      }
 
       if (insertError) {
         setError(insertError.message || "We couldn't save this morning. Please try again.");
@@ -746,7 +787,7 @@ export default function SunriseLogCard({
         setSaveStage('idle');
       }
     }
-  }, [vantageName, reflectionText, reflectionPrompt, photoUri, photoMime, onSaved, onClose, resetFormAfterSave, onModerationComplete, city, overrideCoords, source]);
+  }, [vantageName, reflectionText, reflectionPrompt, photoUri, photoMime, onSaved, onClose, resetFormAfterSave, onModerationComplete, city, overrideCoords, huntMetadata, source]);
 
   if (!visible || isBeforeSunriseLoggingOpens(minutesToSunriseCity)) return null;
 

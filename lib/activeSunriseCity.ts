@@ -5,7 +5,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Coords } from '@/lib/location';
-import { getTodayLocalDateString } from '@/lib/streakStats';
+import { getTodayLocalDateString, getYesterdayLocalDateString } from '@/lib/streakStats';
 
 const STORAGE_KEY = 'sunvantage_active_sunrise_city_v1';
 const GEOCODE_BASE = 'https://geocoding-api.open-meteo.com/v1/search';
@@ -104,7 +104,32 @@ export async function clearActiveSunriseCityCache(): Promise<void> {
   }
 }
 
-/** Active city for today if cache matches date + habitual home city. */
+/** True when ritual active city differs from profile home (normalized). */
+export function isAwayFromHomeCity(
+  homeCity: string | null | undefined,
+  activeCity: string | null | undefined
+): boolean {
+  const home = homeCity?.trim();
+  const active = activeCity?.trim();
+  if (!home || !active) return false;
+  return normalizeCityName(home) !== normalizeCityName(active);
+}
+
+/** Subtle copy when dawn context is away from home — one line per surface, no travel UX. */
+export const AWAY_FROM_HOME_COPY = {
+  todayDawnAnchor: 'The light arrives differently here.',
+  sunriseCardContext: 'New ground',
+  postLogCompletion: 'You welcomed the sunrise somewhere new.',
+  tomorrowAmbient: 'Another dawn awaits here.',
+} as const;
+
+function isRitualCacheDateRelevant(cacheDateYmd: string): boolean {
+  const today = getTodayLocalDateString();
+  if (cacheDateYmd === today) return true;
+  return cacheDateYmd === getYesterdayLocalDateString();
+}
+
+/** Active city for ritual continuity (today + recent dawn cycle while still away). */
 export async function getCachedActiveSunriseCityForToday(
   habitualCity: string | null | undefined
 ): Promise<string | null> {
@@ -112,8 +137,7 @@ export async function getCachedActiveSunriseCityForToday(
   if (!home) return null;
   const cache = await readActiveSunriseCityCache();
   if (!cache) return null;
-  const today = getTodayLocalDateString();
-  if (cache.dateYmd !== today) return null;
+  if (!isRitualCacheDateRelevant(cache.dateYmd)) return null;
   if (normalizeCityName(cache.habitualCity) !== normalizeCityName(home)) return null;
   if (normalizeCityName(cache.city) === normalizeCityName(home)) return null;
   return cache.city.trim();
@@ -139,16 +163,3 @@ export async function geocodeCityCoordinates(city: string): Promise<Coords | nul
   }
 }
 
-const AWAY_COPY_POOL = [
-  'The sunrise finds you somewhere new today.',
-  'Every city reveals the morning differently.',
-  'A different horizon holds the light today.',
-] as const;
-
-export function pickAwayFromHomeCopy(seed: string): string {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = (hash + seed.charCodeAt(i) * (i + 1)) % AWAY_COPY_POOL.length;
-  }
-  return AWAY_COPY_POOL[hash] ?? AWAY_COPY_POOL[0];
-}

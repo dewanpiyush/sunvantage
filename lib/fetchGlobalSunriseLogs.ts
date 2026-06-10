@@ -6,6 +6,7 @@
  */
 
 import supabase from '@/supabase';
+import { getCoordinatesForCity } from '@/services/weatherService';
 
 const MAX_CITIES = 200;
 
@@ -17,12 +18,20 @@ export type CityLogAggregate = {
   logs: number;
 };
 
+/** Where the current user welcomed today's sunrise — not profile home. */
+export type UserLogPin = {
+  city: string;
+  lat: number;
+  lng: number;
+};
+
 export type GlobalSunriseAggregate = {
   cities: CityLogAggregate[];
   totalWitnesses: number;
   cityCount: number;
   countryCount: number;
   userWitnessedToday: boolean;
+  userLogPin: UserLogPin | null;
 };
 
 /** Viewer's local date YYYY-MM-DD for sunrise_day aggregation. */
@@ -53,9 +62,10 @@ export async function fetchGlobalSunriseLogs(
     currentUserId
       ? supabase
           .from('sunrise_logs')
-          .select('id')
+          .select('city, latitude, longitude')
           .eq('user_id', currentUserId)
           .eq('sunrise_day', displayDate)
+          .order('created_at', { ascending: false })
           .limit(1)
       : Promise.resolve({ data: [], error: null }),
   ]);
@@ -68,6 +78,7 @@ export async function fetchGlobalSunriseLogs(
       cityCount: 0,
       countryCount: 0,
       userWitnessedToday: false,
+      userLogPin: null,
     };
   }
 
@@ -108,11 +119,43 @@ export async function fetchGlobalSunriseLogs(
     Array.isArray(userLogRes.data) &&
     userLogRes.data.length > 0;
 
+  let userLogPin: UserLogPin | null = null;
+  if (userWitnessedToday && Array.isArray(userLogRes.data) && userLogRes.data[0]) {
+    const log = userLogRes.data[0] as {
+      city?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
+    };
+    const city = log.city?.trim() ?? '';
+    let lat = log.latitude;
+    let lng = log.longitude;
+    if (
+      city &&
+      (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng))
+    ) {
+      const geo = await getCoordinatesForCity(city);
+      if (geo) {
+        lat = geo.latitude;
+        lng = geo.longitude;
+      }
+    }
+    if (
+      city &&
+      lat != null &&
+      lng != null &&
+      !Number.isNaN(lat) &&
+      !Number.isNaN(lng)
+    ) {
+      userLogPin = { city, lat, lng };
+    }
+  }
+
   return {
     cities,
     totalWitnesses,
     cityCount,
     countryCount,
     userWitnessedToday,
+    userLogPin,
   };
 }

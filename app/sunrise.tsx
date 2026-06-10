@@ -10,7 +10,7 @@ import { clearTomorrowPlan } from '../lib/clearTomorrowPlan';
 import { getWitnessSubheading } from '../lib/ritualState';
 import { useMorningContext } from '../hooks/useMorningContext';
 import { useActiveSunriseCity } from '@/hooks/useActiveSunriseCity';
-import { normalizeCityName } from '@/lib/activeSunriseCity';
+import { AWAY_FROM_HOME_COPY, normalizeCityName } from '@/lib/activeSunriseCity';
 import { recordSunriseCityMemory } from '@/lib/sunriseCitiesMemory';
 import { useSunriseLogOpen } from '@/hooks/useSunriseLogOpen';
 import MorningUnfoldingPause from '@/components/MorningUnfoldingPause';
@@ -32,6 +32,11 @@ import { invokeModerateImage } from '../lib/moderateImageInvoke';
 import { getTodayDawnCard, type DawnCard } from '../data/dawnCards';
 import { useUIState } from '@/store/uiState';
 import { prefetchMyMornings } from '@/lib/screenDataCache';
+import {
+  clearSunriseLogHandoff,
+  peekSunriseLogHandoffSync,
+  resolveSunriseLogHandoff,
+} from '@/lib/sunriseLogHandoff';
 import RitualTabBarOverlay from '@/components/RitualTabBarOverlay';
 import { TAB_BAR_CLEARANCE } from '@/constants/layout';
 import {
@@ -439,13 +444,10 @@ export function SunriseLog({
   const sunriseCardGlow = useRef(new Animated.Value(0)).current;
   const breathPhase = useRef(new Animated.Value(0)).current;
 
-  const {
-    minutesToSunrise: habitualMinutesToSunrise,
-    sunriseTomorrow: homeSunriseTomorrow,
-    refresh: refreshHabitualMorning,
-  } = useMorningContext(profileCity ?? null);
+  const { minutesToSunrise: habitualMinutesToSunrise, refresh: refreshHabitualMorning } =
+    useMorningContext(profileCity ?? null);
 
-  const { sunriseCity } = useActiveSunriseCity(profileCity, {
+  const { sunriseCity, isAwayFromHome } = useActiveSunriseCity(profileCity, {
     minutesToSunrise: habitualMinutesToSunrise,
     loggedTodayCity: hasLogged ? todayLogCity : null,
   });
@@ -457,6 +459,14 @@ export function SunriseLog({
     cityTimezone,
     refresh: refreshMorningContext,
   } = useMorningContext(sunriseCity);
+  const displayDawnCard = React.useMemo(
+    () =>
+      hasLogged && isAwayFromHome
+        ? { ...dawnCard, completion: AWAY_FROM_HOME_COPY.postLogCompletion }
+        : dawnCard,
+    [dawnCard, hasLogged, isAwayFromHome]
+  );
+
   const witnessCityHour = getCityHourInTimezone(cityTimezone);
   const cardAtmosphere = getSunriseCardAtmosphere(minutesToSunrise, witnessCityHour);
   const cardSurfaceStyle = React.useMemo(
@@ -631,6 +641,31 @@ export function SunriseLog({
         }
         setCurrentUserId(userId);
 
+        const handoff = await resolveSunriseLogHandoff();
+        const handoffPhotoUri = handoff?.localPhotoUri ?? null;
+        if (handoff) {
+          unstable_batchedUpdates(() => {
+            setHasLogged(true);
+            setLogId(handoff.logId);
+            setReflectionText(handoff.reflectionText);
+            setReflectionAck(handoff.reflectionText.trim().length > 0);
+            setVantageName(handoff.vantageName);
+            setVantageInputValue(handoff.vantageName);
+            setEditingVantage(false);
+            if (handoffPhotoUri) {
+              setOptimisticPhotoUri(handoffPhotoUri);
+              setPhotoUrl(null);
+            }
+            setJustLanded(true);
+            justLandedRef.current = true;
+            setShowSaved(true);
+            savedOpacity.setValue(1);
+            memorySettleY.setValue(0);
+          });
+          setBackgroundMode('postLog');
+          void prefetchMyMornings(userId, { force: true });
+        }
+
         const now = new Date();
         const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
         const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
@@ -766,6 +801,7 @@ export function SunriseLog({
         if (!data || data.length === 0) {
           setTodayLogCity(null);
           setInitialLoading(false);
+          if (!handoff) return;
           return;
         }
 
@@ -798,7 +834,13 @@ export function SunriseLog({
           if (displayUrl) {
             setPhotoUrl(displayUrl);
             setOptimisticPhotoUri(null);
+            await clearSunriseLogHandoff();
+          } else if (handoffPhotoUri) {
+            setOptimisticPhotoUri(handoffPhotoUri);
           }
+        } else if (handoffPhotoUri) {
+          setPhotoUrl(null);
+          setOptimisticPhotoUri(handoffPhotoUri);
         } else {
           setPhotoUrl(null);
           setOptimisticPhotoUri(null);
@@ -834,7 +876,8 @@ export function SunriseLog({
     useCallback(() => {
       const todayKey = getTodayLocalDateString();
       const firstOpenOfDay = lastLoadedDateRef.current !== todayKey;
-      if (firstOpenOfDay) {
+      const pendingHandoff = peekSunriseLogHandoffSync();
+      if (firstOpenOfDay && !pendingHandoff) {
         // Prevent previous-day in-memory content from flashing on first open.
         setHasLogged(false);
         setLogId(null);
@@ -1445,13 +1488,19 @@ export function SunriseLog({
                 pointerEvents="none"
               />
               <SunriseStateCard
-                dawnCard={dawnCard}
+                dawnCard={displayDawnCard}
                 hasLoggedToday={hasLogged}
                 city={sunriseCity}
                 time={formatSunriseTime(sunriseToday)}
                 atmosphere={cardAtmosphere}
                 style={cardSurfaceStyle}
-                statusLabel={!hasLogged && isSunriseWindow ? 'NOW' : null}
+                statusLabel={
+                  !hasLogged && isSunriseWindow
+                    ? 'NOW'
+                    : isAwayFromHome
+                      ? AWAY_FROM_HOME_COPY.sunriseCardContext
+                      : null
+                }
                 tone={
                   cardAtmosphere === 'live' || cardAtmosphere === 'morning' ? 'context' : 'default'
                 }
@@ -1735,8 +1784,8 @@ export function SunriseLog({
               {hasLogged ? (
                 <View style={styles.sharedDawnSectionWrap}>
                   <DawnInvitationSection
-                    city={profileCity}
-                    sunriseTomorrow={homeSunriseTomorrow}
+                    city={sunriseCity}
+                    sunriseTomorrow={sunriseTomorrow}
                   />
                 </View>
               ) : null}

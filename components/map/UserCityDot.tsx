@@ -1,5 +1,5 @@
 /**
- * User's city as a white dot on the map. Tappable to show sunrise time modal.
+ * Current user's today log on the map — green pin at actual log location, not profile home.
  */
 
 import React, { useMemo, useState } from 'react';
@@ -11,17 +11,18 @@ import { useWindowDimensions } from 'react-native';
 import { geoToScreen } from '@/lib/geoToScreen';
 import { Dawn } from '@/constants/theme';
 
-const USER_DOT_INNER_RADIUS = 3;
-const USER_DOT_RING_RADIUS = 4;
-const USER_DOT_RING_WIDTH = 2;
-const USER_DOT_FILL = '#FFFFFF';
-const USER_DOT_RING_COLOR = '#C8DCEE';
-const USER_DOT_GLOW_COLOR = '#A8C8E8';
+const USER_DOT_INNER_RADIUS = 3.2;
+const USER_DOT_RING_RADIUS = 4.2;
+const USER_DOT_RING_WIDTH = 1.8;
+const USER_DOT_FILL = '#5FAF7A';
+const USER_DOT_RING_COLOR = '#8FD4A8';
+const USER_DOT_GLOW_COLOR = '#4DA67A';
 const USER_DOT_SCALE = 1.05;
 const USER_DOT_GLOW_RADIUS = 9;
-const USER_DOT_GLOW_OPACITY = 0.14;
+const USER_DOT_GLOW_OPACITY = 0.22;
 const USER_DOT_OUTER_RING_RADIUS = 8.5;
-const USER_DOT_OUTER_RING_OPACITY = 0.18;
+const USER_DOT_OUTER_RING_OPACITY = 0.24;
+const LABEL_OFFSET_Y = 10;
 
 export type UserCity = {
   city: string;
@@ -65,11 +66,12 @@ export default function UserCityDot({ city, now, width: propWidth, height: propH
   return (
     <>
       <Pressable
-        style={[styles.hitArea, { left: xy[0] - 20, top: xy[1] - 20, width: 40, height: 40 }]}
+        style={[styles.hitArea, { left: xy[0] - 22, top: xy[1] - 22, width: 44, height: 44 }]}
         onPress={() => setModalVisible(true)}
+        accessibilityRole="button"
+        accessibilityLabel={`You welcomed the morning in ${city.city}`}
       />
       <Svg style={StyleSheet.absoluteFill} width={width} height={height} pointerEvents="none">
-        {/* Soft glow */}
         <Circle
           cx={xy[0]}
           cy={xy[1]}
@@ -77,7 +79,6 @@ export default function UserCityDot({ city, now, width: propWidth, height: propH
           fill={USER_DOT_GLOW_COLOR}
           opacity={USER_DOT_GLOW_OPACITY}
         />
-        {/* Faint outer ring */}
         <Circle
           cx={xy[0]}
           cy={xy[1]}
@@ -87,9 +88,7 @@ export default function UserCityDot({ city, now, width: propWidth, height: propH
           strokeWidth={1}
           opacity={USER_DOT_OUTER_RING_OPACITY}
         />
-        {/* White core */}
         <Circle cx={xy[0]} cy={xy[1]} r={USER_DOT_INNER_RADIUS * USER_DOT_SCALE} fill={USER_DOT_FILL} />
-        {/* Gold ring */}
         <Circle
           cx={xy[0]}
           cy={xy[1]}
@@ -99,6 +98,19 @@ export default function UserCityDot({ city, now, width: propWidth, height: propH
           strokeWidth={USER_DOT_RING_WIDTH}
         />
       </Svg>
+      <View
+        style={[
+          styles.labelWrap,
+          {
+            left: xy[0] - 28,
+            top: xy[1] + LABEL_OFFSET_Y,
+            width: 56,
+          },
+        ]}
+        pointerEvents="none"
+      >
+        <Text style={styles.youLabel}>You</Text>
+      </View>
 
       <Modal
         visible={modalVisible}
@@ -109,14 +121,15 @@ export default function UserCityDot({ city, now, width: propWidth, height: propH
         <Pressable style={styles.modalBackdrop} onPress={() => setModalVisible(false)}>
           <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalCity}>{city.city}</Text>
-            <Text style={styles.modalSunrise}>Local light arrives around {sunriseFormatted}</Text>
+            <Text style={styles.modalSub}>You welcomed the morning here.</Text>
+            <Text style={styles.modalSunrise}>Local light arrived around {sunriseFormatted}</Text>
             {hasRisen ? (
-              <Text style={styles.modalSub}>Daylight has already reached you</Text>
+              <Text style={styles.modalHint}>Daylight has already reached this place</Text>
             ) : (
-              <Text style={styles.modalSub}>
+              <Text style={styles.modalHint}>
                 {hoursToGo > 0
-                  ? `Morning still ${hoursToGo} hour${hoursToGo !== 1 ? 's' : ''} away`
-                  : 'Morning is approaching'}
+                  ? `Morning still ${hoursToGo} hour${hoursToGo !== 1 ? 's' : ''} away here`
+                  : 'Morning is approaching here'}
               </Text>
             )}
             <Pressable style={styles.modalClose} onPress={() => setModalVisible(false)}>
@@ -132,7 +145,21 @@ export default function UserCityDot({ city, now, width: propWidth, height: propH
 const styles = StyleSheet.create({
   hitArea: {
     position: 'absolute',
-    borderRadius: 20,
+    borderRadius: 22,
+  },
+  labelWrap: {
+    position: 'absolute',
+    alignItems: 'center',
+  },
+  youLabel: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '600',
+    letterSpacing: 0.6,
+    color: 'rgba(196, 244, 210, 0.78)',
+    textShadowColor: 'rgba(3, 10, 20, 0.85)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   modalBackdrop: {
     flex: 1,
@@ -153,6 +180,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: Dawn.text.primary,
+    marginBottom: 6,
+  },
+  modalSub: {
+    fontSize: 14,
+    color: Dawn.text.secondary,
     marginBottom: 8,
   },
   modalSunrise: {
@@ -160,7 +192,7 @@ const styles = StyleSheet.create({
     color: Dawn.text.secondary,
     marginBottom: 4,
   },
-  modalSub: {
+  modalHint: {
     fontSize: 14,
     color: Dawn.text.secondary,
     marginBottom: 16,

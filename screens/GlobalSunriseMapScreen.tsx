@@ -15,12 +15,14 @@ import UserCityDot from '@/components/map/UserCityDot';
 import GlobalSunriseStats from '@/components/GlobalSunriseStats';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useDawn } from '@/hooks/use-dawn';
-import { fetchGlobalSunriseLogs, type CityLogAggregate } from '@/lib/fetchGlobalSunriseLogs';
+import {
+  fetchGlobalSunriseLogs,
+  type CityLogAggregate,
+  type UserLogPin,
+} from '@/lib/fetchGlobalSunriseLogs';
 import supabase from '@/supabase';
 
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
-
-const DEFAULT_USER_CITY = { city: 'Delhi', lat: 28.6139, lng: 77.209 };
 
 const HEADER_MAP_GAP = 16;
 const TOP_SAFE_EXTRA = 8;
@@ -38,8 +40,15 @@ export default function GlobalSunriseMapScreen() {
     cityCount: number;
     countryCount: number;
     userWitnessedToday: boolean;
-  }>({ cities: [], totalWitnesses: 0, cityCount: 0, countryCount: 0, userWitnessedToday: false });
-  const [userCity, setUserCity] = useState(DEFAULT_USER_CITY);
+    userLogPin: UserLogPin | null;
+  }>({
+    cities: [],
+    totalWitnesses: 0,
+    cityCount: 0,
+    countryCount: 0,
+    userWitnessedToday: false,
+    userLogPin: null,
+  });
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
@@ -49,23 +58,17 @@ export default function GlobalSunriseMapScreen() {
         data: { session },
       } = await supabase.auth.getSession();
       const userId = session?.user?.id ?? null;
-
-      const [agg, profileRes] = await Promise.all([
-        fetchGlobalSunriseLogs(userId),
-        userId
-          ? supabase.from('profiles').select('city, latitude, longitude').eq('user_id', userId).maybeSingle()
-          : Promise.resolve({ data: null }),
-      ]);
+      const agg = await fetchGlobalSunriseLogs(userId);
       setAggregate(agg);
-      const profile = profileRes.data as { city?: string | null; latitude?: number | null; longitude?: number | null } | null;
-      const city = profile?.city?.trim();
-      const lat = profile?.latitude;
-      const lng = profile?.longitude;
-      if (city && lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng)) {
-        setUserCity({ city, lat, lng });
-      }
     } catch {
-      setAggregate({ cities: [], totalWitnesses: 0, cityCount: 0, countryCount: 0, userWitnessedToday: false });
+      setAggregate({
+        cities: [],
+        totalWitnesses: 0,
+        cityCount: 0,
+        countryCount: 0,
+        userWitnessedToday: false,
+        userLogPin: null,
+      });
     } finally {
       setLoading(false);
     }
@@ -134,41 +137,58 @@ export default function GlobalSunriseMapScreen() {
       </View>
 
       <View style={[styles.mapContainer, { width, height: mapHeight, marginTop: HEADER_MAP_GAP }]}>
-        <View style={[styles.mapOcean, { width, height: mapHeight }]} />
-        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: arcOpacity }]}>
+        <View style={[styles.mapLayer, styles.mapLayerOcean, { zIndex: 0 }]} />
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.mapLayer, styles.mapLayerAtmosphere, { opacity: arcOpacity, zIndex: 1 }]}
+        >
           <SunriseAtmosphere date={now} width={width} height={mapHeight} />
         </Animated.View>
-        <WorldMap width={width} height={mapHeight} landOnly />
-        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: arcOpacity }]}>
+        <View style={[styles.mapLayer, { zIndex: 2 }]} pointerEvents="none">
+          <WorldMap width={width} height={mapHeight} landOnly />
+        </View>
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.mapLayer, styles.mapLayerFrontier, { opacity: arcOpacity, zIndex: 3 }]}
+        >
           <SunriseFrontier date={now} width={width} height={mapHeight} />
         </Animated.View>
-        {aggregate.cities.map((city) => (
-          <CityDot
-            key={`${city.city}-${city.lat}-${city.lng}`}
-            city={{ ...city, country: city.country || undefined }}
-            now={now}
-            width={width}
-            height={mapHeight}
-          />
-        ))}
-        <UserCityDot city={userCity} now={now} width={width} height={mapHeight} />
+        <View style={[styles.mapLayer, styles.mapLayerDots, { zIndex: 4 }]} pointerEvents="box-none">
+          {aggregate.cities.map((city) => (
+            <CityDot
+              key={`${city.city}-${city.lat}-${city.lng}`}
+              city={{ ...city, country: city.country || undefined }}
+              now={now}
+              width={width}
+              height={mapHeight}
+            />
+          ))}
+          {aggregate.userLogPin ? (
+            <UserCityDot
+              city={aggregate.userLogPin}
+              now={now}
+              width={width}
+              height={mapHeight}
+            />
+          ) : null}
+        </View>
 
         <LinearGradient
           colors={['rgba(8,20,37,0.42)', 'rgba(8,20,37,0)']}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
-          style={styles.vignetteTop}
+          style={[styles.vignetteTop, { zIndex: 5 }]}
           pointerEvents="none"
         />
         <LinearGradient
           colors={['rgba(8,20,37,0)', 'rgba(8,20,37,0.38)']}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
-          style={styles.vignetteBottom}
+          style={[styles.vignetteBottom, { zIndex: 5 }]}
           pointerEvents="none"
         />
 
-        <View style={styles.mapLegend} pointerEvents="none">
+        <View style={[styles.mapLayer, styles.mapLegend, { zIndex: 6 }]} pointerEvents="none">
           <MapLegend />
         </View>
       </View>
@@ -198,12 +218,6 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     opacity: 0.6,
     lineHeight: 22,
   },
-  mapOcean: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    backgroundColor: MAP_OCEAN_COLOR,
-  },
   mapContainer: {
     width: '100%',
     backgroundColor: MAP_OCEAN_COLOR,
@@ -213,10 +227,20 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     elevation: 0,
     shadowOpacity: 0,
   },
+  mapLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  mapLayerOcean: {
+    backgroundColor: MAP_OCEAN_COLOR,
+  },
+  mapLayerAtmosphere: {},
+  mapLayerFrontier: {},
+  mapLayerDots: {},
   mapLegend: {
-    position: 'absolute',
-    bottom: 12,
-    left: 14,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-start',
+    paddingBottom: 12,
+    paddingLeft: 14,
   },
   vignetteTop: {
     position: 'absolute',

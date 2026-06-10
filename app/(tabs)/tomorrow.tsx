@@ -20,6 +20,8 @@ import SunVantageHeader from '@/components/SunVantageHeader';
 import StreakBlock from '@/components/StreakBlock';
 import DawnInvitationSection from '@/components/DawnInvitationSection';
 import { useMorningContext } from '@/hooks/useMorningContext';
+import { useActiveSunriseCity } from '@/hooks/useActiveSunriseCity';
+import { AWAY_FROM_HOME_COPY } from '@/lib/activeSunriseCity';
 import { useDawn } from '@/hooks/use-dawn';
 import { useAppTheme } from '@/context/AppThemeContext';
 import posthog from '@/lib/posthog';
@@ -116,8 +118,20 @@ export default function TomorrowPlanScreen() {
   const [showReminderUpdated, setShowReminderUpdated] = useState(false);
   const lastNextSunriseIntentKeyRef = useRef<string | null>(null);
 
-  const { sunriseToday, sunriseTomorrow, minutesToSunrise, isDawnMode, tomorrowWeather } = useMorningContext(profileCity);
-  const cityName = profileCity;
+  const { minutesToSunrise: habitualMinutesToSunrise, refresh: refreshHabitualMorning } =
+    useMorningContext(profileCity);
+  const { sunriseCity, isAwayFromHome } = useActiveSunriseCity(profileCity, {
+    minutesToSunrise: habitualMinutesToSunrise,
+  });
+  const {
+    sunriseToday,
+    sunriseTomorrow,
+    minutesToSunrise,
+    isDawnMode,
+    tomorrowWeather,
+    refresh: refreshMorningContext,
+  } = useMorningContext(sunriseCity);
+  const cityName = sunriseCity;
 
   const isTodayMode = minutesToSunrise != null && minutesToSunrise > 0;
   const sunriseDisplay = isTodayMode ? sunriseToday : sunriseTomorrow;
@@ -264,7 +278,9 @@ export default function TomorrowPlanScreen() {
   useFocusEffect(
     useCallback(() => {
       loadProfileCity();
-    }, [loadProfileCity])
+      void refreshHabitualMorning();
+      void refreshMorningContext();
+    }, [loadProfileCity, refreshHabitualMorning, refreshMorningContext])
   );
 
   useEffect(() => {
@@ -311,7 +327,13 @@ export default function TomorrowPlanScreen() {
       <View style={styles.header}>
         <SunVantageHeader
           title={isTodayMode ? 'Today morning' : 'Plan Tomorrow'}
-          subtitle={isTodayMode ? 'Dawn is approaching.' : 'The sun will rise again.'}
+          subtitle={
+            isAwayFromHome
+              ? AWAY_FROM_HOME_COPY.tomorrowAmbient
+              : isTodayMode
+                ? 'Dawn is approaching.'
+                : 'The sun will rise again.'
+          }
           hideMenu
           showBranding
           wrapperMarginBottom={0}
@@ -351,6 +373,9 @@ export default function TomorrowPlanScreen() {
             <Text style={styles.sunriseContextCardTime}>
               {cityName || 'Your city'} • {formatSunriseTime(sunriseDisplay)}
             </Text>
+            {isAwayFromHome ? (
+              <Text style={styles.sunriseContextCardAway}>{AWAY_FROM_HOME_COPY.sunriseCardContext}</Text>
+            ) : null}
             <Text style={styles.sunriseContextCardWeather}>{weatherLineShort}</Text>
           </View>
 
@@ -467,6 +492,17 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     fontSize: 17,
     fontWeight: '600',
     color: Dawn.text.primary,
+  },
+  sunriseContextCardAway: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '600',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    color: Dawn.text.secondary,
+    textAlign: 'center',
+    opacity: 0.72,
+    marginBottom: 4,
   },
   sunriseContextCardTime: {
     fontSize: 15,

@@ -11,6 +11,7 @@ import {
   getCachedActiveSunriseCityForToday,
   isInMorningRelevanceWindow,
   isMeaningfulDisplacement,
+  isAwayFromHomeCity,
   normalizeCityName,
   writeActiveSunriseCityCache,
   clearActiveSunriseCityCache,
@@ -156,9 +157,7 @@ export function useActiveSunriseCity(
 
   const sunriseCity = loggedTodayCity || activeSunriseCity || habitualCity;
 
-  const isAwayFromHome = Boolean(
-    habitualCity && sunriseCity && normalizeCityName(sunriseCity) !== normalizeCityName(habitualCity)
-  );
+  const isAwayFromHome = isAwayFromHomeCity(habitualCity, sunriseCity);
 
   return {
     habitualCity,

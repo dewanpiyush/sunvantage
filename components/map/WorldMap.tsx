@@ -3,16 +3,14 @@
  * Fills the given width/height; uses Mercator projection.
  */
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { View, useWindowDimensions, StyleSheet } from 'react-native';
 import Svg, { Path, G } from 'react-native-svg';
 import { getMapProjection, getGeoPath } from '@/lib/mapProjection';
+import { buildWorldLandPaths } from '@/lib/worldMapLand';
 
 export const MAP_OCEAN_COLOR = '#081425';
 export const MAP_LAND_COLOR = '#556B8E';
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type TopoLand = any;
 
 type Props = {
   width?: number;
@@ -29,55 +27,30 @@ export default function WorldMap({
   const { width: winWidth, height: winHeight } = useWindowDimensions();
   const width = propWidth ?? winWidth;
   const height = propHeight ?? winHeight;
-  const [landPaths, setLandPaths] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  const pathGen = useMemo(() => {
-    const projection = getMapProjection(width, height);
-    return getGeoPath(projection);
+  const landPaths = useMemo(() => {
+    try {
+      const pathGen = getGeoPath(getMapProjection(width, height));
+      return buildWorldLandPaths(pathGen);
+    } catch (e) {
+      if (__DEV__) {
+        console.warn('[WorldMap] failed to build land paths', e);
+      }
+      return [];
+    }
   }, [width, height]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const containerStyle = [
+    landOnly ? styles.landLayer : styles.fullLayer,
+    { width, height, backgroundColor: landOnly ? 'transparent' : MAP_OCEAN_COLOR },
+  ];
 
-    (async () => {
-      try {
-        const topo = require('world-atlas/land-110m.json') as TopoLand;
-        if (cancelled) return;
-
-        const topojson = await import('topojson-client');
-        const land = (
-          topojson as {
-            feature: (t: unknown, o: unknown) => { features?: Array<{ type: string; geometry: unknown }> };
-          }
-        ).feature(topo, topo.objects.land);
-        const features = land.features ?? [];
-        const paths: string[] = [];
-        for (const f of features) {
-          const p = pathGen(f as import('d3-geo').GeoPermissibleObjects);
-          if (p) paths.push(p);
-        }
-        if (!cancelled) setLandPaths(paths);
-      } catch {
-        if (!cancelled) setLandPaths([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [pathGen]);
-
-  const containerStyle = { backgroundColor: landOnly ? 'transparent' : MAP_OCEAN_COLOR };
-
-  if (landPaths.length === 0 && !loading) {
-    return <View style={[containerStyle, { width, height }]} />;
+  if (landPaths.length === 0) {
+    return <View style={containerStyle} />;
   }
 
   return (
-    <View style={[containerStyle, { width, height }]}>
+    <View style={containerStyle} pointerEvents="none">
       <Svg width={width} height={height} style={StyleSheet.absoluteFill} stroke="none">
         <G stroke="none">
           {landPaths.map((d, i) => (
@@ -88,3 +61,12 @@ export default function WorldMap({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  fullLayer: {},
+  landLayer: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+  },
+});

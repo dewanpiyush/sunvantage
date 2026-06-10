@@ -17,6 +17,7 @@ import RitualRevealCard from '@/components/RitualRevealCard';
 import RitualIntroCarousel from '@/components/RitualIntroCarousel';
 import { useMorningContext } from '@/hooks/useMorningContext';
 import { useActiveSunriseCity } from '@/hooks/useActiveSunriseCity';
+import { AWAY_FROM_HOME_COPY, isAwayFromHomeCity } from '@/lib/activeSunriseCity';
 import { createdAtToLocalDateString } from '@/lib/streakStats';
 import { computeBadgeStats, getEarnedBadges, computeEarnedAtByBadge, BADGE_ICONS, type BadgeDef } from '@/app/ritual-markers';
 import { dismissBadgeReveal, markRevealLastSeen, selectHomeRevealBadge } from '@/lib/ritualReveal';
@@ -31,6 +32,11 @@ import SunriseStateCard from '@/components/SunriseStateCard';
 import { computeStreakFromLogDates, getTodayLocalDateString, syncProfileStreakColumns } from '@/lib/streakStats';
 import { TAB_BAR_CLEARANCE } from '@/constants/layout';
 import { ROUTES } from '@/lib/routes';
+import {
+  formatHuntCountdown,
+  getVantageHuntHomeCardCopy,
+  isInVantageHuntWindow,
+} from '@/lib/vantageHunt';
 import {
   getSunriseCardAtmosphere,
   getSunriseCardSurfaceStyle,
@@ -268,7 +274,7 @@ export default function HomeScreen() {
     return null;
   }, [loggedToday, logs]);
 
-  const { sunriseCity } = useActiveSunriseCity(habitualCity, {
+  const { sunriseCity, isAwayFromHome, habitualCity: homeCity } = useActiveSunriseCity(habitualCity, {
     minutesToSunrise: habitualMinutesToSunrise,
     loggedTodayCity,
   });
@@ -434,6 +440,25 @@ export default function HomeScreen() {
     totalSunrises === 0 && hasOpenedBefore && sunrisePhase === 'post';
   const tomorrowSunriseLine = getTomorrowSunriseLine(cityName, sunriseTomorrow);
 
+  const loggedAwayFromHome = React.useMemo(
+    () =>
+      Boolean(
+        loggedToday &&
+          homeCity &&
+          loggedTodayCity &&
+          isAwayFromHomeCity(homeCity, loggedTodayCity)
+      ),
+    [loggedToday, homeCity, loggedTodayCity]
+  );
+
+  const displayDawnCard = React.useMemo(
+    () =>
+      loggedAwayFromHome
+        ? { ...dawnCard, completion: AWAY_FROM_HOME_COPY.postLogCompletion }
+        : dawnCard,
+    [dawnCard, loggedAwayFromHome]
+  );
+
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -541,6 +566,23 @@ export default function HomeScreen() {
     router.push('/witness');
   };
 
+  const isReturningForHunt = totalSunrises > 1;
+  const showVantageHuntEntry =
+    isReturningForHunt && !loggedToday && isInVantageHuntWindow(effectiveMinutesToSunrise);
+  const vantageHuntCardCopy = React.useMemo(
+    () =>
+      getVantageHuntHomeCardCopy(
+        sunrisePhase,
+        formatSunriseTime(sunriseToday, sunriseSource),
+        cityName
+      ),
+    [sunrisePhase, sunriseToday, sunriseSource, cityName]
+  );
+  const vantageHuntCountdown = React.useMemo(
+    () => formatHuntCountdown(effectiveMinutesToSunrise),
+    [effectiveMinutesToSunrise]
+  );
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -632,6 +674,10 @@ export default function HomeScreen() {
               <Text style={[styles.anchorLine1, sunrisePhase === 'live' && styles.anchorLine1Live]}>
                 {!loggedToday && sunrisePhase === 'live'
                   ? (firstName ? `${firstName}, you are here.` : 'You are here.')
+                  : !loggedToday && isDawnMode && isAwayFromHome
+                  ? (firstName
+                      ? `${firstName}, ${AWAY_FROM_HOME_COPY.todayDawnAnchor}`
+                      : AWAY_FROM_HOME_COPY.todayDawnAnchor)
                   : !loggedToday && isDawnMode
                   ? (firstName ? `${firstName}, you are up at dawn.` : 'You are up at dawn.')
                   : loggedToday
@@ -666,11 +712,12 @@ export default function HomeScreen() {
         {/* Sunrise card — when not logged yet; after logging, “today” moves below Plan (settled state) */}
         {!loggedToday ? (
           <SunriseStateCard
-            dawnCard={dawnCard}
+            dawnCard={displayDawnCard}
             hasLoggedToday={false}
             city={cityName}
             time={formatSunriseTime(sunriseToday, sunriseSource)}
             relativeTimeLabel={preSunriseRelativeLabel}
+            statusLabel={isAwayFromHome ? AWAY_FROM_HOME_COPY.sunriseCardContext : null}
             atmosphere={cardAtmosphere}
             tone={cardAtmosphere === 'live' || cardAtmosphere === 'morning' ? 'context' : 'default'}
             style={cardSurfaceStyle}
@@ -686,10 +733,11 @@ export default function HomeScreen() {
           <>
             <View style={[styles.cardsBlock, styles.cardsBlockStacked]}>
               <SunriseStateCard
-                dawnCard={dawnCard}
+                dawnCard={displayDawnCard}
                 hasLoggedToday={true}
                 city={cityName}
                 time={formatSunriseTime(sunriseToday, sunriseSource)}
+                statusLabel={isAwayFromHome ? AWAY_FROM_HOME_COPY.sunriseCardContext : null}
                 atmosphere={cardAtmosphere}
                 tone={cardAtmosphere === 'live' || cardAtmosphere === 'morning' ? 'context' : 'default'}
                 style={[cardSurfaceStyle, styles.sunriseCardInStack]}
@@ -938,6 +986,47 @@ export default function HomeScreen() {
                 </Pressable>
               </View>
 
+              {showVantageHuntEntry ? (
+                <>
+                  <View style={styles.orDivider}>
+                    <View style={styles.orDividerLine} />
+                    <Text style={styles.orDividerText}>OR</Text>
+                    <View style={styles.orDividerLine} />
+                  </View>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.modeCard,
+                      sunrisePhase === 'pre' && styles.modeCardPreSecondary,
+                      sunrisePhase === 'live' && styles.modeCardAfterSunriseLive,
+                      sunrisePhase === 'post' && styles.modeCardAfterSunrisePost,
+                      pressed && styles.modeCardPressed,
+                    ]}
+                    onPress={() => router.push(ROUTES.vantageHunt)}
+                    accessibilityRole="button"
+                    accessibilityLabel={vantageHuntCardCopy.cta}
+                  >
+                    <Text style={[styles.modeCardTitle, styles.modeCardTitleSecondary]}>
+                      {vantageHuntCardCopy.title}
+                    </Text>
+                    <Text style={styles.modeCardDesc}>{vantageHuntCardCopy.body}</Text>
+                    {vantageHuntCardCopy.bodySecondary ? (
+                      <Text style={styles.modeCardDesc}>{vantageHuntCardCopy.bodySecondary}</Text>
+                    ) : null}
+                    {vantageHuntCardCopy.meta ? (
+                      <Text style={styles.modeCardDesc}>{vantageHuntCardCopy.meta}</Text>
+                    ) : null}
+                    {vantageHuntCardCopy.showCountdown && vantageHuntCountdown !== '—' ? (
+                      <Text style={styles.modeCardDesc}>{vantageHuntCountdown}</Text>
+                    ) : null}
+                    <View style={styles.modeCardButton}>
+                      <Text style={styles.modeCardButtonText}>{vantageHuntCardCopy.cta}</Text>
+                    </View>
+                    {vantageHuntCardCopy.footer ? (
+                      <Text style={styles.vantageHuntFooter}>{vantageHuntCardCopy.footer}</Text>
+                    ) : null}
+                  </Pressable>
+                </>
+              ) : null}
             </View>
           </>
         )}
@@ -1296,6 +1385,14 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
   },
   modeCardPressed: {
     opacity: 0.92,
+  },
+  vantageHuntFooter: {
+    marginTop: 12,
+    fontSize: 12,
+    lineHeight: 17,
+    color: Dawn.text.secondary,
+    opacity: 0.72,
+    textAlign: 'center',
   },
   modeCardTitle: {
     fontSize: 18,

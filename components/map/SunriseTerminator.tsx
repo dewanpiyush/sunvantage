@@ -16,7 +16,7 @@ import {
 import { getMapProjection, getGeoPath } from '@/lib/mapProjection';
 
 const FRONTIER_STROKE = '#C8DCF4';
-const NIGHT_HEMISPHERE_FILL = 'rgba(3, 8, 18, 0.55)';
+const NIGHT_HEMISPHERE_FILL = 'rgba(3, 8, 18, 0.42)';
 
 const OUTER_GLOW_WIDTH = 9;
 const OUTER_GLOW_OPACITY = 0.09;
@@ -93,8 +93,8 @@ export function SunriseAtmosphere({ date, width: propWidth, height: propHeight }
             <Stop offset="0.50" stopColor="rgba(92, 150, 210, 0)" />
             <Stop offset="0.58" stopColor="rgba(110, 145, 185, 0.035)" />
             <Stop offset="0.72" stopColor="rgba(165, 185, 210, 0.055)" />
-            <Stop offset="0.86" stopColor="rgba(200, 195, 180, 0.075)" />
-            <Stop offset="1" stopColor="rgba(190, 185, 175, 0.09)" />
+            <Stop offset="0.86" stopColor="rgba(200, 195, 180, 0.05)" />
+            <Stop offset="1" stopColor="rgba(190, 185, 175, 0.06)" />
           </LinearGradient>
           <LinearGradient id="edgeFadeTop" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor={`rgba(${OCEAN_RGB}, 0.72)`} />
