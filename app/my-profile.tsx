@@ -52,7 +52,7 @@ function isHomeLikePlace(place: string): boolean {
 }
 
 /** Contextual copy under the primary streak stat (profile streak card). */
-function getStreakContextMessage(current: number, longest: number): string {
+function getStreakContextMessage(current: number, longest: number, totalMornings: number): string {
   if (current === 0 && longest === 0) {
     return 'Your first sunrise on SunVantage awaits.';
   }
@@ -60,7 +60,7 @@ function getStreakContextMessage(current: number, longest: number): string {
     return 'Begin again.';
   }
   if (current === 1 && longest === 1) {
-    return 'It begins.';
+    return totalMornings > 1 ? 'It begins again.' : 'It begins.';
   }
   if (current === 1 && longest > 1) {
     return 'You are back.';
@@ -516,7 +516,7 @@ export default function MyProfileScreen() {
                   : `🔥 ${streak.current} day${streak.current === 1 ? '' : 's'} streak`}
               </Text>
               <Text style={[styles.cardPrimary, styles.streakPrimaryLine]}>
-                {getStreakContextMessage(streak.current, streak.longest)}
+                {getStreakContextMessage(streak.current, streak.longest, totalMornings)}
               </Text>
               {totalMornings > 0 ? (
                 <Text style={[styles.cardMeta, styles.streakMetaLine]}>

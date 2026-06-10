@@ -1,13 +1,37 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import NavHubScreen from '@/components/NavHubScreen';
 import { ROUTES } from '@/lib/routes';
 import { useRouter } from 'expo-router';
 import supabase from '@/supabase';
+import { useMorningContext } from '@/hooks/useMorningContext';
 
 export default function YouHubScreen() {
   const router = useRouter();
+  const [city, setCity] = useState<string | null>(null);
+  const { sunriseTomorrow } = useMorningContext(city);
 
-  const handleSignOut = React.useCallback(async () => {
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      if (!userId || cancelled) return;
+      const { data } = await supabase.from('profiles').select('city').eq('user_id', userId).maybeSingle();
+      if (cancelled) return;
+      const profileCity =
+        data && typeof (data as { city?: string }).city === 'string'
+          ? (data as { city: string }).city.trim() || null
+          : null;
+      setCity(profileCity);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleSignOut = useCallback(async () => {
     await supabase.auth.signOut();
     router.replace('/auth' as never);
   }, [router]);
@@ -36,6 +60,9 @@ export default function YouHubScreen() {
         },
       ]}
       showAppearanceToggle
+      showDawnInvitation
+      dawnInvitationCity={city}
+      dawnInvitationSunriseTomorrow={sunriseTomorrow}
       signOutLabel="Sign out"
       onSignOut={handleSignOut}
     />

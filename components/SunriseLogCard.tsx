@@ -27,6 +27,8 @@ import supabase from '../supabase';
 import { clearTomorrowPlan } from '../lib/clearTomorrowPlan';
 import { formatSunriseTime } from '../lib/formatSunriseTime';
 import { getCurrentPosition, reverseGeocodeToPlaceName } from '../lib/location';
+import { normalizeCityName } from '@/lib/activeSunriseCity';
+import { recordSunriseCityMemory } from '@/lib/sunriseCitiesMemory';
 import { REFLECTION_PROMPT, getNextReflectionPrompt, setLastUsedReflectionPrompt } from '../lib/reflectionPrompts';
 import { normalizeVantageForStorage } from '../lib/vantageUtils';
 import { useDawn } from '@/hooks/use-dawn';
@@ -546,18 +548,23 @@ export default function SunriseLogCard({
         .eq('user_id', userId)
         .maybeSingle();
       const profile = profileRes.data as { city?: string | null; latitude?: number | null; longitude?: number | null } | null;
-      const resolvedCity = (profile?.city?.trim() || (city && city.trim()) || '');
+      const homeCity = profile?.city?.trim() ?? '';
+      const resolvedCity = (city && city.trim()) || homeCity || '';
+      const useHomeCoords =
+        homeCity &&
+        resolvedCity &&
+        normalizeCityName(resolvedCity) === normalizeCityName(homeCity);
       let lat =
         overrideCoords?.latitude ??
-        (typeof profile?.latitude === 'number' ? profile?.latitude : null);
+        (useHomeCoords && typeof profile?.latitude === 'number' ? profile?.latitude : null);
       let lng =
         overrideCoords?.longitude ??
-        (typeof profile?.longitude === 'number' ? profile?.longitude : null);
+        (useHomeCoords && typeof profile?.longitude === 'number' ? profile?.longitude : null);
       if (
         resolvedCity &&
         (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng))
       ) {
-        const geo = await getCoordinatesForCity(resolvedCity, { userId, supabase });
+        const geo = await getCoordinatesForCity(resolvedCity);
         lat = geo?.latitude ?? null;
         lng = geo?.longitude ?? null;
       }
@@ -705,6 +712,10 @@ export default function SunriseLogCard({
               }
               onModerationComplete?.();
             });
+          }
+
+          if (resolvedCity) {
+            void recordSunriseCityMemory(supabase, userId, resolvedCity);
           }
 
           await clearTomorrowPlan();

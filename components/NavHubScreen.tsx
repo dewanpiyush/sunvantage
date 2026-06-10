@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import SunVantageHeader from '@/components/SunVantageHeader';
 import AppearanceModeToggle from '@/components/AppearanceModeToggle';
+import DawnInvitationSection from '@/components/DawnInvitationSection';
 import { useAppTheme } from '@/context/AppThemeContext';
 import { useDawn } from '@/hooks/use-dawn';
 import { TAB_BAR_CLEARANCE } from '@/constants/layout';
@@ -22,6 +23,10 @@ type Props = {
   secondaryItems?: NavHubItem[];
   /** Morning Light / Night Calm toggle below main items (You tab). */
   showAppearanceToggle?: boolean;
+  /** Compact Dawn Invitation below atmosphere (You tab). */
+  showDawnInvitation?: boolean;
+  dawnInvitationCity?: string | null;
+  dawnInvitationSunriseTomorrow?: string | null;
   signOutLabel?: string;
   onSignOut?: () => void;
 };
@@ -32,6 +37,9 @@ export default function NavHubScreen({
   items,
   secondaryItems = [],
   showAppearanceToggle = false,
+  showDawnInvitation = false,
+  dawnInvitationCity = null,
+  dawnInvitationSunriseTomorrow = null,
   signOutLabel,
   onSignOut,
 }: Props) {
@@ -40,7 +48,16 @@ export default function NavHubScreen({
   const { mode } = useAppTheme();
   const isMorningLight = mode === 'morning-light';
   const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
-  const showUtilityFooter = showAppearanceToggle || secondaryItems.length > 0 || (signOutLabel && onSignOut);
+  const showUtilityFooter =
+    showAppearanceToggle ||
+    showDawnInvitation ||
+    secondaryItems.length > 0 ||
+    (signOutLabel && onSignOut);
+  const showUtilityBlock =
+    showAppearanceToggle || showDawnInvitation || secondaryItems.length > 0;
+  const showPreSignOutDivider =
+    (showAppearanceToggle || showDawnInvitation || secondaryItems.length > 0) &&
+    Boolean(signOutLabel && onSignOut);
 
   return (
     <View style={styles.container}>
@@ -82,11 +99,21 @@ export default function NavHubScreen({
 
         {showUtilityFooter ? (
           <View style={styles.utilityFooter}>
-            {showAppearanceToggle || secondaryItems.length > 0 ? (
+            {showUtilityBlock ? <View style={styles.hubSectionDivider} /> : null}
+
+            {showAppearanceToggle ? <AppearanceModeToggle layout="hub" /> : null}
+
+            {showAppearanceToggle && showDawnInvitation ? (
               <View style={styles.hubSectionDivider} />
             ) : null}
 
-            {showAppearanceToggle ? <AppearanceModeToggle /> : null}
+            {showDawnInvitation ? (
+              <DawnInvitationSection
+                city={dawnInvitationCity}
+                sunriseTomorrow={dawnInvitationSunriseTomorrow}
+                variant="compact"
+              />
+            ) : null}
 
             {secondaryItems.map((item) => (
               <Pressable
@@ -105,9 +132,7 @@ export default function NavHubScreen({
 
             {signOutLabel && onSignOut ? (
               <>
-                {showAppearanceToggle || secondaryItems.length > 0 ? (
-                  <View style={styles.utilityDivider} />
-                ) : null}
+                {showPreSignOutDivider ? <View style={styles.utilityDivider} /> : null}
                 <Pressable
                   style={({ pressed }) => [styles.signOutWrap, pressed && styles.signOutPressed]}
                   onPress={onSignOut}
@@ -186,18 +211,21 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
       marginLeft: 8,
     },
     utilityFooter: {
-      marginTop: 14,
-      gap: 10,
+      marginTop: 16,
+      gap: 20,
+      alignSelf: 'stretch',
     },
     hubSectionDivider: {
       height: StyleSheet.hairlineWidth,
       backgroundColor: 'rgba(255, 220, 180, 0.14)',
-      marginBottom: 2,
+      alignSelf: 'stretch',
     },
     utilityDivider: {
       height: StyleSheet.hairlineWidth,
       backgroundColor: 'rgba(255, 220, 180, 0.12)',
-      marginVertical: 2,
+      marginTop: 6,
+      marginBottom: 8,
+      alignSelf: 'stretch',
     },
     secondaryCard: {
       flexDirection: 'row',
@@ -228,9 +256,11 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
       opacity: 0.78,
     },
     signOutWrap: {
-      paddingVertical: 10,
+      paddingTop: 16,
+      paddingBottom: 10,
       alignItems: 'center',
       justifyContent: 'center',
+      alignSelf: 'stretch',
     },
     signOutPressed: {
       opacity: 0.78,

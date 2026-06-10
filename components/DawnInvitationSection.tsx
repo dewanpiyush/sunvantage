@@ -27,6 +27,7 @@ import DawnInvitationNudgeCard from './DawnInvitationNudgeCard';
 export type DawnInvitationSectionProps = {
   city: string | null | undefined;
   sunriseTomorrow: string | null;
+  variant?: 'default' | 'compact';
 };
 
 function getShareMessage(city: string | null | undefined, sunriseTomorrow: string | null) {
@@ -57,7 +58,9 @@ function getShareMessage(city: string | null | undefined, sunriseTomorrow: strin
 export default function DawnInvitationSection({
   city,
   sunriseTomorrow,
+  variant = 'default',
 }: DawnInvitationSectionProps) {
+  const isCompact = variant === 'compact';
   const [showCardModal, setShowCardModal] = useState(false);
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(10);
@@ -65,9 +68,10 @@ export default function DawnInvitationSection({
   const cardOpacity = useSharedValue(0);
 
   useEffect(() => {
+    if (isCompact) return;
     opacity.value = withTiming(1, { duration: 300 });
     translateY.value = withTiming(0, { duration: 300 });
-  }, [opacity, translateY]);
+  }, [isCompact, opacity, translateY]);
 
   useEffect(() => {
     if (showCardModal) {
@@ -108,9 +112,12 @@ export default function DawnInvitationSection({
   const formattedTime = formatSunriseTime(sunriseTomorrow);
   const displayCity = city?.trim() || 'Your city';
 
+  const Shell = isCompact ? View : Animated.View;
+  const shellProps = isCompact ? { style: styles.wrap } : { style: [styles.wrap, animatedStyle] };
+
   return (
-    <Animated.View style={[styles.wrap, animatedStyle]}>
-      <DawnInvitationNudgeCard onPress={openCard} />
+    <Shell {...shellProps}>
+      <DawnInvitationNudgeCard onPress={openCard} variant={variant} />
 
       <Modal
         visible={showCardModal}
@@ -133,7 +140,7 @@ export default function DawnInvitationSection({
           </Pressable>
         </Pressable>
       </Modal>
-    </Animated.View>
+    </Shell>
   );
 }
 

@@ -19,6 +19,7 @@ import SharedDawnPreview from '../components/SharedDawnPreview';
 import DawnInvitationSection from '../components/DawnInvitationSection';
 import SunriseStateCard from '@/components/SunriseStateCard';
 import { useMorningContext } from '../hooks/useMorningContext';
+import { useActiveSunriseCity } from '@/hooks/useActiveSunriseCity';
 import { useSunriseLogOpen } from '@/hooks/useSunriseLogOpen';
 import MorningUnfoldingPause from '@/components/MorningUnfoldingPause';
 import RitualTabBarOverlay from '@/components/RitualTabBarOverlay';
@@ -40,6 +41,7 @@ type TodayLogDetails = {
   reflection_text: string | null;
   photo_url: string | null;
   moderation_status?: string | null;
+  city?: string | null;
 };
 
 const PHOTO_BUCKET = 'sunrise_photos';
@@ -116,13 +118,23 @@ export default function VantageWalkScreen() {
   const savedFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastLoadedDateRef = useRef<string | null>(null);
 
+  const { minutesToSunrise: habitualMinutesToSunrise, refresh: refreshHabitualMorning } =
+    useMorningContext(profileCity ?? null);
+
+  const loggedToday = hasLoggedToday(logs);
+
+  const { sunriseCity } = useActiveSunriseCity(profileCity, {
+    minutesToSunrise: habitualMinutesToSunrise,
+    loggedTodayCity: loggedToday ? todayLog?.city?.trim() || null : null,
+  });
+
   const {
     sunriseToday,
     sunriseTomorrow,
     sunrisePassed,
     minutesToSunrise,
     refresh: refreshMorningContext,
-  } = useMorningContext(profileCity ?? null);
+  } = useMorningContext(sunriseCity);
   const {
     showLogCard,
     showUnfoldingPause,
@@ -131,7 +143,6 @@ export default function VantageWalkScreen() {
     dismissUnfoldingPause,
     onLogBlockedEarly,
   } = useSunriseLogOpen(minutesToSunrise);
-  const loggedToday = hasLoggedToday(logs);
   const isPostSunriseRetrospective = sunrisePassed === true && !loggedToday;
 
   useEffect(() => {
@@ -388,7 +399,7 @@ export default function VantageWalkScreen() {
           <SunriseStateCard
             dawnCard={dawnCard}
             hasLoggedToday={loggedToday}
-            city={profileCity}
+            city={sunriseCity}
             time={formatSunriseTime(sunriseToday)}
             style={loggedToday ? styles.sunriseToMemoryGap : undefined}
           />
@@ -510,15 +521,15 @@ export default function VantageWalkScreen() {
         )}
 
         {!loggedToday ? (
-          <SharedDawnPreview city={profileCity} currentUserId={currentUserId} />
+          <SharedDawnPreview city={sunriseCity} currentUserId={currentUserId} />
         ) : (
           <>
             <DawnInvitationSection
-              city={profileCity}
+              city={sunriseCity}
               sunriseTomorrow={sunriseTomorrow}
             />
             <SharedDawnPreview
-              city={profileCity}
+              city={sunriseCity}
               currentUserId={currentUserId}
               showEmptyState={false}
             />
@@ -534,7 +545,7 @@ export default function VantageWalkScreen() {
         onBlockedBeforeWindow={onLogBlockedEarly}
         onSaved={handleLogCardSaved}
         onPlanForTomorrow={() => router.push('/(tabs)/tomorrow' as never)}
-        city={profileCity}
+        city={sunriseCity}
         sunriseTime={sunriseToday}
         initialVantageName={null}
         source="explorer"

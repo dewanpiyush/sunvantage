@@ -16,6 +16,8 @@ import StreakBlock from '@/components/StreakBlock';
 import RitualRevealCard from '@/components/RitualRevealCard';
 import RitualIntroCarousel from '@/components/RitualIntroCarousel';
 import { useMorningContext } from '@/hooks/useMorningContext';
+import { useActiveSunriseCity } from '@/hooks/useActiveSunriseCity';
+import { createdAtToLocalDateString } from '@/lib/streakStats';
 import { computeBadgeStats, getEarnedBadges, computeEarnedAtByBadge, BADGE_ICONS, type BadgeDef } from '@/app/ritual-markers';
 import { dismissBadgeReveal, markRevealLastSeen, selectHomeRevealBadge } from '@/lib/ritualReveal';
 import { useDawn } from '@/hooks/use-dawn';
@@ -248,6 +250,29 @@ export default function HomeScreen() {
   }>({ exists: false, place: null, alarmSet: false, alarmTime: null });
   const lastLoadedDateRef = useRef<string | null>(null);
 
+  const habitualCity = profile?.city ?? null;
+
+  const { minutesToSunrise: habitualMinutesToSunrise, refresh: refreshHabitualMorning } =
+    useMorningContext(habitualCity);
+
+  const loggedToday = hasLoggedToday(logs);
+  const loggedTodayCity = React.useMemo(() => {
+    if (!loggedToday) return null;
+    const today = getTodayLocalDateString();
+    for (let i = logs.length - 1; i >= 0; i--) {
+      const row = logs[i];
+      const day =
+        row.sunrise_day?.trim() || createdAtToLocalDateString(row.created_at);
+      if (day === today && row.city?.trim()) return row.city.trim();
+    }
+    return null;
+  }, [loggedToday, logs]);
+
+  const { sunriseCity } = useActiveSunriseCity(habitualCity, {
+    minutesToSunrise: habitualMinutesToSunrise,
+    loggedTodayCity,
+  });
+
   const {
     minutesToSunrise,
     sunriseToday,
@@ -256,7 +281,7 @@ export default function HomeScreen() {
     cityTimezone,
     isDawnMode,
     refresh: refreshMorningContext,
-  } = useMorningContext(profile?.city ?? null);
+  } = useMorningContext(sunriseCity);
   const cityHour = React.useMemo(() => getHourInTimeZone(cityTimezone), [cityTimezone]);
   const [minuteTick, setMinuteTick] = useState(0);
 
@@ -374,14 +399,13 @@ export default function HomeScreen() {
     }
   }, [router]);
 
-  const loggedToday = hasLoggedToday(logs);
   const [dawnCard, setDawnCard] = useState<DawnCard>({
     verb: 'WITNESS',
     text: 'The sun does not carry yesterday.\nNeither do you have to.',
     completion: 'You were here.',
   });
   const firstName = profile?.first_name ?? null;
-  const cityName = profile?.city ?? null;
+  const cityName = sunriseCity;
   const totalSunrises = logs.length;
   const myMorningCount = totalSunrises;
   /** Self → future → discovery: prefer archive when user has more than one log (see STEP 2 note in PR). */
@@ -463,10 +487,38 @@ export default function HomeScreen() {
       const firstOpenOfDay = lastLoadedDateRef.current !== todayKey;
       void loadData({ silent: !firstOpenOfDay });
       void refreshMorningContext();
+      void refreshHabitualMorning();
       loadTomorrowPlan();
       runPendingModerationRecoveryDebounced(supabase);
-    }, [loadData, loadTomorrowPlan, refreshMorningContext])
+    }, [loadData, loadTomorrowPlan, refreshMorningContext, refreshHabitualMorning])
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    const cityForCommunity = sunriseCity?.trim();
+    if (!cityForCommunity) {
+      setCitySunrisesCount(0);
+      return;
+    }
+    void (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      if (!userId || cancelled) return;
+      const { count } = await supabase
+        .from('sunrise_logs')
+        .select('*', { count: 'exact', head: true })
+        .eq('city', cityForCommunity)
+        .neq('user_id', userId)
+        .not('photo_url', 'is', null)
+        .eq('moderation_status', 'approved');
+      if (!cancelled) setCitySunrisesCount(count ?? 0);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sunriseCity]);
 
   useEffect(() => {
     const key = 'sunvantage_has_opened_before';

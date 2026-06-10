@@ -7,8 +7,9 @@ import { View, Text, StyleSheet, useWindowDimensions, Animated, Easing } from 'r
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SunVantageHeader from '@/components/SunVantageHeader';
-import WorldMap from '@/components/map/WorldMap';
-import SunriseTerminator from '@/components/map/SunriseTerminator';
+import WorldMap, { MAP_OCEAN_COLOR } from '@/components/map/WorldMap';
+import MapLegend from '@/components/map/MapLegend';
+import { SunriseAtmosphere, SunriseFrontier } from '@/components/map/SunriseTerminator';
 import CityDot from '@/components/map/CityDot';
 import UserCityDot from '@/components/map/UserCityDot';
 import GlobalSunriseStats from '@/components/GlobalSunriseStats';
@@ -133,9 +134,13 @@ export default function GlobalSunriseMapScreen() {
       </View>
 
       <View style={[styles.mapContainer, { width, height: mapHeight, marginTop: HEADER_MAP_GAP }]}>
-        <WorldMap width={width} height={mapHeight} />
+        <View style={[styles.mapOcean, { width, height: mapHeight }]} />
         <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: arcOpacity }]}>
-          <SunriseTerminator date={now} width={width} height={mapHeight} />
+          <SunriseAtmosphere date={now} width={width} height={mapHeight} />
+        </Animated.View>
+        <WorldMap width={width} height={mapHeight} landOnly />
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: arcOpacity }]}>
+          <SunriseFrontier date={now} width={width} height={mapHeight} />
         </Animated.View>
         {aggregate.cities.map((city) => (
           <CityDot
@@ -148,13 +153,15 @@ export default function GlobalSunriseMapScreen() {
         ))}
         <UserCityDot city={userCity} now={now} width={width} height={mapHeight} />
 
-        {/*
-         * Subtle bottom-only fade into the atmosphere/stats below.
-         * Top edge blends naturally — map ocean and app background share the same tone,
-         * so a top overlay would only manufacture a visible grey band above the continents.
-         */}
         <LinearGradient
-          colors={['rgba(14,34,61,0)', 'rgba(14,34,61,0.18)']}
+          colors={['rgba(8,20,37,0.42)', 'rgba(8,20,37,0)']}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={styles.vignetteTop}
+          pointerEvents="none"
+        />
+        <LinearGradient
+          colors={['rgba(8,20,37,0)', 'rgba(8,20,37,0.38)']}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
           style={styles.vignetteBottom}
@@ -162,18 +169,7 @@ export default function GlobalSunriseMapScreen() {
         />
 
         <View style={styles.mapLegend} pointerEvents="none">
-          <View style={styles.legendRow}>
-            <View style={[styles.legendSwatch, styles.legendSwatchDay]} />
-            <Text style={styles.legendText}>Today has begun here</Text>
-          </View>
-          <View style={styles.legendRow}>
-            <View style={[styles.legendSwatch, styles.legendSwatchNight]} />
-            <Text style={styles.legendText}>Morning still ahead</Text>
-          </View>
-          <View style={styles.legendRow}>
-            <View style={[styles.legendSwatch, styles.legendSwatchDot]} />
-            <Text style={styles.legendText}>Morning welcomed today</Text>
-          </View>
+          <MapLegend />
         </View>
       </View>
 
@@ -202,9 +198,15 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
     opacity: 0.6,
     lineHeight: 22,
   },
+  mapOcean: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    backgroundColor: MAP_OCEAN_COLOR,
+  },
   mapContainer: {
     width: '100%',
-    backgroundColor: Dawn.background.primary,
+    backgroundColor: MAP_OCEAN_COLOR,
     overflow: 'hidden',
     /** Edge-to-edge canvas — no card frame competing with the map. */
     borderRadius: 0,
@@ -213,51 +215,22 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
   },
   mapLegend: {
     position: 'absolute',
-    bottom: 14,
+    bottom: 12,
     left: 14,
-    right: 14,
-    gap: 6,
-    opacity: 0.9,
   },
-  legendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  legendSwatch: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  legendSwatchDay: {
-    backgroundColor: 'rgba(92, 150, 210, 0.55)',
-    borderWidth: 1,
-    borderColor: 'rgba(160, 200, 240, 0.35)',
-  },
-  legendSwatchNight: {
-    backgroundColor: 'rgba(6, 12, 28, 0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(100, 130, 170, 0.35)',
-  },
-  legendSwatchDot: {
-    backgroundColor: 'rgba(212, 184, 122, 0.9)',
-    shadowColor: '#D4B87A',
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  legendText: {
-    fontSize: 11,
-    lineHeight: 15,
-    color: 'rgba(233, 240, 255, 0.82)',
-    letterSpacing: 0.15,
+  vignetteTop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 56,
   },
   vignetteBottom: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    height: 72,
+    height: 64,
   },
   });
 }

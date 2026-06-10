@@ -9,6 +9,9 @@ import supabase from '../supabase';
 import { clearTomorrowPlan } from '../lib/clearTomorrowPlan';
 import { getWitnessSubheading } from '../lib/ritualState';
 import { useMorningContext } from '../hooks/useMorningContext';
+import { useActiveSunriseCity } from '@/hooks/useActiveSunriseCity';
+import { normalizeCityName } from '@/lib/activeSunriseCity';
+import { recordSunriseCityMemory } from '@/lib/sunriseCitiesMemory';
 import { useSunriseLogOpen } from '@/hooks/useSunriseLogOpen';
 import MorningUnfoldingPause from '@/components/MorningUnfoldingPause';
 import { useDawn } from '@/hooks/use-dawn';
@@ -416,6 +419,7 @@ export function SunriseLog({
   const [editingVantage, setEditingVantage] = useState(false);
   const [vantageInputValue, setVantageInputValue] = useState('');
   const [profileCity, setProfileCity] = useState<string | null>(null);
+  const [todayLogCity, setTodayLogCity] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [justLanded, setJustLanded] = useState(false);
@@ -436,12 +440,23 @@ export function SunriseLog({
   const breathPhase = useRef(new Animated.Value(0)).current;
 
   const {
+    minutesToSunrise: habitualMinutesToSunrise,
+    sunriseTomorrow: homeSunriseTomorrow,
+    refresh: refreshHabitualMorning,
+  } = useMorningContext(profileCity ?? null);
+
+  const { sunriseCity } = useActiveSunriseCity(profileCity, {
+    minutesToSunrise: habitualMinutesToSunrise,
+    loggedTodayCity: hasLogged ? todayLogCity : null,
+  });
+
+  const {
     sunriseToday,
     sunriseTomorrow,
     minutesToSunrise,
     cityTimezone,
     refresh: refreshMorningContext,
-  } = useMorningContext(profileCity ?? null);
+  } = useMorningContext(sunriseCity);
   const witnessCityHour = getCityHourInTimezone(cityTimezone);
   const cardAtmosphere = getSunriseCardAtmosphere(minutesToSunrise, witnessCityHour);
   const cardSurfaceStyle = React.useMemo(
@@ -648,7 +663,7 @@ export function SunriseLog({
         const [todayResult, allLogsResult] = await Promise.all([
           supabase
             .from('sunrise_logs')
-            .select('id, photo_url, moderation_status, created_at, photo_replaced_once, reflection_text, vantage_name')
+            .select('id, photo_url, moderation_status, created_at, photo_replaced_once, reflection_text, vantage_name, city')
             .eq('user_id', userId)
             .gte('created_at', startOfDay.toISOString())
             .lte('created_at', endOfDay.toISOString())
@@ -749,12 +764,22 @@ export function SunriseLog({
         // Today row can be briefly missing right after insert (~200–500ms). Do not clear hasLogged / logId;
         // keep showing the previous UI until a later refresh returns the row.
         if (!data || data.length === 0) {
+          setTodayLogCity(null);
           setInitialLoading(false);
           return;
         }
 
-        const todayLog = data[0] as { id: number; photo_url?: string | null; moderation_status?: string | null; photo_replaced_once?: boolean; reflection_text?: string | null; vantage_name?: string | null };
+        const todayLog = data[0] as {
+          id: number;
+          photo_url?: string | null;
+          moderation_status?: string | null;
+          photo_replaced_once?: boolean;
+          reflection_text?: string | null;
+          vantage_name?: string | null;
+          city?: string | null;
+        };
         setHasLogged(true);
+        setTodayLogCity(todayLog.city?.trim() || null);
         setLogId(todayLog.id);
         setHasReplacedPhoto(!!todayLog.photo_replaced_once);
         const savedReflection = todayLog.reflection_text ?? '';
@@ -824,7 +849,8 @@ export function SunriseLog({
       }
       setRefreshTrigger((t) => t + 1);
       void refreshMorningContext();
-    }, [refreshMorningContext])
+      void refreshHabitualMorning();
+    }, [refreshMorningContext, refreshHabitualMorning])
   );
 
   const handleVantageBlurRef = useRef<() => void>(() => {});
@@ -902,11 +928,18 @@ export function SunriseLog({
         .eq('user_id', userId)
         .maybeSingle();
       const profile = profileRes.data as { city?: string | null; latitude?: number | null; longitude?: number | null } | null;
-      const profileCity = profile?.city?.trim() ?? '';
-      let lat = typeof profile?.latitude === 'number' ? profile?.latitude : null;
-      let lng = typeof profile?.longitude === 'number' ? profile?.longitude : null;
-      if (profileCity && (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng))) {
-        const geo = await getCoordinatesForCity(profileCity, { userId, supabase });
+      const homeCity = profile?.city?.trim() ?? '';
+      const resolvedCity = sunriseCity?.trim() || homeCity;
+      const useHomeCoords =
+        homeCity &&
+        resolvedCity &&
+        normalizeCityName(resolvedCity) === normalizeCityName(homeCity);
+      let lat =
+        useHomeCoords && typeof profile?.latitude === 'number' ? profile?.latitude : null;
+      let lng =
+        useHomeCoords && typeof profile?.longitude === 'number' ? profile?.longitude : null;
+      if (resolvedCity && (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng))) {
+        const geo = await getCoordinatesForCity(resolvedCity);
         lat = geo?.latitude ?? null;
         lng = geo?.longitude ?? null;
       }
@@ -930,7 +963,7 @@ export function SunriseLog({
         created_at: new Date().toISOString(),
         sunrise_day: getTodayLocalDateString(),
       };
-      if (profileCity) insertPayload.city = profileCity;
+      if (resolvedCity) insertPayload.city = resolvedCity;
       if (lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng)) {
         insertPayload.latitude = lat;
         insertPayload.longitude = lng;
@@ -957,6 +990,9 @@ export function SunriseLog({
       }
 
       setHasLogged(true);
+      if (resolvedCity) {
+        void recordSunriseCityMemory(supabase, userId, resolvedCity);
+      }
       setGlobalCount((prev) => (prev != null ? prev + 1 : 1));
       await clearTomorrowPlan();
       if (data && data.length > 0) {
@@ -1411,7 +1447,7 @@ export function SunriseLog({
               <SunriseStateCard
                 dawnCard={dawnCard}
                 hasLoggedToday={hasLogged}
-                city={profileCity}
+                city={sunriseCity}
                 time={formatSunriseTime(sunriseToday)}
                 atmosphere={cardAtmosphere}
                 style={cardSurfaceStyle}
@@ -1692,7 +1728,7 @@ export function SunriseLog({
                       : !hasLogged && isSunriseWindow && styles.sharedDawnSectionWrapLive,
                   ]}
                 >
-                  <SharedDawnPreview city={profileCity} currentUserId={currentUserId} fromScreen="witness" />
+                  <SharedDawnPreview city={sunriseCity} currentUserId={currentUserId} fromScreen="witness" />
                 </View>
               ) : null}
 
@@ -1700,7 +1736,7 @@ export function SunriseLog({
                 <View style={styles.sharedDawnSectionWrap}>
                   <DawnInvitationSection
                     city={profileCity}
-                    sunriseTomorrow={sunriseTomorrow}
+                    sunriseTomorrow={homeSunriseTomorrow}
                   />
                 </View>
               ) : null}
@@ -1719,6 +1755,7 @@ export function SunriseLog({
         onSaved={(result: SunriseLogSaveResult) => {
           unstable_batchedUpdates(() => {
             setHasLogged(true);
+            setTodayLogCity(sunriseCity?.trim() || null);
             setLogId(result.logId);
             setReflectionText(result.reflectionText);
             setReflectionAck(result.reflectionText.trim().length > 0);
@@ -1756,7 +1793,7 @@ export function SunriseLog({
         }}
         onModerationComplete={() => setRefreshTrigger((t) => t + 1)}
         onPlanForTomorrow={() => router.push('/(tabs)/tomorrow' as never)}
-        city={profileCity}
+        city={sunriseCity}
         sunriseTime={sunriseToday}
         initialVantageName={initialVantageName}
         source={context === 'explorer' ? 'explorer' : context === 'retroactive' ? 'other' : 'home'}
@@ -2215,23 +2252,22 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     marginBottom: 8,
   },
   yourMorningHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+    alignSelf: 'stretch',
+    marginBottom: 12,
+    gap: 6,
   },
   yourMorningCardHeader: {
     fontSize: 18,
     lineHeight: 22,
     fontWeight: '600',
     color: Dawn.text.primary,
-    flexShrink: 0,
   },
   yourMorningVantageLine: {
     fontSize: 14,
+    lineHeight: 21,
     color: Dawn.text.secondary,
-    flexShrink: 1,
-    textAlign: 'right',
+    opacity: 0.82,
+    textAlign: 'left',
   },
   yourMorningVantageInput: {
     paddingVertical: 8,
@@ -2246,9 +2282,9 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     width: '100%',
   },
   yourMorningVantageInputInline: {
-    flex: 1,
-    minWidth: 0,
-    marginLeft: 10,
+    width: '100%',
+    marginTop: 2,
+    textAlign: 'left',
   },
   yourMorningPhotoSection: {
     marginTop: 0,
@@ -2399,9 +2435,8 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>, isMorningLight: boolean) {
     width: '100%',
   },
   vantageInlineTouchable: {
-    alignSelf: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 4,
+    alignSelf: 'stretch',
+    paddingVertical: 2,
   },
   vantageInlineText: {
     fontSize: 16,

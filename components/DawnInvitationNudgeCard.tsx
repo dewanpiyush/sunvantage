@@ -4,11 +4,29 @@ import { useDawn } from '@/hooks/use-dawn';
 
 type Props = {
   onPress: () => void;
+  /** You tab: lighter relational strip, not a full feature card. */
+  variant?: 'default' | 'compact';
 };
 
-export default function DawnInvitationNudgeCard({ onPress }: Props) {
+export default function DawnInvitationNudgeCard({ onPress, variant = 'default' }: Props) {
   const Dawn = useDawn();
-  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
+  const isCompact = variant === 'compact';
+  const styles = React.useMemo(() => makeStyles(Dawn, isCompact), [Dawn, isCompact]);
+
+  if (isCompact) {
+    return (
+      <View style={styles.wrap}>
+        <Text style={styles.compactTitle}>✨ Dawn Invitation</Text>
+        <Text style={styles.compactDescription}>
+          Invite someone to greet tomorrow's sunrise with you.
+        </Text>
+        <Pressable style={({ pressed }) => [styles.compactCta, pressed && styles.ctaPressed]} onPress={onPress}>
+          <Text style={styles.compactCtaText}>Send invitation</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.wrap}>
       <View style={styles.card}>
@@ -31,12 +49,43 @@ export default function DawnInvitationNudgeCard({ onPress }: Props) {
   );
 }
 
-function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+function makeStyles(Dawn: ReturnType<typeof useDawn>, isCompact: boolean) {
   return StyleSheet.create({
   wrap: {
     alignSelf: 'stretch',
-    marginTop: 16,
-    marginBottom: 16,
+    marginTop: isCompact ? 0 : 16,
+    marginBottom: isCompact ? 0 : 16,
+    paddingVertical: isCompact ? 6 : 0,
+    paddingHorizontal: isCompact ? 2 : 0,
+  },
+  compactTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Dawn.text.primary,
+    opacity: 0.9,
+    marginBottom: 6,
+  },
+  compactDescription: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: Dawn.text.secondary,
+    opacity: 0.82,
+    marginBottom: 10,
+  },
+  compactCta: {
+    alignSelf: 'flex-start',
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 179, 71, 0.22)',
+    backgroundColor: 'transparent',
+  },
+  compactCtaText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Dawn.accent.sunrise,
+    opacity: 0.78,
   },
   card: {
     position: 'relative',

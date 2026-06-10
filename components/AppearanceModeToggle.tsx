@@ -9,14 +9,22 @@ const OPTIONS: { id: AppAppearanceMode; emoji: string; label: string }[] = [
   { id: 'night-calm', emoji: '🌌', label: 'Night Calm' },
 ];
 
-export default function AppearanceModeToggle() {
+type Props = {
+  /** You-tab: narrower toggles, “Atmosphere” label, centered within the card column. */
+  layout?: 'default' | 'hub';
+};
+
+export default function AppearanceModeToggle({ layout = 'default' }: Props) {
   const Dawn = useDawn();
   const { mode, setMode } = useAppTheme();
-  const styles = React.useMemo(() => makeStyles(Dawn), [Dawn]);
+  const isHub = layout === 'hub';
+  const styles = React.useMemo(() => makeStyles(Dawn, isHub), [Dawn, isHub]);
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.label}>Appearance</Text>
+      <Text style={[styles.label, isHub && styles.hubSectionTitle]}>
+        {isHub ? '🌤️ Atmosphere' : 'Appearance'}
+      </Text>
       <View style={styles.segmentRow}>
         {OPTIONS.map((opt) => {
           const selected = mode === opt.id;
@@ -45,10 +53,11 @@ export default function AppearanceModeToggle() {
   );
 }
 
-function makeStyles(Dawn: ReturnType<typeof useDawn>) {
+function makeStyles(Dawn: ReturnType<typeof useDawn>, isHub: boolean) {
   return StyleSheet.create({
     wrap: {
-      paddingVertical: 4,
+      paddingVertical: isHub ? 2 : 4,
+      alignSelf: 'stretch',
     },
     label: {
       fontSize: 12,
@@ -58,18 +67,30 @@ function makeStyles(Dawn: ReturnType<typeof useDawn>) {
       marginBottom: 8,
       letterSpacing: 0.2,
     },
+    hubSectionTitle: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: Dawn.text.primary,
+      opacity: 0.9,
+      marginBottom: 6,
+      letterSpacing: 0,
+    },
     segmentRow: {
       flexDirection: 'row',
-      gap: 8,
+      gap: isHub ? 12 : 8,
+      alignSelf: isHub ? 'center' : 'stretch',
+      maxWidth: isHub ? 272 : undefined,
     },
     segment: {
-      flex: 1,
+      flex: isHub ? 0 : 1,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 6,
-      paddingVertical: 10,
-      paddingHorizontal: 8,
+      gap: 5,
+      paddingVertical: isHub ? 9 : 10,
+      paddingHorizontal: isHub ? 10 : 8,
+      minWidth: isHub ? 118 : undefined,
+      maxWidth: isHub ? 130 : undefined,
       borderRadius: 14,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: Dawn.border.subtle,

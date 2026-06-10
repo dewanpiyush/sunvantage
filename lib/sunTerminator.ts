@@ -1,7 +1,6 @@
 /**
  * Solar terminator (day/night boundary) and subsolar point.
- * For astronomical day/night tooling — the Global Sunrise Map uses `sunriseProgression.ts`
- * (today's local sunrise passed) instead of these hemispheres.
+ * Powers the Global Sunrise Map's single poetic frontier curve and reveal gradient.
  * Uses UTC for consistency; geometry is drawn with d3-geo.
  */
 
@@ -39,9 +38,10 @@ function normalizeLng(lng: number): number {
   return x;
 }
 
-/** Antipode of [lng, lat] */
-function antipode([lng, lat]: [number, number]): [number, number] {
-  return [normalizeLng(lng + 180), -lat];
+/** Antipode of [lng, lat] — center of the night hemisphere. */
+export function getNightCenter(date: Date): [number, number] {
+  const subsolar = getSubsolarPoint(date);
+  return [normalizeLng(subsolar[0] + 180), -subsolar[1]];
 }
 
 /**
@@ -49,8 +49,7 @@ function antipode([lng, lat]: [number, number]): [number, number] {
  * Terminator = circle centered on the antipode of the subsolar point with radius 90°.
  */
 export function getTerminatorGeometry(date: Date): GeoPermissibleObjects {
-  const subsolar = getSubsolarPoint(date);
-  const nightCenter = antipode(subsolar);
+  const nightCenter = getNightCenter(date);
   const circle = geoCircle().center(nightCenter).radius(90).precision(2);
   return circle();
 }
@@ -60,8 +59,7 @@ export function getTerminatorGeometry(date: Date): GeoPermissibleObjects {
  * Higher precision for a smoother dark fill than the stroke path.
  */
 export function getNightHemisphereGeometry(date: Date): GeoPermissibleObjects {
-  const subsolar = getSubsolarPoint(date);
-  const nightCenter = antipode(subsolar);
+  const nightCenter = getNightCenter(date);
   return geoCircle().center(nightCenter).radius(90).precision(0.5)();
 }
 
